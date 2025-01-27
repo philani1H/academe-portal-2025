@@ -1,7 +1,6 @@
 "use client"
 
 import { motion } from "framer-motion"
-import Image from "next/image"
 
 export default function Footer() {
   // WhatsApp link with your phone number
@@ -25,7 +24,7 @@ export default function Footer() {
           <p>+27 79 386 7427</p>
           <div className="mt-4">
             <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-              <Image 
+              <img 
                 src="/placeholder.svg" 
                 alt="WhatsApp QR Code" 
                 width={100} 
