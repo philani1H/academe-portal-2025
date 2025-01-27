@@ -1,80 +1,102 @@
-import { Button } from "./ui/button";
+"use client"
 
-const Pricing = () => {
+import { motion } from "framer-motion"
+import { Check, X } from "lucide-react"
+
+const plans = [
+  {
+    name: "BASIC",
+    price: "R 150 p/m",
+    features: [
+      "Pay every month for all subjects",
+      "Access to online tutoring links",
+      "Access to all academic resources",
+    ],
+    notIncluded: ["Cheatsheet", "Career Counselling", "Psychology Wellness Services"],
+  },
+  {
+    name: "STANDARD",
+    price: "R 400 p/t",
+    features: [
+      "Tutoring for all subjects",
+      "Access to all online links",
+      "Free Cheat Sheets",
+      "Access to all academic resources",
+      "Career Counselling",
+    ],
+    notIncluded: ["Psychology Wellness Services"],
+  },
+  {
+    name: "PREMIUM",
+    price: "R 500 6/12",
+    features: [
+      "Tutoring for all subjects",
+      "Access to all online tutoring links",
+      "Free Cheat Sheets",
+      "Access to all academic resources",
+      "Career Counselling",
+      "Psychology Wellness Services",
+    ],
+    notIncluded: [],
+  },
+]
+
+export default function Pricing() {
   return (
-    <div className="py-16 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4">
-        <h2 className="text-3xl font-bold text-center mb-12">Tutoring Packages</h2>
+    <section id="pricing" className="py-20 bg-white">
+      <div className="container mx-auto px-4">
+        <h2 className="text-3xl font-bold text-center mb-12">Pricing Packages</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="bg-white p-8 rounded-lg shadow-lg">
-            <h3 className="text-xl font-semibold mb-4">Basic</h3>
-            <div className="text-4xl font-bold mb-4">$40<span className="text-lg text-gray-500">/hour</span></div>
-            <ul className="space-y-3 mb-8">
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-500 mr-2"></i>
-                One-on-one tutoring
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-500 mr-2"></i>
-                Flexible scheduling
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-500 mr-2"></i>
-                Online sessions
-              </li>
-            </ul>
-            <Button className="w-full">Get Started</Button>
-          </div>
-
-          <div className="bg-blue-900 text-white p-8 rounded-lg shadow-lg">
-            <h3 className="text-xl font-semibold mb-4">Premium</h3>
-            <div className="text-4xl font-bold mb-4">$60<span className="text-lg opacity-75">/hour</span></div>
-            <ul className="space-y-3 mb-8">
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-300 mr-2"></i>
-                All Basic features
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-300 mr-2"></i>
-                Progress tracking
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-300 mr-2"></i>
-                Study materials included
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-300 mr-2"></i>
-                24/7 support
-              </li>
-            </ul>
-            <Button variant="outline" className="w-full border-white text-white hover:bg-blue-800">
-              Get Started
-            </Button>
-          </div>
-
-          <div className="bg-white p-8 rounded-lg shadow-lg">
-            <h3 className="text-xl font-semibold mb-4">Group</h3>
-            <div className="text-4xl font-bold mb-4">$25<span className="text-lg text-gray-500">/hour</span></div>
-            <ul className="space-y-3 mb-8">
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-500 mr-2"></i>
-                Small group sessions
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-500 mr-2"></i>
-                Shared learning
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-green-500 mr-2"></i>
-                Online sessions
-              </li>
-            </ul>
-            <Button className="w-full">Get Started</Button>
-          </div>
+          {plans.map((plan, index) => (
+            <motion.div
+              key={index}
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: index * 0.1 }}
+              className={`p-8 rounded-lg shadow-lg ${
+                plan.name === "STANDARD" 
+                  ? "bg-blue-900 text-white" 
+                  : "bg-white border border-gray-200"
+              }`}
+            >
+              <h3 className="text-2xl font-bold mb-4">{plan.name}</h3>
+              <p className="text-3xl font-semibold mb-6">{plan.price}</p>
+              <ul className="space-y-3 mb-8">
+                {plan.features.map((feature, i) => (
+                  <li key={i} className="flex items-center">
+                    <Check className={`w-5 h-5 mr-2 ${
+                      plan.name === "STANDARD" ? "text-blue-200" : "text-green-500"
+                    }`} />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+                {plan.notIncluded.map((feature, i) => (
+                  <li key={i} className="flex items-center opacity-50">
+                    <X className={`w-5 h-5 mr-2 ${
+                      plan.name === "STANDARD" ? "text-blue-200" : "text-red-500"
+                    }`} />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className={`w-full py-3 rounded-full font-semibold transition-colors ${
+                  plan.name === "STANDARD"
+                    ? "bg-white text-blue-900 hover:bg-blue-50"
+                    : "bg-blue-900 text-white hover:bg-blue-800"
+                }`}
+              >
+                Choose Plan
+              </motion.button>
+            </motion.div>
+          ))}
         </div>
+        <p className="text-center mt-8 text-lg text-gray-600">
+          Private Tutoring Will Also Be Offered
+        </p>
       </div>
-    </div>
-  );
-};
-
-export default Pricing;
+    </section>
+  )
+}
