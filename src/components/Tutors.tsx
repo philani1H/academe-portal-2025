@@ -21,8 +21,27 @@ import { Label } from "@/components/ui/label"
 import { Star, Search, X, Filter, User, Phone, Mail, BookOpen, ThumbsUp } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
-// Tutor data with added ratings field
-const tutorList = [
+// Interface for tutor data
+interface Tutor {
+  id: string
+  name: string
+  subjects: string[]
+  image: string
+  contactName: string
+  contactPhone: string
+  contactEmail: string
+  description: string
+  ratings: Array<{
+    id: number
+    studentName: string
+    rating: number
+    comment: string
+    date: string
+  }>
+}
+
+// Default tutor data (fallback)
+const defaultTutorList = [
   {
     id: 12,
     name: "Sir Raphael",
@@ -263,11 +282,12 @@ const calculateAverageRating = (ratings: { rating: number }[]) => {
 
 export default function TutorsPage() {
   const [searchTerm, setSearchTerm] = useState("")
-  const [filteredTutors, setFilteredTutors] = useState(tutorList)
+  const [tutors, setTutors] = useState<Tutor[]>([])
+  const [filteredTutors, setFilteredTutors] = useState<Tutor[]>([])
   const [selectedSubject, setSelectedSubject] = useState("")
   const [sortOption, setSortOption] = useState("name")
   const [imagesLoaded, setImagesLoaded] = useState({})
-  const [selectedTutor, setSelectedTutor] = useState(null)
+  const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null)
   const [newRating, setNewRating] = useState({
     studentName: "",
     rating: 5,
@@ -275,17 +295,45 @@ export default function TutorsPage() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   // Refs for animations
   const headerRef = useRef(null)
   const searchRef = useRef(null)
 
+  // Fetch tutors from API
+  useEffect(() => {
+    fetchTutors()
+  }, [])
+
+  const fetchTutors = async () => {
+    try {
+      const response = await fetch('/api/admin/content/tutors')
+      if (response.ok) {
+        const data = await response.json()
+        setTutors(data)
+        setFilteredTutors(data)
+      } else {
+        // Fallback to default tutors if API fails
+        setTutors(defaultTutorList)
+        setFilteredTutors(defaultTutorList)
+      }
+    } catch (error) {
+      console.error('Error fetching tutors:', error)
+      // Set fallback content
+      setTutors(defaultTutorList)
+      setFilteredTutors(defaultTutorList)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Extract all unique subjects for the filter dropdown
-  const allSubjects = [...new Set(tutorList.flatMap((tutor) => tutor.subjects))].sort()
+  const allSubjects = [...new Set(tutors.flatMap((tutor) => tutor.subjects))].sort()
 
   // Filter and sort tutors
   useEffect(() => {
-    let filtered = tutorList.filter((tutor) => {
+    let filtered = tutors.filter((tutor) => {
       const searchLower = searchTerm.toLowerCase()
       const matchesSearch =
         searchTerm === "" ||
@@ -312,7 +360,7 @@ export default function TutorsPage() {
     })
 
     setFilteredTutors(filtered)
-  }, [searchTerm, selectedSubject, sortOption])
+  }, [searchTerm, selectedSubject, sortOption, tutors])
 
   // Handle image load status
   const handleImageLoad = (tutorName) => {
