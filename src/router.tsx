@@ -4,6 +4,8 @@ import Login from './pages/auth/Login';
 import StudentPortal from './pages/student/StudentPortal';
 import TutorDashboard from './pages/tutor/TutorDashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import ContentManagement from './pages/admin/ContentManagement';
+import AdminLogin from './pages/admin/AdminLogin';
 import AboutUs from './pages/AboutUs';
 import Plan from './pages/Plan';
 import Subjects from './pages/Subjects';
@@ -27,6 +29,8 @@ export const router = createBrowserRouter([
       { path: 'student-portal', element: <StudentPortal /> },
       { path: 'tutors-dashboard', element: <TutorDashboard /> },
       { path: 'admin', element: <AdminDashboard /> },
+      { path: 'admin/content', element: <ContentManagement /> },
+      { path: 'admin/login', element: <AdminLogin /> },
     ],
   },
   {

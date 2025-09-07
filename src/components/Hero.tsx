@@ -17,14 +17,107 @@ import {
   Award
 } from "lucide-react"
 
+interface HeroContent {
+  id: string
+  title: string
+  subtitle: string
+  description: string
+  buttonText: string
+  secondaryButtonText: string
+  trustIndicatorText: string
+  universities: string[]
+  features: Array<{
+    title: string
+    description: string
+    icon: string
+  }>
+  backgroundGradient: string
+}
+
 const Hero = () => {
   const [showGradeDialog, setShowGradeDialog] = useState(false)
   const [animateParticles, setAnimateParticles] = useState(false)
+  const [heroContent, setHeroContent] = useState<HeroContent | null>(null)
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
     setAnimateParticles(true)
+    fetchHeroContent()
   }, [])
+
+  const fetchHeroContent = async () => {
+    try {
+      const response = await fetch('/api/admin/content/hero')
+      if (response.ok) {
+        const data = await response.json()
+        setHeroContent(data)
+      } else {
+        // Fallback to default content if API fails
+        setHeroContent({
+          id: 'default',
+          title: "Welcome to Excellence Akademie",
+          subtitle: "25 Years of Academic Excellence",
+          description: "Empowering South African students to reach their full potential through world-class education and personalized guidance",
+          buttonText: "Choose a Plan",
+          secondaryButtonText: "Become a Tutor",
+          trustIndicatorText: "Trusted by over 10,000+ students across South Africa",
+          universities: ["UCT", "Wits", "UP", "UKZN", "Stellenbosch"],
+          features: [
+            {
+              title: "Expert Instruction",
+              description: "Learn from South Africa's finest educators with proven teaching methodologies",
+              icon: "award"
+            },
+            {
+              title: "Personalized Learning",
+              description: "Adaptive curriculum tailored to your unique learning style and pace",
+              icon: "users"
+            },
+            {
+              title: "Success Guarantee",
+              description: "Join thousands of students who improved their grades by 25% or more",
+              icon: "star"
+            }
+          ],
+          backgroundGradient: "bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199]"
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching hero content:', error)
+      // Set fallback content
+      setHeroContent({
+        id: 'default',
+        title: "Welcome to Excellence Akademie",
+        subtitle: "25 Years of Academic Excellence",
+        description: "Empowering South African students to reach their full potential through world-class education and personalized guidance",
+        buttonText: "Choose a Plan",
+        secondaryButtonText: "Become a Tutor",
+        trustIndicatorText: "Trusted by over 10,000+ students across South Africa",
+        universities: ["UCT", "Wits", "UP", "UKZN", "Stellenbosch"],
+        features: [
+          {
+            title: "Expert Instruction",
+            description: "Learn from South Africa's finest educators with proven teaching methodologies",
+            icon: "award"
+          },
+          {
+            title: "Personalized Learning",
+            description: "Adaptive curriculum tailored to your unique learning style and pace",
+            icon: "users"
+          },
+          {
+            title: "Success Guarantee",
+            description: "Join thousands of students who improved their grades by 25% or more",
+            icon: "star"
+          }
+        ],
+        backgroundGradient: "bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199]"
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handlePlanClick = (e) => {
     e.preventDefault()
@@ -44,23 +137,14 @@ const Hero = () => {
     }
   }
 
-  const features = [
-    {
-      title: "Expert Instruction",
-      description: "Learn from South Africa's finest educators with proven teaching methodologies",
-      icon: <Award className="h-10 w-10 text-blue-300 mb-2" />
-    },
-    {
-      title: "Personalized Learning",
-      description: "Adaptive curriculum tailored to your unique learning style and pace",
-      icon: <Users className="h-10 w-10 text-blue-300 mb-2" />
-    },
-    {
-      title: "Success Guarantee",
-      description: "Join thousands of students who improved their grades by 25% or more",
-      icon: <Star className="h-10 w-10 text-blue-300 mb-2" />
+  const getIconComponent = (iconName: string) => {
+    const iconMap = {
+      'award': <Award className="h-10 w-10 text-blue-300 mb-2" />,
+      'users': <Users className="h-10 w-10 text-blue-300 mb-2" />,
+      'star': <Star className="h-10 w-10 text-blue-300 mb-2" />
     }
-  ]
+    return iconMap[iconName] || <Award className="h-10 w-10 text-blue-300 mb-2" />
+  }
 
   // Better particle system
   const particles = Array(30).fill().map((_, i) => ({
@@ -72,6 +156,22 @@ const Hero = () => {
     delay: Math.random() * 5
   }))
 
+  if (loading) {
+    return (
+      <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199] opacity-90" />
+        <div className="text-center text-white">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!heroContent) {
+    return null
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -80,7 +180,7 @@ const Hero = () => {
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
     >
       {/* Enhanced Dynamic Background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199] opacity-90" />
+      <div className={`absolute inset-0 ${heroContent.backgroundGradient} opacity-90`} />
       
       {/* Improved Floating Particles */}
       <div className="absolute inset-0 pointer-events-none">
@@ -125,10 +225,10 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.2 }}
           >
             <h1 className="text-5xl md:text-7xl font-extrabold text-white mb-3 tracking-tight">
-              Welcome to <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-purple-300">Excellence Akademie</span>
+              {heroContent.title}
             </h1>
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-6 tracking-tight">
-              <span className="text-blue-300">25</span> Years of Academic Excellence
+              {heroContent.subtitle}
             </h2>
           </motion.div>
 
@@ -139,7 +239,7 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="text-xl md:text-2xl text-gray-200 mb-12 max-w-3xl mx-auto"
           >
-            Empowering South African students to reach their full potential through world-class education and personalized guidance
+            {heroContent.description}
           </motion.p>
 
           {/* Feature Cards */}
@@ -149,7 +249,7 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.6 }}
             className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12"
           >
-            {features.map((feature, index) => (
+            {heroContent.features.map((feature, index) => (
               <motion.div
                 key={index}
                 whileHover={{ 
@@ -159,7 +259,7 @@ const Hero = () => {
                 transition={{ duration: 0.3 }}
                 className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/10 flex flex-col items-center"
               >
-                {feature.icon}
+                {getIconComponent(feature.icon)}
                 <h3 className="text-2xl font-bold text-blue-200 mb-3">{feature.title}</h3>
                 <p className="text-gray-300">{feature.description}</p>
               </motion.div>
@@ -182,7 +282,7 @@ const Hero = () => {
                 className="bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 transition-all duration-300 ease-in-out shadow-lg font-semibold px-10 py-7 rounded-xl text-lg"
                 onClick={handlePlanClick}
               >
-                Choose a Plan
+                {heroContent.buttonText}
               </Button>
             </motion.div>
             
@@ -195,7 +295,7 @@ const Hero = () => {
                   variant="outline"
                   className="bg-transparent backdrop-blur-sm border-2 border-white/50 text-white hover:border-white hover:bg-white/10 transition-all duration-300 ease-in-out shadow-lg font-semibold px-10 py-7 rounded-xl text-lg"
                 >
-                  Become a Tutor
+                  {heroContent.secondaryButtonText}
                 </Button>
               </Link>
             </motion.div>
@@ -208,9 +308,9 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 1.2 }}
             className="mt-16"
           >
-            <p className="text-blue-200 mb-4 font-medium">Trusted by over 10,000+ students across South Africa</p>
+            <p className="text-blue-200 mb-4 font-medium">{heroContent.trustIndicatorText}</p>
             <div className="flex justify-center space-x-8 opacity-70">
-              {["UCT", "Wits", "UP", "UKZN", "Stellenbosch"].map((uni, index) => (
+              {heroContent.universities.map((uni, index) => (
                 <div key={index} className="text-white font-bold text-xl">
                   {uni}
                 </div>

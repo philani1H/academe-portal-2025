@@ -5,8 +5,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./APP-Database.db"
 }
 
 model User {
@@ -56,7 +56,7 @@ model TestQuestion {
   id       String   @id @default(uuid())
   testId   String
   question String
-  options  String[] // Array of possible answers
+  options  String   // JSON string of array of possible answers
   answer   String   // Correct answer
   test     Test     @relation(fields: [testId], references: [id])
 }
@@ -65,7 +65,7 @@ model TestSubmission {
   id        String   @id @default(uuid())
   userId    String
   testId    String
-  answers   Json     // Store answers as JSON
+  answers   String   // JSON string of answers
   score     Float
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
@@ -77,6 +77,121 @@ model Notification {
   userId    String
   message   String
   read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Content Management Models
+model HeroContent {
+  id                 String   @id @default(uuid())
+  title              String
+  subtitle           String
+  description        String
+  buttonText         String
+  secondaryButtonText String
+  trustIndicatorText String
+  universities       String   // JSON string of array of university names
+  features           String   // JSON string of array of feature objects
+  backgroundGradient String
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Feature {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  icon        String
+  benefits    String   // JSON string of array of benefit strings
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  content   String
+  type      String   // "info", "warning", "success"
+  pinned    Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PricingPlan {
+  id          String   @id @default(uuid())
+  name        String
+  price       String
+  period      String
+  features    String   // JSON string of array of included features
+  notIncluded String   // JSON string of array of not included features
+  color       String
+  icon        String
+  popular     Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Testimonial {
+  id          String   @id @default(uuid())
+  content     String
+  author      String
+  role        String
+  subject     String
+  improvement String
+  image       String
+  rating      Int      @default(5)
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  name      String
+  role      String
+  bio       String
+  image     String
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AboutUsContent {
+  id                 String   @id @default(uuid())
+  goal               String
+  mission            String
+  rolesResponsibilities String // JSON string of complex structure for roles and responsibilities
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model ContactInfo {
+  id          String   @id @default(uuid())
+  type        String   // "email", "phone", "address", "social"
+  label       String
+  value       String
+  icon        String?
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SiteSettings {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   // JSON string for complex values
+  type      String   // "string", "number", "boolean", "json", "image"
+  label     String
+  category  String   // "general", "appearance", "seo", "integrations"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

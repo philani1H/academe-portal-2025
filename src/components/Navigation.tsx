@@ -38,6 +38,7 @@ const Navigation = () => {
   const mobileOnlyLinks = [
     { path: "/student-login", label: "Student Portal" },
     { path: "/tutor-login", label: "Tutor Portal" },
+    { path: "/admin/login", label: "Admin" },
   ]
 
   const isActive = (path) => location.pathname === path
