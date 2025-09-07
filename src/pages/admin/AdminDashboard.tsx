@@ -41,6 +41,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import ContentManagementEnhanced from "./ContentManagementEnhanced"
 
 // Types
 interface User {
@@ -1097,6 +1098,18 @@ export default function AdminDashboard() {
               </button>
 
               <button
+                onClick={() => setActiveTab("content")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "content" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <FileText className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Content Management</span>}
+              </button>
+
+              <button
                 onClick={() => setActiveTab("departments")}
                 className={`flex items-center ${
                   !sidebarOpen ? "justify-center" : "justify-start"
@@ -1271,6 +1284,19 @@ export default function AdminDashboard() {
 
                 <button
                   onClick={() => {
+                    setActiveTab("content")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
+                    activeTab === "content" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <FileText className="h-5 w-5 mr-2" />
+                  <span>Content Management</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setActiveTab("departments")
                     setMobileMenuOpen(false)
                   }}
@@ -1345,6 +1371,7 @@ export default function AdminDashboard() {
                   {activeTab === "tutors" && "Tutors Management"}
                   {activeTab === "students" && "Students Management"}
                   {activeTab === "courses" && "Courses Management"}
+                  {activeTab === "content" && "Content Management"}
                   {activeTab === "departments" && "Departments"}
                   {activeTab === "notifications" && "Notifications"}
                   {activeTab === "settings" && "System Settings"}
@@ -2977,6 +3004,10 @@ export default function AdminDashboard() {
           )}
 
           {/* Settings Tab */}
+          {activeTab === "content" && (
+            <ContentManagementEnhanced />
+          )}
+
           {activeTab === "settings" && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold">System Settings</h2>
