@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import { executeQuery, getConnection } from '../lib/db';
+import { getConnection } from '../lib/db';
+import prisma from '../lib/prisma';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -82,55 +83,54 @@ app.get('/api/admin/content/:type', async (req, res) => {
     
     switch (contentType) {
       case 'tutors':
-        content = await executeQuery('SELECT * FROM Tutor WHERE isActive = 1 ORDER BY [order] ASC, createdAt DESC');
+        content = await prisma.tutor.findMany({ where: { isActive: true }, orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] });
         break;
       case 'team-members':
-        content = await executeQuery('SELECT * FROM TeamMember WHERE isActive = 1 ORDER BY [order] ASC, createdAt DESC');
+        content = await prisma.teamMember.findMany({ where: { isActive: true }, orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] });
         break;
       case 'about-us':
-        content = await executeQuery('SELECT * FROM AboutUsContent WHERE isActive = 1 ORDER BY updatedAt DESC');
+        content = await prisma.aboutUsContent.findFirst({ where: { isActive: true }, orderBy: { updatedAt: 'desc' } });
         break;
       case 'hero':
-        content = await executeQuery('SELECT * FROM HeroContent ORDER BY updatedAt DESC LIMIT 1');
+        content = await prisma.heroContent.findFirst({ orderBy: { updatedAt: 'desc' } });
         break;
       case 'features':
-        content = await executeQuery('SELECT * FROM Feature WHERE isActive = 1 ORDER BY [order] ASC, createdAt ASC');
+        content = await prisma.feature.findMany({ where: { isActive: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
         break;
       case 'announcements':
-        content = await executeQuery('SELECT * FROM Announcement WHERE isActive = 1 ORDER BY pinned DESC, createdAt DESC');
+        content = await prisma.announcement.findMany({ where: { isActive: true }, orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }] });
         break;
       case 'testimonials':
-        content = await executeQuery('SELECT * FROM Testimonial WHERE isActive = 1 ORDER BY [order] ASC, createdAt DESC');
+        content = await prisma.testimonial.findMany({ where: { isActive: true }, orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] });
         break;
       case 'pricing':
-        content = await executeQuery('SELECT * FROM PricingPlan WHERE isActive = 1 ORDER BY [order] ASC, createdAt ASC');
+        content = await prisma.pricingPlan.findMany({ where: { isActive: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
         break;
       case 'events':
-        content = await executeQuery('SELECT * FROM events ORDER BY date ASC');
+        content = await prisma.$queryRawUnsafe('SELECT * FROM events ORDER BY date ASC');
         break;
       case 'footer':
-        content = await executeQuery('SELECT * FROM FooterContent WHERE isActive = 1 ORDER BY updatedAt DESC LIMIT 1');
+        content = await prisma.footerContent.findFirst({ where: { isActive: true }, orderBy: { updatedAt: 'desc' } });
         break;
       case 'subjects':
-        content = await executeQuery('SELECT * FROM Subject WHERE isActive = 1 ORDER BY [order] ASC, createdAt ASC');
+        content = await prisma.subject.findMany({ where: { isActive: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
         break;
       case 'navigation':
-        content = await executeQuery("SELECT path, label, type FROM NavigationItem WHERE isActive = 1 ORDER BY [order] ASC, createdAt ASC");
+        content = await prisma.navigationItem.findMany({ where: { isActive: true }, select: { path: true, label: true, type: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] });
         break;
       case 'exam-rewrite':
-        content = await executeQuery('SELECT * FROM ExamRewriteContent WHERE isActive = 1 ORDER BY updatedAt DESC LIMIT 1');
+        content = await prisma.examRewriteContent.findFirst({ where: { isActive: true }, orderBy: { updatedAt: 'desc' } });
         break;
       case 'university-application':
-        content = await executeQuery('SELECT * FROM UniversityApplicationContent WHERE isActive = 1 ORDER BY updatedAt DESC LIMIT 1');
+        content = await prisma.universityApplicationContent.findFirst({ where: { isActive: true }, orderBy: { updatedAt: 'desc' } });
         break;
       default:
         return res.status(404).json({ error: 'Content type not found' });
     }
 
     if (content) {
-      // For list-like types, return the full array; for singleton types, return the first row
       const listTypes = ['tutors', 'team-members', 'features', 'testimonials', 'pricing', 'subjects', 'announcements', 'events'];
-      res.json(listTypes.includes(contentType) ? content : content[0]);
+      res.json(listTypes.includes(contentType) ? content : content);
     } else {
       res.status(404).json({ error: `${contentType} content not found` });
     }
