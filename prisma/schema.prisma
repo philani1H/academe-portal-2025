@@ -1,0 +1,82 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String
+  role            String    // "student", "teacher", "admin"
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  enrollments     CourseEnrollment[]
+  testSubmissions TestSubmission[]
+}
+
+model Course {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  enrollments CourseEnrollment[]
+  tests       Test[]
+}
+
+model CourseEnrollment {
+  id        String   @id @default(uuid())
+  userId    String
+  courseId  String
+  status    String   // "enrolled", "completed", "dropped"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id])
+}
+
+model Test {
+  id          String           @id @default(uuid())
+  title       String
+  courseId    String
+  course      Course           @relation(fields: [courseId], references: [id])
+  questions   TestQuestion[]
+  submissions TestSubmission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model TestQuestion {
+  id       String   @id @default(uuid())
+  testId   String
+  question String
+  options  String[] // Array of possible answers
+  answer   String   // Correct answer
+  test     Test     @relation(fields: [testId], references: [id])
+}
+
+model TestSubmission {
+  id        String   @id @default(uuid())
+  userId    String
+  testId    String
+  answers   Json     // Store answers as JSON
+  score     Float
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  test      Test     @relation(fields: [testId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
