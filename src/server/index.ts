@@ -3,11 +3,8 @@ import cors from 'cors';
 import { executeQuery, getConnection } from '../lib/db';
 import fs from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Resolve base path relative to project root in CJS context
+const baseDir = path.resolve(__dirname, '..');
 
 const app = express();
 const port = 3000;
@@ -142,7 +139,6 @@ app.get('/api/admin/content/:type', async (req, res) => {
 async function initializeDatabase() {
   try {
     const db = await getConnection();
-    const baseDir = path.resolve(__dirname, '..');
     const files = [
       path.join(baseDir, 'database', 'schema.sql'),
       path.join(baseDir, 'database', 'content-schema.sql')

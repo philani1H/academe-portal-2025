@@ -20,7 +20,7 @@ async function executeQuery<T = any>(query: string, params?: any[]): Promise<T[]
   const db = await getConnection();
   try {
     const rows = await db.all<T>(query, params);
-    return rows;
+    return rows as unknown as T[];
   } catch (error) {
     console.error('Error executing query:', error);
     throw error;
