@@ -195,3 +195,127 @@ model SiteSettings {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// Tutors Management
+model Tutor {
+  id           String   @id @default(uuid())
+  name         String
+  subjects     String   // JSON array of subjects
+  image        String
+  contactName  String
+  contactPhone String
+  contactEmail String
+  description  String
+  ratings      String   // JSON array of ratings
+  isActive     Boolean  @default(true)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Subjects Management
+model Subject {
+  id            String   @id @default(uuid())
+  name          String
+  description   String
+  image         String
+  category      String
+  tutorsCount   Int      @default(0)
+  popularTopics String   // JSON array of topics
+  difficulty    String   // JSON array of difficulty levels
+  isActive      Boolean  @default(true)
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Footer Content Management
+model FooterContent {
+  id               String   @id @default(uuid())
+  companyName      String
+  tagline          String
+  contactPhone     String
+  contactEmail     String
+  contactPerson    String
+  whatsappLink     String
+  socialLinks      String   // JSON object with social media links
+  quickLinks       String   // JSON array of quick links
+  resourceLinks    String   // JSON array of resource links
+  copyrightText    String
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// Navigation Management
+model NavigationItem {
+  id        String   @id @default(uuid())
+  path      String
+  label     String
+  type      String   // "main", "mobile", "footer"
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Become Tutor Page Content
+model BecomeTutorContent {
+  id             String   @id @default(uuid())
+  title          String
+  description    String
+  requirements   String   // JSON array of requirements
+  benefits       String   // JSON array of benefits
+  applicationUrl String
+  formEmbedCode  String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Exam Rewrite Content
+model ExamRewriteContent {
+  id                    String   @id @default(uuid())
+  title                 String
+  description           String
+  heroTitle             String
+  heroDescription       String
+  benefits              String   // JSON array of benefits
+  process               String   // JSON array of process steps
+  subjects              String   // JSON array of subjects
+  applicationFormUrl    String
+  grade11FormUrl        String?
+  grade12FormUrl        String?
+  pricingInfo           String   // JSON object with pricing
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Contact Us Content
+model ContactUsContent {
+  id            String   @id @default(uuid())
+  title         String
+  description   String
+  logo          String
+  formEndpoint  String
+  contactInfo   String   // JSON object with contact details
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// University Application Content
+model UniversityApplicationContent {
+  id            String   @id @default(uuid())
+  title         String
+  description   String
+  services      String   // JSON array of services
+  process       String   // JSON array of process steps
+  requirements  String   // JSON array of requirements
+  pricing       String   // JSON object with pricing
+  formUrl       String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

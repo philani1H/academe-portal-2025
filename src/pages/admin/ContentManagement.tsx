@@ -761,89 +761,231 @@ const ContentManagement = () => {
         </div>
 
         <Tabs defaultValue="hero" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="hero">Hero</TabsTrigger>
-            <TabsTrigger value="features">Features</TabsTrigger>
-            <TabsTrigger value="announcements">News</TabsTrigger>
-            <TabsTrigger value="pricing">Pricing</TabsTrigger>
-            <TabsTrigger value="testimonials">Reviews</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="content">Content</TabsTrigger>
+            <TabsTrigger value="tutors">Tutors</TabsTrigger>
+            <TabsTrigger value="subjects">Subjects</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="hero" className="mt-6">
-            {renderHeroContentTab()}
+          <TabsContent value="content" className="mt-6">
+            <div className="space-y-6">
+              <Tabs defaultValue="hero" className="w-full">
+                <TabsList className="grid w-full grid-cols-6">
+                  <TabsTrigger value="hero">Hero</TabsTrigger>
+                  <TabsTrigger value="features">Features</TabsTrigger>
+                  <TabsTrigger value="announcements">News</TabsTrigger>
+                  <TabsTrigger value="pricing">Pricing</TabsTrigger>
+                  <TabsTrigger value="testimonials">Reviews</TabsTrigger>
+                  <TabsTrigger value="team">Team</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="hero" className="mt-6">
+                  {renderHeroContentTab()}
+                </TabsContent>
+
+                <TabsContent value="features" className="mt-6">
+                  {renderFeaturesTab()}
+                </TabsContent>
+
+                <TabsContent value="announcements" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5" />
+                        Announcements & News
+                      </CardTitle>
+                      <CardDescription>
+                        Manage announcements and news updates
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-500">Announcements management coming soon...</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="pricing" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <DollarSign className="h-5 w-5" />
+                        Pricing Plans
+                      </CardTitle>
+                      <CardDescription>
+                        Manage pricing plans and packages
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-500">Pricing management coming soon...</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="testimonials" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Star className="h-5 w-5" />
+                        Testimonials & Reviews
+                      </CardTitle>
+                      <CardDescription>
+                        Manage customer testimonials and reviews
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-500">Testimonials management coming soon...</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="team" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        Team Members
+                      </CardTitle>
+                      <CardDescription>
+                        Manage team member profiles
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-500">Team management coming soon...</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
           </TabsContent>
 
-          <TabsContent value="features" className="mt-6">
-            {renderFeaturesTab()}
-          </TabsContent>
-
-          <TabsContent value="announcements" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  Announcements & News
-                </CardTitle>
-                <CardDescription>
-                  Manage announcements and news updates
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-500">Announcements management coming soon...</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="pricing" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
-                  Pricing Plans
-                </CardTitle>
-                <CardDescription>
-                  Manage pricing plans and packages
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-500">Pricing management coming soon...</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="testimonials" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Star className="h-5 w-5" />
-                  Testimonials & Reviews
-                </CardTitle>
-                <CardDescription>
-                  Manage customer testimonials and reviews
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-500">Testimonials management coming soon...</p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="team" className="mt-6">
+          <TabsContent value="tutors" className="mt-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Users className="h-5 w-5" />
-                  Team Members
+                  Tutors Management
                 </CardTitle>
                 <CardDescription>
-                  Manage team member profiles
+                  Manage all tutors, their subjects, contact info, and ratings
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-500">Team management coming soon...</p>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Tutors (Loading...)</h3>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Tutor
+                  </Button>
+                </div>
+                <p className="text-gray-500">Tutors management interface will be implemented here...</p>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="subjects" className="mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Subjects Management
+                </CardTitle>
+                <CardDescription>
+                  Manage all subjects, categories, topics, and difficulty levels
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Subjects (Loading...)</h3>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Subject
+                  </Button>
+                </div>
+                <p className="text-gray-500">Subjects management interface will be implemented here...</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="settings" className="mt-6">
+            <div className="space-y-6">
+              <Tabs defaultValue="footer" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="footer">Footer</TabsTrigger>
+                  <TabsTrigger value="navigation">Navigation</TabsTrigger>
+                  <TabsTrigger value="contact">Contact</TabsTrigger>
+                  <TabsTrigger value="site">Site</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="footer" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Settings className="h-5 w-5" />
+                        Footer Content
+                      </CardTitle>
+                      <CardDescription>
+                        Manage footer content, social links, and contact information
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-500">Footer management coming soon...</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="navigation" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Globe className="h-5 w-5" />
+                        Navigation Menu
+                      </CardTitle>
+                      <CardDescription>
+                        Manage navigation menu items and links
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-500">Navigation management coming soon...</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="contact" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Phone className="h-5 w-5" />
+                        Contact Us Page
+                      </CardTitle>
+                      <CardDescription>
+                        Manage contact page content and form settings
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-500">Contact page management coming soon...</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="site" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Settings className="h-5 w-5" />
+                        Site Settings
+                      </CardTitle>
+                      <CardDescription>
+                        Manage general site settings and configuration
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-500">Site settings management coming soon...</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
           </TabsContent>
         </Tabs>
       </motion.div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
 import { Button } from "./ui/button"
@@ -8,8 +8,20 @@ import { Badge } from "./ui/badge"
 import { Search, Filter, ChevronRight, BookOpen, Users, Award, Clock } from "lucide-react"
 import { Input } from "./ui/input"
 
-// Subject data with expanded information
-const subjectData = [
+// Interface for subject data
+interface Subject {
+  id: string
+  name: string
+  description: string
+  image: string
+  category: string
+  tutorsCount: number
+  popularTopics: string[]
+  difficulty: string[]
+}
+
+// Default subject data (fallback)
+const defaultSubjectData = [
   {
     id: 1,
     name: "Mathematics",
@@ -138,10 +150,36 @@ const categories = ["All", "STEM", "Languages", "Commerce", "Humanities", "Techn
 const Subjects = () => {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
+  const [subjects, setSubjects] = useState<Subject[]>([])
   const [visibleSubjects, setVisibleSubjects] = useState(8)
+  const [loading, setLoading] = useState(true)
+
+  // Fetch subjects from API
+  useEffect(() => {
+    fetchSubjects()
+  }, [])
+
+  const fetchSubjects = async () => {
+    try {
+      const response = await fetch('/api/admin/content/subjects')
+      if (response.ok) {
+        const data = await response.json()
+        setSubjects(data)
+      } else {
+        // Fallback to default subjects if API fails
+        setSubjects(defaultSubjectData)
+      }
+    } catch (error) {
+      console.error('Error fetching subjects:', error)
+      // Set fallback content
+      setSubjects(defaultSubjectData)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Filter subjects based on search term and category
-  const filteredSubjects = subjectData.filter((subject) => {
+  const filteredSubjects = subjects.filter((subject) => {
     const matchesSearch =
       subject.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       subject.description.toLowerCase().includes(searchTerm.toLowerCase())
