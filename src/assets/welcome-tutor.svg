@@ -1,0 +1,24 @@
+<svg width="800" height="400" viewBox="0 0 800 400" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="800" height="400" fill="#f0f9ff" rx="20"/>
+  
+  <!-- Decorative Elements -->
+  <circle cx="150" cy="200" r="120" fill="#bfdbfe" opacity="0.5"/>
+  <circle cx="650" cy="200" r="120" fill="#93c5fd" opacity="0.5"/>
+  
+  <!-- Book Stack -->
+  <rect x="300" y="180" width="200" height="40" fill="#3b82f6" rx="5"/>
+  <rect x="320" y="140" width="160" height="40" fill="#60a5fa" rx="5"/>
+  <rect x="340" y="100" width="120" height="40" fill="#93c5fd" rx="5"/>
+  
+  <!-- Graduation Cap -->
+  <path d="M400 60 L460 90 L400 120 L340 90 Z" fill="#1d4ed8"/>
+  <rect x="395" y="60" width="10" height="40" fill="#1d4ed8"/>
+  <path d="M390 55 Q400 45 410 55" stroke="#1d4ed8" fill="none" stroke-width="3"/>
+  
+  <!-- Welcome Text -->
+  <text x="400" y="300" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#1e40af" text-anchor="middle">Welcome to Our Tutoring Team</text>
+  
+  <!-- Decorative Lines -->
+  <line x1="200" y1="320" x2="600" y2="320" stroke="#60a5fa" stroke-width="2" stroke-dasharray="10,5"/>
+</svg>
