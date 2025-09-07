@@ -27,7 +27,12 @@ import {
   ArrowUp,
   ArrowDown,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  BookOpen,
+  GraduationCap,
+  FileText,
+  Calendar,
+  UserPlus
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -135,6 +140,106 @@ interface AboutUsContent {
   isActive?: boolean
 }
 
+interface Tutor {
+  id?: string
+  name: string
+  subjects: string[]
+  image: string
+  contactName: string
+  contactPhone: string
+  contactEmail: string
+  description: string
+  ratings: any[]
+  isActive?: boolean
+  order?: number
+}
+
+interface Subject {
+  id?: string
+  name: string
+  description: string
+  image: string
+  category: string
+  tutorsCount: number
+  popularTopics: string[]
+  difficulty: string[]
+  isActive?: boolean
+  order?: number
+}
+
+interface FooterContent {
+  id?: string
+  companyName: string
+  tagline: string
+  contactPhone: string
+  contactEmail: string
+  contactPerson: string
+  whatsappLink: string
+  socialLinks: any
+  quickLinks: any[]
+  resourceLinks: any[]
+  copyrightText: string
+  isActive?: boolean
+}
+
+interface NavigationItem {
+  id?: string
+  path: string
+  label: string
+  type: string
+  isActive?: boolean
+  order?: number
+}
+
+interface ContactUsContent {
+  id?: string
+  title: string
+  description: string
+  logo: string
+  formEndpoint: string
+  contactInfo: any
+  isActive?: boolean
+}
+
+interface BecomeTutorContent {
+  id?: string
+  title: string
+  description: string
+  requirements: string[]
+  benefits: string[]
+  applicationUrl: string
+  formEmbedCode?: string
+  isActive?: boolean
+}
+
+interface ExamRewriteContent {
+  id?: string
+  title: string
+  description: string
+  heroTitle: string
+  heroDescription: string
+  benefits: string[]
+  process: string[]
+  subjects: string[]
+  applicationFormUrl: string
+  grade11FormUrl?: string
+  grade12FormUrl?: string
+  pricingInfo: any
+  isActive?: boolean
+}
+
+interface UniversityApplicationContent {
+  id?: string
+  title: string
+  description: string
+  services: string[]
+  process: string[]
+  requirements: string[]
+  pricing: any
+  formUrl?: string
+  isActive?: boolean
+}
+
 const ContentManagement = () => {
   const { toast } = useToast()
   
@@ -146,6 +251,14 @@ const ContentManagement = () => {
   const [testimonials, setTestimonials] = useState<Testimonial[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [aboutUsContent, setAboutUsContent] = useState<AboutUsContent | null>(null)
+  const [tutors, setTutors] = useState<Tutor[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [footerContent, setFooterContent] = useState<FooterContent | null>(null)
+  const [navigationItems, setNavigationItems] = useState<NavigationItem[]>([])
+  const [contactUsContent, setContactUsContent] = useState<ContactUsContent | null>(null)
+  const [becomeTutorContent, setBecomeTutorContent] = useState<BecomeTutorContent | null>(null)
+  const [examRewriteContent, setExamRewriteContent] = useState<ExamRewriteContent | null>(null)
+  const [universityApplicationContent, setUniversityApplicationContent] = useState<UniversityApplicationContent | null>(null)
   
   // Dialog states
   const [editingHero, setEditingHero] = useState<HeroContent | null>(null)
@@ -155,6 +268,14 @@ const ContentManagement = () => {
   const [editingTestimonial, setEditingTestimonial] = useState<Testimonial | null>(null)
   const [editingTeamMember, setEditingTeamMember] = useState<TeamMember | null>(null)
   const [editingAboutUs, setEditingAboutUs] = useState<AboutUsContent | null>(null)
+  const [editingTutor, setEditingTutor] = useState<Tutor | null>(null)
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null)
+  const [editingFooter, setEditingFooter] = useState<FooterContent | null>(null)
+  const [editingNavigation, setEditingNavigation] = useState<NavigationItem | null>(null)
+  const [editingContactUs, setEditingContactUs] = useState<ContactUsContent | null>(null)
+  const [editingBecomeTutor, setEditingBecomeTutor] = useState<BecomeTutorContent | null>(null)
+  const [editingExamRewrite, setEditingExamRewrite] = useState<ExamRewriteContent | null>(null)
+  const [editingUniversityApplication, setEditingUniversityApplication] = useState<UniversityApplicationContent | null>(null)
   
   const [loading, setLoading] = useState(true)
 
@@ -173,7 +294,15 @@ const ContentManagement = () => {
         fetchPricingPlans(),
         fetchTestimonials(),
         fetchTeamMembers(),
-        fetchAboutUsContent()
+        fetchAboutUsContent(),
+        fetchTutors(),
+        fetchSubjects(),
+        fetchFooterContent(),
+        fetchNavigationItems(),
+        fetchContactUsContent(),
+        fetchBecomeTutorContent(),
+        fetchExamRewriteContent(),
+        fetchUniversityApplicationContent()
       ])
     } catch (error) {
       console.error('Error fetching content:', error)
@@ -269,6 +398,102 @@ const ContentManagement = () => {
       }
     } catch (error) {
       console.error('Error fetching about us content:', error)
+    }
+  }
+
+  const fetchTutors = async () => {
+    try {
+      const response = await fetch('/api/admin/content/tutors')
+      if (response.ok) {
+        const data = await response.json()
+        setTutors(data)
+      }
+    } catch (error) {
+      console.error('Error fetching tutors:', error)
+    }
+  }
+
+  const fetchSubjects = async () => {
+    try {
+      const response = await fetch('/api/admin/content/subjects')
+      if (response.ok) {
+        const data = await response.json()
+        setSubjects(data)
+      }
+    } catch (error) {
+      console.error('Error fetching subjects:', error)
+    }
+  }
+
+  const fetchFooterContent = async () => {
+    try {
+      const response = await fetch('/api/admin/content/footer')
+      if (response.ok) {
+        const data = await response.json()
+        setFooterContent(data)
+      }
+    } catch (error) {
+      console.error('Error fetching footer content:', error)
+    }
+  }
+
+  const fetchNavigationItems = async () => {
+    try {
+      const response = await fetch('/api/admin/content/navigation')
+      if (response.ok) {
+        const data = await response.json()
+        setNavigationItems(data)
+      }
+    } catch (error) {
+      console.error('Error fetching navigation items:', error)
+    }
+  }
+
+  const fetchContactUsContent = async () => {
+    try {
+      const response = await fetch('/api/admin/content/contact-us')
+      if (response.ok) {
+        const data = await response.json()
+        setContactUsContent(data)
+      }
+    } catch (error) {
+      console.error('Error fetching contact us content:', error)
+    }
+  }
+
+  const fetchBecomeTutorContent = async () => {
+    try {
+      const response = await fetch('/api/admin/content/become-tutor')
+      if (response.ok) {
+        const data = await response.json()
+        setBecomeTutorContent(data)
+      }
+    } catch (error) {
+      console.error('Error fetching become tutor content:', error)
+    }
+  }
+
+  const fetchExamRewriteContent = async () => {
+    try {
+      const response = await fetch('/api/admin/content/exam-rewrite')
+      if (response.ok) {
+        const data = await response.json()
+        setExamRewriteContent(data)
+      }
+    } catch (error) {
+      console.error('Error fetching exam rewrite content:', error)
+    }
+  }
+
+  const fetchUniversityApplicationContent = async () => {
+    try {
+      const response = await fetch('/api/admin/content/university-application')
+      if (response.ok) {
+        const data = await response.json()
+        setUniversityApplicationContent(data)
+      }
+    } catch (error) {
+      console.error('Error fetching university application content:', error)
     }
   }
 
@@ -761,10 +986,11 @@ const ContentManagement = () => {
         </div>
 
         <Tabs defaultValue="hero" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="content">Content</TabsTrigger>
             <TabsTrigger value="tutors">Tutors</TabsTrigger>
             <TabsTrigger value="subjects">Subjects</TabsTrigger>
+            <TabsTrigger value="pages">Pages</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
@@ -800,7 +1026,59 @@ const ContentManagement = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-500">Announcements management coming soon...</p>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold">Announcements ({announcements.length})</h3>
+                        <Button onClick={() => setEditingAnnouncement({
+                          content: '',
+                          type: 'info',
+                          pinned: false
+                        })}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Announcement
+                        </Button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {announcements.map((announcement) => (
+                          <Card key={announcement.id} className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Badge className={announcement.type === 'info' ? 'bg-blue-100 text-blue-800' : 
+                                                   announcement.type === 'warning' ? 'bg-yellow-100 text-yellow-800' : 
+                                                   'bg-green-100 text-green-800'}>
+                                    {announcement.type}
+                                  </Badge>
+                                  {announcement.pinned && <Badge className="bg-red-100 text-red-800">Pinned</Badge>}
+                                </div>
+                                <p className="text-sm text-gray-600">{announcement.content}</p>
+                              </div>
+                              <div className="flex gap-2 ml-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditingAnnouncement(announcement)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {/* Add delete function */}}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                        
+                        {announcements.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            No announcements found. Add your first announcement to get started.
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -817,7 +1095,61 @@ const ContentManagement = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-500">Pricing management coming soon...</p>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold">Pricing Plans ({pricingPlans.length})</h3>
+                        <Button onClick={() => setEditingPricingPlan({
+                          name: '',
+                          price: '',
+                          period: '',
+                          features: [],
+                          notIncluded: [],
+                          color: 'blue',
+                          icon: 'star',
+                          popular: false
+                        })}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Pricing Plan
+                        </Button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {pricingPlans.map((plan) => (
+                          <Card key={plan.id} className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-semibold">{plan.name}</h4>
+                                  {plan.popular && <Badge className="bg-yellow-100 text-yellow-800">Popular</Badge>}
+                                </div>
+                                <p className="text-lg font-bold text-gray-900">{plan.price} {plan.period}</p>
+                                <p className="text-sm text-gray-600 mt-1">{plan.features.length} features included</p>
+                              </div>
+                              <div className="flex gap-2 ml-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditingPricingPlan(plan)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {/* Add delete function */}}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                        
+                        {pricingPlans.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            No pricing plans found. Add your first pricing plan to get started.
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -834,7 +1166,64 @@ const ContentManagement = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-500">Testimonials management coming soon...</p>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold">Testimonials ({testimonials.length})</h3>
+                        <Button onClick={() => setEditingTestimonial({
+                          content: '',
+                          author: '',
+                          role: '',
+                          subject: '',
+                          improvement: '',
+                          image: '',
+                          rating: 5
+                        })}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Testimonial
+                        </Button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {testimonials.map((testimonial) => (
+                          <Card key={testimonial.id} className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-semibold">{testimonial.author}</h4>
+                                  <div className="flex">
+                                    {[...Array(5)].map((_, i) => (
+                                      <Star key={i} className={`h-4 w-4 ${i < testimonial.rating ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} />
+                                    ))}
+                                  </div>
+                                </div>
+                                <p className="text-sm text-gray-600 mt-1">{testimonial.content}</p>
+                                <p className="text-xs text-gray-500 mt-2">{testimonial.role} - {testimonial.subject}</p>
+                              </div>
+                              <div className="flex gap-2 ml-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditingTestimonial(testimonial)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {/* Add delete function */}}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                        
+                        {testimonials.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            No testimonials found. Add your first testimonial to get started.
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -851,7 +1240,54 @@ const ContentManagement = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-500">Team management coming soon...</p>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold">Team Members ({teamMembers.length})</h3>
+                        <Button onClick={() => setEditingTeamMember({
+                          name: '',
+                          role: '',
+                          bio: '',
+                          image: ''
+                        })}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Team Member
+                        </Button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {teamMembers.map((member) => (
+                          <Card key={member.id} className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <h4 className="font-semibold">{member.name}</h4>
+                                <p className="text-sm text-gray-600 mt-1">{member.role}</p>
+                                <p className="text-sm text-gray-500 mt-2">{member.bio}</p>
+                              </div>
+                              <div className="flex gap-2 ml-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditingTeamMember(member)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {/* Add delete function */}}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                        
+                        {teamMembers.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            No team members found. Add your first team member to get started.
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -872,13 +1308,61 @@ const ContentManagement = () => {
               </CardHeader>
               <CardContent>
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Tutors (Loading...)</h3>
-                  <Button>
+                  <h3 className="text-lg font-semibold">Tutors ({tutors.length})</h3>
+                  <Button onClick={() => setEditingTutor({
+                    name: '',
+                    subjects: [],
+                    image: '',
+                    contactName: '',
+                    contactPhone: '',
+                    contactEmail: '',
+                    description: '',
+                    ratings: []
+                  })}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Tutor
                   </Button>
                 </div>
-                <p className="text-gray-500">Tutors management interface will be implemented here...</p>
+                
+                <div className="space-y-4">
+                  {tutors.map((tutor) => (
+                    <Card key={tutor.id} className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h4 className="font-semibold">{tutor.name}</h4>
+                          <p className="text-sm text-gray-600 mt-1">{tutor.description}</p>
+                          <div className="mt-2 flex gap-4 text-xs text-gray-500">
+                            <span>Subjects: {tutor.subjects.join(', ')}</span>
+                            <span>Contact: {tutor.contactEmail}</span>
+                            <span>Phone: {tutor.contactPhone}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditingTutor(tutor)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {/* Add delete function */}}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                  
+                  {tutors.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      No tutors found. Add your first tutor to get started.
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -896,15 +1380,270 @@ const ContentManagement = () => {
               </CardHeader>
               <CardContent>
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Subjects (Loading...)</h3>
-                  <Button>
+                  <h3 className="text-lg font-semibold">Subjects ({subjects.length})</h3>
+                  <Button onClick={() => setEditingSubject({
+                    name: '',
+                    description: '',
+                    image: '',
+                    category: '',
+                    tutorsCount: 0,
+                    popularTopics: [],
+                    difficulty: []
+                  })}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Subject
                   </Button>
                 </div>
-                <p className="text-gray-500">Subjects management interface will be implemented here...</p>
+                
+                <div className="space-y-4">
+                  {subjects.map((subject) => (
+                    <Card key={subject.id} className="p-4">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h4 className="font-semibold">{subject.name}</h4>
+                          <p className="text-sm text-gray-600 mt-1">{subject.description}</p>
+                          <div className="mt-2 flex gap-4 text-xs text-gray-500">
+                            <span>Category: {subject.category}</span>
+                            <span>Tutors: {subject.tutorsCount}</span>
+                            <span>Topics: {subject.popularTopics.length}</span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditingSubject(subject)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {/* Add delete function */}}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                  
+                  {subjects.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      No subjects found. Add your first subject to get started.
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="pages" className="mt-6">
+            <div className="space-y-6">
+              <Tabs defaultValue="become-tutor" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="become-tutor">Become Tutor</TabsTrigger>
+                  <TabsTrigger value="exam-rewrite">Exam Rewrite</TabsTrigger>
+                  <TabsTrigger value="university-application">University App</TabsTrigger>
+                  <TabsTrigger value="about-us">About Us</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="become-tutor" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <UserPlus className="h-5 w-5" />
+                        Become Tutor Page
+                      </CardTitle>
+                      <CardDescription>
+                        Manage the become tutor page content and application form
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {becomeTutorContent ? (
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Title</Label>
+                            <p className="text-sm text-gray-600">{becomeTutorContent.title}</p>
+                          </div>
+                          <div>
+                            <Label>Description</Label>
+                            <p className="text-sm text-gray-600">{becomeTutorContent.description}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={() => setEditingBecomeTutor(becomeTutorContent)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Content
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-gray-500 mb-4">No become tutor content found</p>
+                          <Button onClick={() => setEditingBecomeTutor({
+                            title: '',
+                            description: '',
+                            requirements: [],
+                            benefits: [],
+                            applicationUrl: ''
+                          })}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Content
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="exam-rewrite" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <GraduationCap className="h-5 w-5" />
+                        Exam Rewrite Page
+                      </CardTitle>
+                      <CardDescription>
+                        Manage the exam rewrite program content and forms
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {examRewriteContent ? (
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Title</Label>
+                            <p className="text-sm text-gray-600">{examRewriteContent.title}</p>
+                          </div>
+                          <div>
+                            <Label>Description</Label>
+                            <p className="text-sm text-gray-600">{examRewriteContent.description}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={() => setEditingExamRewrite(examRewriteContent)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Content
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-gray-500 mb-4">No exam rewrite content found</p>
+                          <Button onClick={() => setEditingExamRewrite({
+                            title: '',
+                            description: '',
+                            heroTitle: '',
+                            heroDescription: '',
+                            benefits: [],
+                            process: [],
+                            subjects: [],
+                            applicationFormUrl: '',
+                            pricingInfo: {}
+                          })}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Content
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="university-application" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Building className="h-5 w-5" />
+                        University Application Page
+                      </CardTitle>
+                      <CardDescription>
+                        Manage the university application services content
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {universityApplicationContent ? (
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Title</Label>
+                            <p className="text-sm text-gray-600">{universityApplicationContent.title}</p>
+                          </div>
+                          <div>
+                            <Label>Description</Label>
+                            <p className="text-sm text-gray-600">{universityApplicationContent.description}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={() => setEditingUniversityApplication(universityApplicationContent)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Content
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-gray-500 mb-4">No university application content found</p>
+                          <Button onClick={() => setEditingUniversityApplication({
+                            title: '',
+                            description: '',
+                            services: [],
+                            process: [],
+                            requirements: [],
+                            pricing: {}
+                          })}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Content
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="about-us" className="mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Info className="h-5 w-5" />
+                        About Us Page
+                      </CardTitle>
+                      <CardDescription>
+                        Manage the about us page content and team information
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {aboutUsContent ? (
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Goal</Label>
+                            <p className="text-sm text-gray-600">{aboutUsContent.goal}</p>
+                          </div>
+                          <div>
+                            <Label>Mission</Label>
+                            <p className="text-sm text-gray-600">{aboutUsContent.mission}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={() => setEditingAboutUs(aboutUsContent)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Content
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-gray-500 mb-4">No about us content found</p>
+                          <Button onClick={() => setEditingAboutUs({
+                            goal: '',
+                            mission: '',
+                            rolesResponsibilities: {}
+                          })}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Content
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
           </TabsContent>
 
           <TabsContent value="settings" className="mt-6">
@@ -929,7 +1668,53 @@ const ContentManagement = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-500">Footer management coming soon...</p>
+                      {footerContent ? (
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Company Name</Label>
+                            <p className="text-sm text-gray-600">{footerContent.companyName}</p>
+                          </div>
+                          <div>
+                            <Label>Tagline</Label>
+                            <p className="text-sm text-gray-600">{footerContent.tagline}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label>Contact Email</Label>
+                              <p className="text-sm text-gray-600">{footerContent.contactEmail}</p>
+                            </div>
+                            <div>
+                              <Label>Contact Phone</Label>
+                              <p className="text-sm text-gray-600">{footerContent.contactPhone}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={() => setEditingFooter(footerContent)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Footer Content
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-gray-500 mb-4">No footer content found</p>
+                          <Button onClick={() => setEditingFooter({
+                            companyName: '',
+                            tagline: '',
+                            contactPhone: '',
+                            contactEmail: '',
+                            contactPerson: '',
+                            whatsappLink: '',
+                            socialLinks: {},
+                            quickLinks: [],
+                            resourceLinks: [],
+                            copyrightText: ''
+                          })}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Footer Content
+                          </Button>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -946,7 +1731,56 @@ const ContentManagement = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-500">Navigation management coming soon...</p>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold">Navigation Items ({navigationItems.length})</h3>
+                        <Button onClick={() => setEditingNavigation({
+                          path: '',
+                          label: '',
+                          type: 'main'
+                        })}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Navigation Item
+                        </Button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {navigationItems.map((item) => (
+                          <Card key={item.id} className="p-4">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <h4 className="font-semibold">{item.label}</h4>
+                                <p className="text-sm text-gray-600 mt-1">Path: {item.path}</p>
+                                <div className="mt-2 flex gap-4 text-xs text-gray-500">
+                                  <span>Type: {item.type}</span>
+                                  <span>Active: {item.isActive ? 'Yes' : 'No'}</span>
+                                </div>
+                              </div>
+                              <div className="flex gap-2 ml-4">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditingNavigation(item)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {/* Add delete function */}}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </Card>
+                        ))}
+                        
+                        {navigationItems.length === 0 && (
+                          <div className="text-center py-8 text-gray-500">
+                            No navigation items found. Add your first navigation item to get started.
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -963,7 +1797,42 @@ const ContentManagement = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-500">Contact page management coming soon...</p>
+                      {contactUsContent ? (
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Title</Label>
+                            <p className="text-sm text-gray-600">{contactUsContent.title}</p>
+                          </div>
+                          <div>
+                            <Label>Description</Label>
+                            <p className="text-sm text-gray-600">{contactUsContent.description}</p>
+                          </div>
+                          <div>
+                            <Label>Form Endpoint</Label>
+                            <p className="text-sm text-gray-600">{contactUsContent.formEndpoint}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={() => setEditingContactUs(contactUsContent)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Contact Page
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <p className="text-gray-500 mb-4">No contact page content found</p>
+                          <Button onClick={() => setEditingContactUs({
+                            title: '',
+                            description: '',
+                            logo: '',
+                            formEndpoint: '',
+                            contactInfo: {}
+                          })}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create Contact Page
+                          </Button>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -980,7 +1849,12 @@ const ContentManagement = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-gray-500">Site settings management coming soon...</p>
+                      <div className="text-center py-8">
+                        <p className="text-gray-500 mb-4">Site settings management interface</p>
+                        <p className="text-sm text-gray-400">
+                          Configure general site settings, SEO, integrations, and more
+                        </p>
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>

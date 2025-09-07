@@ -16,6 +16,7 @@ import AdminLogin from "./pages/auth/AdminLogin";
 import StudentPortal from "./pages/student/StudentPortal";
 import TutorDashboard from "./pages/tutor/TutorDashboard";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import ContentManagement from "./pages/admin/ContentManagement";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -79,6 +80,7 @@ const App = () => {
             <Route path="/students" element={<StudentPortal />} />
             <Route path="/students/*" element={<StudentPortal />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/content" element={<ContentManagement />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
             <Route path="/tutors-dashboard" element={<TutorDashboard />} />
             <Route path="/tutors-dashboard/*" element={<TutorDashboard />} />

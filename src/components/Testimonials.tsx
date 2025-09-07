@@ -7,8 +7,21 @@ import { Button } from "./ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
 import { Badge } from "./ui/badge"
 
-// Testimonial data
-const testimonials = [
+interface Testimonial {
+  id: string;
+  content: string;
+  author: string;
+  role: string;
+  subject: string;
+  improvement: string;
+  image: string;
+  rating: number;
+  isActive: boolean;
+  order: number;
+}
+
+// Fallback testimonial data
+const defaultTestimonials = [
   {
     id: 1,
     content:
@@ -78,10 +91,30 @@ const testimonials = [
 ]
 
 const Testimonials = () => {
+  const [testimonials, setTestimonials] = useState<Testimonial[]>(defaultTestimonials);
   const [activeIndex, setActiveIndex] = useState(0)
   const [visibleCount, setVisibleCount] = useState(3)
   const [autoplay, setAutoplay] = useState(true)
   const autoplayRef = useRef(null)
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchTestimonials();
+  }, []);
+
+  const fetchTestimonials = async () => {
+    try {
+      const response = await fetch('/api/admin/content/testimonials');
+      if (response.ok) {
+        const data = await response.json();
+        setTestimonials(data);
+      }
+    } catch (error) {
+      console.error('Error fetching testimonials:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Determine how many testimonials to show based on screen size
   useEffect(() => {
