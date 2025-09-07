@@ -15,9 +15,12 @@ import AdminLogin from "./pages/auth/AdminLogin";
 
 import StudentPortal from "./pages/student/StudentPortal";
 import StudentDashboardEnhanced from "./pages/student/StudentDashboardEnhanced";
+import StudentDashboardUltimate from "./pages/student/StudentDashboardUltimate";
 import TutorDashboard from "./pages/tutor/TutorDashboard";
 import TutorDashboardEnhanced from "./pages/tutor/TutorDashboardEnhanced";
+import TutorDashboardUltimate from "./pages/tutor/TutorDashboardUltimate";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminDashboardEnhanced from "./pages/admin/AdminDashboardEnhanced";
 import ContentManagement from "./pages/admin/ContentManagement";
 import ContentManagementEnhanced from "./pages/admin/ContentManagementEnhanced";
 
@@ -84,16 +87,16 @@ const App = () => {
             {/* Dashboard Routes */}
             <Route path="/students" element={<StudentPortal />} />
             <Route path="/students/*" element={<StudentPortal />} />
-            <Route path="/student-dashboard" element={<StudentDashboardEnhanced />} />
-            <Route path="/student-dashboard/*" element={<StudentDashboardEnhanced />} />
-            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/student-dashboard" element={<StudentDashboardUltimate />} />
+            <Route path="/student-dashboard/*" element={<StudentDashboardUltimate />} />
+            <Route path="/admin" element={<AdminDashboardEnhanced />} />
             <Route path="/admin/content" element={<ContentManagement />} />
             <Route path="/admin/content-enhanced" element={<ContentManagementEnhanced />} />
-            <Route path="/admin/*" element={<AdminDashboard />} />
+            <Route path="/admin/*" element={<AdminDashboardEnhanced />} />
             <Route path="/tutors-dashboard" element={<TutorDashboard />} />
             <Route path="/tutors-dashboard/*" element={<TutorDashboard />} />
-            <Route path="/tutor-dashboard" element={<TutorDashboardEnhanced />} />
-            <Route path="/tutor-dashboard/*" element={<TutorDashboardEnhanced />} />
+            <Route path="/tutor-dashboard" element={<TutorDashboardUltimate />} />
+            <Route path="/tutor-dashboard/*" element={<TutorDashboardUltimate />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Analytics />
