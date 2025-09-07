@@ -31,25 +31,7 @@ interface Feature {
   order?: number
 }
 
-// Sample announcements
-const initialAnnouncements = [
-  {
-    id: 1,
-    content:
-      "Greetings, Class of 2025! Welcome to Excellence Academia, your premier online tutoring centre dedicated to empowering learners through high-quality, personalised education.",
-    type: "info",
-    timestamp: "2025-04-10T10:30:00Z",
-    pinned: true,
-  },
-  {
-    id: 2,
-    content:
-      "New Mathematics and Science tutoring packages now available! Limited spots remaining for the upcoming term.",
-    type: "info",
-    timestamp: "2025-04-08T14:15:00Z",
-    pinned: false,
-  },
-]
+const initialAnnouncements: any[] = []
 
 const Features = () => {
   const [features, setFeatures] = useState<Feature[]>([])
@@ -65,85 +47,35 @@ const Features = () => {
   const [showAdminLogin, setShowAdminLogin] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Fetch features from API
+  // Fetch features and announcements from API
   useEffect(() => {
     fetchFeatures()
+    fetchAnnouncements()
   }, [])
 
   const fetchFeatures = async () => {
     try {
       const response = await fetch('/api/admin/content/features')
-      if (response.ok) {
-        const data = await response.json()
-        setFeatures(data)
-      } else {
-        // Fallback to default features if API fails
-        setFeatures([
-          {
-            id: "1",
-            title: "Comprehensive Curriculum",
-            description: "Structured learning paths covering all essential topics and concepts required for academic success.",
-            icon: "curriculum",
-            benefits: ["Complete subject coverage", "Aligned with national standards", "Regular updates"],
-          },
-          {
-            id: "2",
-            title: "Expert Tutors",
-            description: "Learn from experienced and qualified tutors who are specialists in their respective fields.",
-            icon: "tutors",
-            benefits: ["Qualified educators", "Subject matter experts", "Personalized teaching approaches"],
-          },
-          {
-            id: "3",
-            title: "Cost-Effective",
-            description: "Quality education at competitive rates with flexible pricing options to suit different needs and budgets.",
-            icon: "cost",
-            benefits: ["Affordable packages", "Group discounts", "Flexible payment options"],
-          },
-          {
-            id: "4",
-            title: "Better Focus",
-            description: "Personalized attention and customized learning approaches tailored to each student's unique needs and learning style.",
-            icon: "focus",
-            benefits: ["One-on-one sessions", "Customized learning plans", "Progress tracking"],
-          },
-          {
-            id: "5",
-            title: "Technology Integration",
-            description: "Modern learning tools and platforms for an enhanced educational experience that prepares students for the digital age.",
-            icon: "technology",
-            benefits: ["Interactive learning tools", "Digital resources", "Virtual classrooms"],
-          },
-          {
-            id: "6",
-            title: "Global Access",
-            description: "Connect with tutors and learn from anywhere in the world, eliminating geographical barriers to quality education.",
-            icon: "global",
-            benefits: ["Remote learning options", "Flexible scheduling", "International curriculum support"],
-          }
-        ])
-      }
+      if (!response.ok) throw new Error('Failed to load features')
+      const data = await response.json()
+      setFeatures(data)
     } catch (error) {
       console.error('Error fetching features:', error)
-      // Set fallback content on error
-      setFeatures([
-        {
-          id: "1",
-          title: "Comprehensive Curriculum",
-          description: "Structured learning paths covering all essential topics and concepts required for academic success.",
-          icon: "curriculum",
-          benefits: ["Complete subject coverage", "Aligned with national standards", "Regular updates"],
-        },
-        {
-          id: "2",
-          title: "Expert Tutors",
-          description: "Learn from experienced and qualified tutors who are specialists in their respective fields.",
-          icon: "tutors",
-          benefits: ["Qualified educators", "Subject matter experts", "Personalized teaching approaches"],
-        }
-      ])
+      setFeatures([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchAnnouncements = async () => {
+    try {
+      const response = await fetch('/api/admin/content/announcements')
+      if (!response.ok) throw new Error('Failed to load announcements')
+      const data = await response.json()
+      setAnnouncements(data)
+    } catch (error) {
+      console.error('Error fetching announcements:', error)
+      setAnnouncements([])
     }
   }
 
