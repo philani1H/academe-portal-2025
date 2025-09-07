@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { motion, useInView } from "framer-motion"
 import { Button } from "./ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
@@ -54,75 +54,40 @@ const ExamRewrite = () => {
     }
   }
 
-  const requirements = [
-    "Must be a Grade 11 or 12 student",
-    "Previous exam mark of at least 30%",
-    "Valid school report or results statement",
-    "Proof of identity (ID or passport)",
-    "Parent/guardian consent if under 18",
-  ]
+  const [requirements, setRequirements] = useState<string[]>([])
+  const [availableSubjects, setAvailableSubjects] = useState<Record<string, string[]>>({})
+  const [programBenefits, setProgramBenefits] = useState<{ title: string; description: string; icon: JSX.Element }[]>([])
+  const [testimonials, setTestimonials] = useState<any[]>([])
 
-  const availableSubjects = {
-    "Mathematics & Sciences": ["Mathematics", "Physical Sciences", "Life Sciences", "Mathematical Literacy"],
-    Languages: ["English Home Language", "English First Additional Language", "Afrikaans"],
-    Commerce: ["Accounting", "Business Studies", "Economics"],
-    "Humanities & Other": ["Geography", "Tourism", "Computer Applications Technology (CAT)"],
-  }
-
-  const programBenefits = [
-    {
-      title: "Expert Teachers",
-      description: "Learn from qualified educators with proven track records",
-      icon: <Users className="h-5 w-5 text-blue-300" />,
-    },
-    {
-      title: "Small Classes",
-      description: "Personalized attention in small group settings",
-      icon: <Users className="h-5 w-5 text-blue-300" />,
-    },
-    {
-      title: "Practice Materials",
-      description: "Access to past papers and comprehensive study guides",
-      icon: <FileText className="h-5 w-5 text-blue-300" />,
-    },
-    {
-      title: "Flexible Schedule",
-      description: "Classes offered at various times to fit your needs",
-      icon: <Calendar className="h-5 w-5 text-blue-300" />,
-    },
-    {
-      title: "Progress Tracking",
-      description: "Regular assessments to monitor your improvement",
-      icon: <Award className="h-5 w-5 text-blue-300" />,
-    },
-  ]
-
-  const testimonials = [
-    {
-      name: "Thabo M.",
-      grade: "Grade 12",
-      subject: "Mathematics",
-      improvement: "From 42% to 68%",
-      quote:
-        "The exam rewrite program helped me understand concepts I had struggled with for years. My marks improved dramatically!",
-    },
-    {
-      name: "Lerato K.",
-      grade: "Grade 11",
-      subject: "Physical Sciences",
-      improvement: "From 38% to 72%",
-      quote:
-        "The teachers explained difficult topics in a way that finally made sense to me. I'm now confident about my final exams.",
-    },
-    {
-      name: "Michael P.",
-      grade: "Grade 12",
-      subject: "Accounting",
-      improvement: "From 45% to 76%",
-      quote:
-        "Thanks to Excellence Akademie, I was able to secure admission to my dream university program after rewriting my accounting exam.",
-    },
-  ]
+  useEffect(() => {
+    const fetchContent = async () => {
+      try {
+        const res = await fetch('/api/admin/content/exam-rewrite')
+        if (!res.ok) throw new Error('Failed to load exam rewrite content')
+        const data = await res.json()
+        setRequirements(JSON.parse(data.benefits || '[]'))
+        const subjectsArr = JSON.parse(data.subjects || '[]')
+        const grouped = {
+          "Mathematics & Sciences": subjectsArr.filter((s: string) => ["Mathematics","Physical Sciences","Life Sciences","Mathematical Literacy"].includes(s)),
+          Languages: subjectsArr.filter((s: string) => ["English","Afrikaans"].some(k => s.includes(k))),
+          Commerce: subjectsArr.filter((s: string) => ["Accounting","Economics","Business"].some(k => s.includes(k))),
+          "Humanities & Other": subjectsArr.filter((s: string) => ["Geography","Tourism","Computer"].some(k => s.includes(k)))
+        }
+        setAvailableSubjects(grouped)
+        const benefitsArr = JSON.parse(data.process || '[]')
+        setProgramBenefits(benefitsArr.map((b: any) => ({ title: b.title, description: b.description, icon: <Users className="h-5 w-5 text-blue-300" /> })))
+        // Use general testimonials API for stories
+        const tRes = await fetch('/api/admin/content/testimonials')
+        if (tRes.ok) setTestimonials(await tRes.json())
+      } catch (e) {
+        setRequirements([])
+        setAvailableSubjects({})
+        setProgramBenefits([])
+        setTestimonials([])
+      }
+    }
+    fetchContent()
+  }, [])
 
   // Animation variants
   const containerVariants = {

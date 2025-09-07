@@ -28,61 +28,7 @@ interface PricingPlan {
   order: number;
 }
 
-// Fallback plan data
-const defaultPlans = [
-  {
-    id: "basic",
-    name: "GRADE 12 BASIC",
-    price: "R 150",
-    period: "Monthly",
-    features: [
-      "Core subjects tutoring",
-      "Basic study materials",
-      "Online resources access",
-      "Group tutoring sessions",
-      "Weekly assessments",
-    ],
-    notIncluded: ["1-on-1 tutoring", "Advanced study materials", "Career guidance", "Exam techniques workshop"],
-    color: "blue",
-    icon: <Calendar className="w-6 h-6" />,
-  },
-  {
-    id: "standard",
-    name: "STANDARD",
-    price: "R 250",
-    period: "Monthly",
-    popular: true,
-    features: [
-      "All subjects tutoring",
-      "Comprehensive study guides",
-      "Practice papers & solutions",
-      "Monthly 1-on-1 sessions",
-      "Progress tracking",
-      "Exam preparation support",
-    ],
-    notIncluded: ["Career guidance", "Advanced exam techniques"],
-    color: "indigo",
-    icon: <Shield className="w-6 h-6" />,
-  },
-  {
-    id: "premium",
-    name: "PREMIUM",
-    price: "R 350",
-    period: "Monthly",
-    features: [
-      "Priority tutoring access",
-      "Advanced study materials",
-      "Unlimited 1-on-1 sessions",
-      "Mock exam preparation",
-      "Career guidance",
-      "Exam techniques workshop",
-      "Personal academic mentor",
-    ],
-    notIncluded: [],
-    color: "purple",
-    icon: <Award className="w-6 h-6" />,
-  },
-]
+const defaultPlans: PricingPlan[] = []
 
 export default function Pricing() {
   const [plans, setPlans] = useState<PricingPlan[]>(defaultPlans);
@@ -98,12 +44,12 @@ export default function Pricing() {
   const fetchPricingPlans = async () => {
     try {
       const response = await fetch('/api/admin/content/pricing');
-      if (response.ok) {
-        const data = await response.json();
-        setPlans(data);
-      }
+      if (!response.ok) throw new Error('Failed to load pricing')
+      const data = await response.json();
+      setPlans(data);
     } catch (error) {
       console.error('Error fetching pricing plans:', error);
+      setPlans([])
     } finally {
       setLoading(false);
     }

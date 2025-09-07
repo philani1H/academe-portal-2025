@@ -111,6 +111,15 @@ app.get('/api/admin/content/:type', async (req, res) => {
       case 'subjects':
         content = await executeQuery('SELECT * FROM subjects');
         break;
+      case 'navigation':
+        content = await executeQuery("SELECT path, label, type FROM navigation_items WHERE is_active = 1 ORDER BY [order] ASC, created_at ASC");
+        break;
+      case 'exam-rewrite':
+        content = await executeQuery('SELECT * FROM exam_rewrite_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        break;
+      case 'university-application':
+        content = await executeQuery('SELECT * FROM university_application_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        break;
       default:
         return res.status(404).json({ error: 'Content type not found' });
     }

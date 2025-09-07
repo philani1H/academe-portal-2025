@@ -7,23 +7,18 @@ const Subject = () => {
   const [subjects, setSubjects] = useState<string[]>([])
 
   useEffect(() => {
-    const subjectList = [
-      "Accounting",
-      "Afrikaans",
-      "Business Studies",
-      "Computer Applications Technology",
-      "Economics",
-      "English Home Language",
-      "Geography",
-      "History",
-      "Life Sciences",
-      "Life Orientation",
-      "Mathematics (Pure)",
-      "Mathematical Literacy",
-      "Physical Sciences",
-      "Tourism"
-    ];
-    setSubjects(subjectList);  // Corrected this line to use setSubjects instead of setSubject
+    const fetchSubjects = async () => {
+      try {
+        const res = await fetch('/api/admin/content/subjects')
+        if (!res.ok) throw new Error('Failed to load subjects')
+        const data = await res.json()
+        const names = Array.isArray(data) ? data.map((s) => s.name) : []
+        setSubjects(names)
+      } catch (e) {
+        setSubjects([])
+      }
+    }
+    fetchSubjects()
   }, [])
 
   return (
