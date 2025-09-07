@@ -13,6 +13,46 @@ CREATE TABLE IF NOT EXISTS tutors (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Team members table
+CREATE TABLE IF NOT EXISTS team_members (
+    id VARCHAR(36) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    role VARCHAR(255) NOT NULL,
+    bio TEXT,
+    image VARCHAR(512),
+    is_active BOOLEAN DEFAULT 1,
+    [order] INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- About Us content table
+CREATE TABLE IF NOT EXISTS about_us_content (
+    id VARCHAR(36) PRIMARY KEY,
+    goal TEXT NOT NULL,
+    mission TEXT NOT NULL,
+    roles_responsibilities TEXT,
+    is_active BOOLEAN DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Events table
+CREATE TABLE IF NOT EXISTS events (
+    id VARCHAR(36) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    date TEXT NOT NULL,
+    time TEXT,
+    location VARCHAR(255),
+    type VARCHAR(50),
+    attendees INTEGER DEFAULT 0,
+    max_attendees INTEGER DEFAULT 0,
+    status VARCHAR(50) DEFAULT 'upcoming',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Ratings for tutors
 CREATE TABLE IF NOT EXISTS tutor_ratings (
     id VARCHAR(36) PRIMARY KEY,

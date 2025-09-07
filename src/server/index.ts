@@ -81,17 +81,29 @@ app.get('/api/admin/content/:type', async (req, res) => {
       case 'tutors':
         content = await executeQuery('SELECT * FROM tutors');
         break;
+      case 'team-members':
+        content = await executeQuery('SELECT * FROM team_members WHERE is_active = 1 ORDER BY [order] ASC, created_at DESC');
+        break;
+      case 'about-us':
+        content = await executeQuery('SELECT * FROM about_us_content WHERE is_active = 1 ORDER BY updated_at DESC');
+        break;
       case 'hero':
         content = await executeQuery('SELECT * FROM hero_content LIMIT 1');
         break;
       case 'features':
         content = await executeQuery('SELECT * FROM features');
         break;
+      case 'announcements':
+        content = await executeQuery('SELECT * FROM announcements ORDER BY pinned DESC, created_at DESC');
+        break;
       case 'testimonials':
         content = await executeQuery('SELECT * FROM testimonials');
         break;
       case 'pricing':
         content = await executeQuery('SELECT * FROM pricing_plans');
+        break;
+      case 'events':
+        content = await executeQuery('SELECT * FROM events ORDER BY date ASC');
         break;
       case 'footer':
         content = await executeQuery('SELECT * FROM footer_content LIMIT 1');
@@ -104,7 +116,9 @@ app.get('/api/admin/content/:type', async (req, res) => {
     }
 
     if (content) {
-      res.json(contentType === 'tutors' ? content : content[0]);
+      // For list-like types, return the full array; for singleton types, return the first row
+      const listTypes = ['tutors', 'team-members', 'features', 'testimonials', 'pricing', 'subjects', 'announcements', 'events'];
+      res.json(listTypes.includes(contentType) ? content : content[0]);
     } else {
       res.status(404).json({ error: `${contentType} content not found` });
     }
