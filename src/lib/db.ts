@@ -1,21 +1,14 @@
-import { Pool } from 'pg';
+import sqlite3 from 'sqlite3';
+import { open, Database } from 'sqlite';
 
-// Create connection pool using Neon connection string
-const pool = new Pool({
-  connectionString: process.env.POSTGRES_PRISMA_URL,
-  ssl: {
-    rejectUnauthorized: false
-  },
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Helper function to get a client from the pool
-export async function getConnection() {
+// Helper function to get database connection
+async function getConnection(): Promise<Database> {
   try {
-    const client = await pool.connect();
-    return client;
+    const db = await open({
+      filename: './APP-Database.db',
+      driver: sqlite3.Database
+    });
+    return db;
   } catch (error) {
     console.error('Error getting database connection:', error);
     throw error;
@@ -23,15 +16,17 @@ export async function getConnection() {
 }
 
 // Helper function to execute queries
-export async function executeQuery<T>(query: string, params?: any[]): Promise<T> {
-  const client = await pool.connect();
+async function executeQuery<T = any>(query: string, params?: any[]): Promise<T[]> {
+  const db = await getConnection();
   try {
-    const { rows } = await client.query(query, params);
-    return rows as T;
+    const rows = await db.all<T>(query, params);
+    return rows;
   } catch (error) {
     console.error('Error executing query:', error);
     throw error;
   } finally {
-    client.release();
+    await db.close();
   }
 }
+
+export { getConnection, executeQuery };

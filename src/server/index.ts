@@ -1,9 +1,14 @@
 import express from 'express';
 import cors from 'cors';
 import { executeQuery } from '../lib/db';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
-const port = 3001;
+const port = 3000;
 
 app.use(cors());
 app.use(express.json());
@@ -29,7 +34,7 @@ app.post('/api/query', async (req, res) => {
 // User routes
 app.get('/api/users/:id', async (req, res) => {
   try {
-    const user = await executeQuery('SELECT * FROM users WHERE id = $1', [req.params.id]);
+    const user = await executeQuery('SELECT * FROM users WHERE id = ?', [req.params.id]);
     if (user) {
       res.json(user);
     } else {
@@ -44,9 +49,7 @@ app.get('/api/users/:id', async (req, res) => {
 // Course routes
 app.get('/api/courses', async (req, res) => {
   try {
-    const db = await getDbConnection();
-    const courses = await db.all('SELECT * FROM courses');
-    await db.close();
+    const courses = await executeQuery('SELECT * FROM courses');
     res.json(courses);
   } catch (error) {
     console.error('Error fetching courses:', error);
@@ -56,9 +59,7 @@ app.get('/api/courses', async (req, res) => {
 
 app.get('/api/courses/:id', async (req, res) => {
   try {
-    const db = await getDbConnection();
-    const course = await db.get('SELECT * FROM courses WHERE id = ?', [req.params.id]);
-    await db.close();
+    const course = await executeQuery('SELECT * FROM courses WHERE id = ?', [req.params.id]);
     if (course) {
       res.json(course);
     } else {
@@ -70,7 +71,60 @@ app.get('/api/courses/:id', async (req, res) => {
   }
 });
 
+// Content routes
+app.get('/api/admin/content/:type', async (req, res) => {
+  try {
+    const contentType = req.params.type;
+    let content;
+    
+    switch (contentType) {
+      case 'tutors':
+        content = await executeQuery('SELECT * FROM tutors');
+        break;
+      case 'hero':
+        content = await executeQuery('SELECT * FROM hero_content LIMIT 1');
+        break;
+      case 'features':
+        content = await executeQuery('SELECT * FROM features');
+        break;
+      case 'testimonials':
+        content = await executeQuery('SELECT * FROM testimonials');
+        break;
+      case 'pricing':
+        content = await executeQuery('SELECT * FROM pricing_plans');
+        break;
+      case 'footer':
+        content = await executeQuery('SELECT * FROM footer_content LIMIT 1');
+        break;
+      case 'subjects':
+        content = await executeQuery('SELECT * FROM subjects');
+        break;
+      default:
+        return res.status(404).json({ error: 'Content type not found' });
+    }
+
+    if (content) {
+      res.json(contentType === 'tutors' ? content : content[0]);
+    } else {
+      res.status(404).json({ error: `${contentType} content not found` });
+    }
+  } catch (error) {
+    console.error(`Error fetching ${req.params.type} content:`, error);
+    res.status(500).json({ error: `Failed to fetch ${req.params.type} content` });
+  }
+});
+
 // Start server
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
+});
+
+// Handle server errors
+server.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${port} is already in use. Trying port ${port + 1}`);
+    server.listen(port + 1);
+  } else {
+    console.error('Server error:', error);
+  }
 });
