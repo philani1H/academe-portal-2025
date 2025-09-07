@@ -1,43 +1,111 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-const teamMembers = [
+interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  bio: string;
+  image: string;
+  isActive: boolean;
+  order: number;
+}
+
+interface AboutUsContent {
+  id: string;
+  goal: string;
+  mission: string;
+  rolesResponsibilities: any;
+  isActive: boolean;
+}
+
+// Fallback data
+const defaultTeamMembers = [
   {
+    id: "1",
     name: "Roshan",
     role: "Founder & CEO",
     bio: "Roshan is the visionary behind the platform, driving innovation and excellence.",
-    image: "https://i.imgur.com/GqzI3ir.jpeg"
+    image: "https://i.imgur.com/GqzI3ir.jpeg",
+    isActive: true,
+    order: 1
   },
   {
+    id: "2",
     name: "Michael Ashton",
     role: "Chief Administrative Officer (CAO)",
     bio: "Michael Ashton specializes in administrative excellence, with expertise in GEO, business, and economics tutoring.",
-    image: "https://i.imgur.com/CntZolm.jpeg"
+    image: "https://i.imgur.com/CntZolm.jpeg",
+    isActive: true,
+    order: 2
   },
   {
+    id: "3",
     name: "Rendani",
     role: "Marketing Team Director",
     bio: "Rendani leads our marketing initiatives, ensuring our message reaches and resonates with our target audience.",
-    image: "https://i.imgur.com/WXSc1dB.jpeg"
+    image: "https://i.imgur.com/WXSc1dB.jpeg",
+    isActive: true,
+    order: 3
   },
-  
-  
   {
-    name: "Jacob ",
+    id: "4",
+    name: "Jacob",
     role: "Chief Technology Officer (CTO)",
     bio: "Jacob spearheads the technological advancements of the Excellence Academia 25 platform. With a strong background in software engineering and innovative technologies, he ensures the platform's scalability, security, and strategic alignment across diverse disciplines. Jacob is passionate about leveraging technology to create impactful educational solutions.",
-    image: "https://i.imgur.com/SwZblK8.jpeg" // Replace with the correct image link if needed
+    image: "https://i.imgur.com/SwZblK8.jpeg",
+    isActive: true,
+    order: 4
   },
-  
   {
+    id: "5",
     name: "Miss K",
     role: "Head of Discipline",
     bio: "Miss K oversees the application of disciplinary procedures and supports the team's overall discipline management.",
-    image: "https://i.imgur.com/grXHk5O.jpeg" // Add the relevant image link for Miss K
+    image: "https://i.imgur.com/grXHk5O.jpeg",
+    isActive: true,
+    order: 5
   }
 ];
 
+const defaultAboutUsContent = {
+  id: "1",
+  goal: "Our goal is to connect students with the best tutors who can help them achieve academic success and reach their full potential.",
+  mission: "We are committed to providing high-quality, personalized education that empowers learners to excel in their studies and beyond.",
+  rolesResponsibilities: {},
+  isActive: true
+};
 
 export default function AboutUs() {
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(defaultTeamMembers);
+  const [aboutUsContent, setAboutUsContent] = useState<AboutUsContent>(defaultAboutUsContent);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAboutUsData();
+  }, []);
+
+  const fetchAboutUsData = async () => {
+    try {
+      // Fetch team members
+      const teamResponse = await fetch('/api/admin/content/team-members');
+      if (teamResponse.ok) {
+        const teamData = await teamResponse.json();
+        setTeamMembers(teamData);
+      }
+
+      // Fetch about us content
+      const aboutResponse = await fetch('/api/admin/content/about-us');
+      if (aboutResponse.ok) {
+        const aboutData = await aboutResponse.json();
+        setAboutUsContent(aboutData);
+      }
+    } catch (error) {
+      console.error('Error fetching about us data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <section className="bg-blue-900 text-white py-20">
       <div className="container mx-auto px-4">
@@ -47,13 +115,13 @@ export default function AboutUs() {
         <div className="text-center mb-12">
           <h3 className="text-2xl font-semibold mb-4">Our Goal</h3>
           <p className="text-lg text-gray-300">
-            Our goal is to connect students with the best tutors who can help them achieve academic success and reach their full potential.
+            {aboutUsContent.goal}
           </p>
         </div>
         <div className="text-center mb-12">
           <h3 className="text-2xl font-semibold mb-4">Our Mission</h3>
           <p className="text-lg text-gray-300">
-            Our mission is to provide accessible and personalized learning experiences by offering top-tier tutoring services in a variety of subjects, making education more effective and enjoyable for every student.
+            {aboutUsContent.mission}
           </p>
         </div>
 

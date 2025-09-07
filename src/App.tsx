@@ -14,8 +14,11 @@ import TutorLogin from "./pages/auth/TutorLogin";
 import AdminLogin from "./pages/auth/AdminLogin";
 
 import StudentPortal from "./pages/student/StudentPortal";
+import StudentDashboardEnhanced from "./pages/student/StudentDashboardEnhanced";
 import TutorDashboard from "./pages/tutor/TutorDashboard";
+import TutorDashboardEnhanced from "./pages/tutor/TutorDashboardEnhanced";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import ContentManagement from "./pages/admin/ContentManagement";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -32,6 +35,7 @@ import { useAuth, AuthProvider } from "./contexts/AuthContext";
 
 import UniversityApplication from "./components/UniversityApplication";
 import ExamRewrite from "./components/ExamRewrite";
+import DashboardNavigation from "./components/DashboardNavigation";
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) => {
   const { user } = useAuth();
@@ -69,6 +73,7 @@ const App = () => {
             <Route path="/testimonials" element={<Testimonies />} />
             <Route path="/university-application" element={<UniversityApplication />} />
             <Route path="/exam-rewrite" element={<ExamRewrite />} />
+            <Route path="/dashboards" element={<DashboardNavigation />} />
             
             {/* Login Routes */}
             <Route path="/student-login" element={<StudentLogin />} />
@@ -78,10 +83,15 @@ const App = () => {
             {/* Dashboard Routes */}
             <Route path="/students" element={<StudentPortal />} />
             <Route path="/students/*" element={<StudentPortal />} />
+            <Route path="/student-dashboard" element={<StudentDashboardEnhanced />} />
+            <Route path="/student-dashboard/*" element={<StudentDashboardEnhanced />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/content" element={<ContentManagement />} />
             <Route path="/admin/*" element={<AdminDashboard />} />
             <Route path="/tutors-dashboard" element={<TutorDashboard />} />
             <Route path="/tutors-dashboard/*" element={<TutorDashboard />} />
+            <Route path="/tutor-dashboard" element={<TutorDashboardEnhanced />} />
+            <Route path="/tutor-dashboard/*" element={<TutorDashboardEnhanced />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Analytics />

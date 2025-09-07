@@ -14,8 +14,22 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-// Updated plan data with correct naming
-const plans = [
+interface PricingPlan {
+  id: string;
+  name: string;
+  price: string;
+  period: string;
+  features: string[];
+  notIncluded: string[];
+  color: string;
+  icon: string;
+  popular: boolean;
+  isActive: boolean;
+  order: number;
+}
+
+// Fallback plan data
+const defaultPlans = [
   {
     id: "basic",
     name: "GRADE 12 BASIC",
@@ -71,9 +85,29 @@ const plans = [
 ]
 
 export default function Pricing() {
+  const [plans, setPlans] = useState<PricingPlan[]>(defaultPlans);
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [activeTab, setActiveTab] = useState("monthly")
   const [activeHash, setActiveHash] = useState("")
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchPricingPlans();
+  }, []);
+
+  const fetchPricingPlans = async () => {
+    try {
+      const response = await fetch('/api/admin/content/pricing');
+      if (response.ok) {
+        const data = await response.json();
+        setPlans(data);
+      }
+    } catch (error) {
+      console.error('Error fetching pricing plans:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handle hash changes for scrolling to specific plan
   useEffect(() => {
