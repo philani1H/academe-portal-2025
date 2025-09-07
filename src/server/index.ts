@@ -3,8 +3,12 @@ import cors from 'cors';
 import { executeQuery, getConnection } from '../lib/db';
 import fs from 'fs/promises';
 import path from 'path';
-// Resolve base path relative to project root in CJS context
-const baseDir = path.resolve(__dirname, '..');
+import { fileURLToPath } from 'url';
+// Resolve base path in both ESM and CJS
+const resolvedDir = (typeof __dirname !== 'undefined')
+  ? __dirname
+  : path.dirname(fileURLToPath(import.meta.url));
+const baseDir = path.resolve(resolvedDir, '..');
 
 const app = express();
 const port = 3000;
@@ -78,46 +82,46 @@ app.get('/api/admin/content/:type', async (req, res) => {
     
     switch (contentType) {
       case 'tutors':
-        content = await executeQuery('SELECT * FROM tutors');
+        content = await executeQuery('SELECT * FROM Tutor WHERE isActive = 1 ORDER BY [order] ASC, createdAt DESC');
         break;
       case 'team-members':
-        content = await executeQuery('SELECT * FROM team_members WHERE is_active = 1 ORDER BY [order] ASC, created_at DESC');
+        content = await executeQuery('SELECT * FROM TeamMember WHERE isActive = 1 ORDER BY [order] ASC, createdAt DESC');
         break;
       case 'about-us':
-        content = await executeQuery('SELECT * FROM about_us_content WHERE is_active = 1 ORDER BY updated_at DESC');
+        content = await executeQuery('SELECT * FROM AboutUsContent WHERE isActive = 1 ORDER BY updatedAt DESC');
         break;
       case 'hero':
-        content = await executeQuery('SELECT * FROM hero_content LIMIT 1');
+        content = await executeQuery('SELECT * FROM HeroContent ORDER BY updatedAt DESC LIMIT 1');
         break;
       case 'features':
-        content = await executeQuery('SELECT * FROM features');
+        content = await executeQuery('SELECT * FROM Feature WHERE isActive = 1 ORDER BY [order] ASC, createdAt ASC');
         break;
       case 'announcements':
-        content = await executeQuery('SELECT * FROM announcements ORDER BY pinned DESC, created_at DESC');
+        content = await executeQuery('SELECT * FROM Announcement WHERE isActive = 1 ORDER BY pinned DESC, createdAt DESC');
         break;
       case 'testimonials':
-        content = await executeQuery('SELECT * FROM testimonials');
+        content = await executeQuery('SELECT * FROM Testimonial WHERE isActive = 1 ORDER BY [order] ASC, createdAt DESC');
         break;
       case 'pricing':
-        content = await executeQuery('SELECT * FROM pricing_plans');
+        content = await executeQuery('SELECT * FROM PricingPlan WHERE isActive = 1 ORDER BY [order] ASC, createdAt ASC');
         break;
       case 'events':
         content = await executeQuery('SELECT * FROM events ORDER BY date ASC');
         break;
       case 'footer':
-        content = await executeQuery('SELECT * FROM footer_content LIMIT 1');
+        content = await executeQuery('SELECT * FROM FooterContent WHERE isActive = 1 ORDER BY updatedAt DESC LIMIT 1');
         break;
       case 'subjects':
-        content = await executeQuery('SELECT * FROM subjects');
+        content = await executeQuery('SELECT * FROM Subject WHERE isActive = 1 ORDER BY [order] ASC, createdAt ASC');
         break;
       case 'navigation':
-        content = await executeQuery("SELECT path, label, type FROM navigation_items WHERE is_active = 1 ORDER BY [order] ASC, created_at ASC");
+        content = await executeQuery("SELECT path, label, type FROM NavigationItem WHERE isActive = 1 ORDER BY [order] ASC, createdAt ASC");
         break;
       case 'exam-rewrite':
-        content = await executeQuery('SELECT * FROM exam_rewrite_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        content = await executeQuery('SELECT * FROM ExamRewriteContent WHERE isActive = 1 ORDER BY updatedAt DESC LIMIT 1');
         break;
       case 'university-application':
-        content = await executeQuery('SELECT * FROM university_application_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        content = await executeQuery('SELECT * FROM UniversityApplicationContent WHERE isActive = 1 ORDER BY updatedAt DESC LIMIT 1');
         break;
       default:
         return res.status(404).json({ error: 'Content type not found' });
