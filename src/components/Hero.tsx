@@ -49,71 +49,12 @@ const Hero = () => {
   const fetchHeroContent = async () => {
     try {
       const response = await fetch('/api/admin/content/hero')
-      if (response.ok) {
-        const data = await response.json()
-        setHeroContent(data)
-      } else {
-        // Fallback to default content if API fails
-        setHeroContent({
-          id: 'default',
-          title: "Welcome to Excellence Akademie",
-          subtitle: "25 Years of Academic Excellence",
-          description: "Empowering South African students to reach their full potential through world-class education and personalized guidance",
-          buttonText: "Choose a Plan",
-          secondaryButtonText: "Become a Tutor",
-          trustIndicatorText: "Trusted by over 10,000+ students across South Africa",
-          universities: ["UCT", "Wits", "UP", "UKZN", "Stellenbosch"],
-          features: [
-            {
-              title: "Expert Instruction",
-              description: "Learn from South Africa's finest educators with proven teaching methodologies",
-              icon: "award"
-            },
-            {
-              title: "Personalized Learning",
-              description: "Adaptive curriculum tailored to your unique learning style and pace",
-              icon: "users"
-            },
-            {
-              title: "Success Guarantee",
-              description: "Join thousands of students who improved their grades by 25% or more",
-              icon: "star"
-            }
-          ],
-          backgroundGradient: "bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199]"
-        })
-      }
+      if (!response.ok) throw new Error('Failed to load hero')
+      const data = await response.json()
+      setHeroContent(data)
     } catch (error) {
       console.error('Error fetching hero content:', error)
-      // Set fallback content
-      setHeroContent({
-        id: 'default',
-        title: "Welcome to Excellence Akademie",
-        subtitle: "25 Years of Academic Excellence",
-        description: "Empowering South African students to reach their full potential through world-class education and personalized guidance",
-        buttonText: "Choose a Plan",
-        secondaryButtonText: "Become a Tutor",
-        trustIndicatorText: "Trusted by over 10,000+ students across South Africa",
-        universities: ["UCT", "Wits", "UP", "UKZN", "Stellenbosch"],
-        features: [
-          {
-            title: "Expert Instruction",
-            description: "Learn from South Africa's finest educators with proven teaching methodologies",
-            icon: "award"
-          },
-          {
-            title: "Personalized Learning",
-            description: "Adaptive curriculum tailored to your unique learning style and pace",
-            icon: "users"
-          },
-          {
-            title: "Success Guarantee",
-            description: "Join thousands of students who improved their grades by 25% or more",
-            icon: "star"
-          }
-        ],
-        backgroundGradient: "bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199]"
-      })
+      setHeroContent(null)
     } finally {
       setLoading(false)
     }

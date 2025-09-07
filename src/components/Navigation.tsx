@@ -23,23 +23,26 @@ const Navigation = () => {
     setIsMenuOpen(false)
   }, [location.pathname])
 
-  // Navigation data structure
-  const navLinks = [
-    { path: "/", label: "Home" },
-    { path: "/subjects", label: "Subjects" },
-    { path: "/tutors", label: "Tutors" },
-    { path: "/testimonials", label: "Testimonials" },
-    { path: "/university-application", label: "University Application" },
-    { path: "/exam-rewrite", label: "Check Offer !" },
-    { path: "/contact-us", label: "Contact" },
-    { path: "/about-us", label: "About Us" },
-  ]
+  const [navLinks, setNavLinks] = useState<{ path: string; label: string }[]>([])
+  const [mobileOnlyLinks, setMobileOnlyLinks] = useState<{ path: string; label: string }[]>([])
 
-  const mobileOnlyLinks = [
-    { path: "/student-login", label: "Student Portal" },
-    { path: "/tutor-login", label: "Tutor Portal" },
-    { path: "/admin/login", label: "Admin" },
-  ]
+  useEffect(() => {
+    const fetchNavigation = async () => {
+      try {
+        const res = await fetch('/api/admin/content/navigation')
+        if (!res.ok) throw new Error('Failed to load navigation')
+        const data = await res.json()
+        const mains = data.filter((i) => i.type === 'main').map(({ path, label }) => ({ path, label }))
+        const mobile = data.filter((i) => i.type === 'mobile').map(({ path, label }) => ({ path, label }))
+        setNavLinks(mains)
+        setMobileOnlyLinks(mobile)
+      } catch (e) {
+        setNavLinks([])
+        setMobileOnlyLinks([])
+      }
+    }
+    fetchNavigation()
+  }, [])
 
   const isActive = (path) => location.pathname === path
 
