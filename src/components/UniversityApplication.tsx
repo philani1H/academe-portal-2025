@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,42 +9,33 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const universities = [
-  "University of Cape Town",
-  "University of the Witwatersrand",
-  "Stellenbosch University",
-  "University of Pretoria",
-  "University of KwaZulu-Natal",
-  "University of Johannesburg",
-  "Rhodes University",
-  "University of the Western Cape",
-  "University of the Free State",
-  "North-West University",
-  "Nelson Mandela University",
-  "University of Fort Hare",
-  "Tshwane University of Technology",
-  "Cape Peninsula University of Technology",
-  "Durban University of Technology"
-];
-
-const courses = [
-  "Bachelor of Commerce",
-  "Bachelor of Science",
-  "Bachelor of Arts",
-  "Bachelor of Engineering",
-  "Bachelor of Medicine",
-  "Bachelor of Law",
-  "Bachelor of Education",
-  "Bachelor of Social Science",
-  "Bachelor of Architecture",
-  "Bachelor of Computer Science"
-];
+import { useEffect } from "react";
 
 const UniversityApplication = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [selectedUniversities, setSelectedUniversities] = useState<string[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
+  const [universities, setUniversities] = useState<string[]>([])
+  const [courses, setCourses] = useState<string[]>([])
+  useEffect(() => {
+    const fetchContent = async () => {
+      try {
+        const res = await fetch('/api/admin/content/university-application')
+        if (!res.ok) throw new Error('Failed to load university application content')
+        const data = await res.json()
+        const services = Array.isArray(JSON.parse(data.services || '[]')) ? JSON.parse(data.services) : []
+        const reqs = Array.isArray(JSON.parse(data.requirements || '[]')) ? JSON.parse(data.requirements) : []
+        const coursesList = Array.isArray(JSON.parse(data.process || '[]')) ? JSON.parse(data.process) : []
+        setUniversities(services)
+        setCourses(coursesList)
+      } catch (e) {
+        setUniversities([])
+        setCourses([])
+      }
+    }
+    fetchContent()
+  }, [])
   const [formData, setFormData] = useState({
     fullName: "",
     age: "",

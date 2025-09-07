@@ -20,75 +20,7 @@ interface Testimonial {
   order: number;
 }
 
-// Fallback testimonial data
-const defaultTestimonials = [
-  {
-    id: 1,
-    content:
-      "My grades improved significantly after just a few sessions. The tutors are knowledgeable and patient. I went from struggling with mathematics to scoring an A in my final exam!",
-    author: "Sarah M.",
-    role: "Mathematics Student",
-    subject: "Mathematics",
-    improvement: "C to A",
-    image: "/placeholder.svg?height=100&width=100",
-    rating: 5,
-  },
-  {
-    id: 2,
-    content:
-      "The flexible scheduling made it easy to fit tutoring into my busy schedule. The tutors at Excellence Akademie truly care about your success and go the extra mile to ensure you understand the concepts.",
-    author: "James R.",
-    role: "Physics Student",
-    subject: "Physics",
-    improvement: "D to B+",
-    image: "/placeholder.svg?height=100&width=100",
-    rating: 5,
-  },
-  {
-    id: 3,
-    content:
-      "Excellence Akademie helped me prepare for my exams. The tutors are professional and supportive. Their exam preparation strategies were invaluable and helped me achieve results I never thought possible.",
-    author: "Emily W.",
-    role: "Language Student",
-    subject: "English",
-    improvement: "B- to A+",
-    image: "/placeholder.svg?height=100&width=100",
-    rating: 5,
-  },
-  {
-    id: 4,
-    content:
-      "I was struggling with Business Studies until I found Excellence Akademie. Their tutors explained complex concepts in a way that was easy to understand. My confidence has grown tremendously!",
-    author: "Michael K.",
-    role: "Business Student",
-    subject: "Business Studies",
-    improvement: "D to B",
-    image: "/placeholder.svg?height=100&width=100",
-    rating: 4,
-  },
-  {
-    id: 5,
-    content:
-      "The personalized attention I received was incredible. My tutor identified my weak areas and created a custom study plan that addressed my specific needs. I'm now excelling in all my subjects!",
-    author: "Thabo N.",
-    role: "Science Student",
-    subject: "Life Sciences",
-    improvement: "C- to A-",
-    image: "/placeholder.svg?height=100&width=100",
-    rating: 5,
-  },
-  {
-    id: 6,
-    content:
-      "Excellence Akademie's exam rewrite program was a game-changer for me. I was able to improve my matric results and secure admission to my dream university. Forever grateful!",
-    author: "Lerato M.",
-    role: "Grade 12 Graduate",
-    subject: "Multiple Subjects",
-    improvement: "University Admission Achieved",
-    image: "/placeholder.svg?height=100&width=100",
-    rating: 5,
-  },
-]
+const defaultTestimonials: Testimonial[] = []
 
 const Testimonials = () => {
   const [testimonials, setTestimonials] = useState<Testimonial[]>(defaultTestimonials);
@@ -105,12 +37,12 @@ const Testimonials = () => {
   const fetchTestimonials = async () => {
     try {
       const response = await fetch('/api/admin/content/testimonials');
-      if (response.ok) {
-        const data = await response.json();
-        setTestimonials(data);
-      }
+      if (!response.ok) throw new Error('Failed to load testimonials')
+      const data = await response.json();
+      setTestimonials(data);
     } catch (error) {
       console.error('Error fetching testimonials:', error);
+      setTestimonials([])
     } finally {
       setLoading(false);
     }

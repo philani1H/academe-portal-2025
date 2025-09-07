@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Navigation from '@/components/Navigation';
 import Footer from '@/components/Footer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,56 +7,22 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, MapPin, Clock, Users } from 'lucide-react';
 
 const EventsPage = () => {
-  const events = [
-    {
-      id: 1,
-      title: "Mathematics Workshop",
-      description: "Advanced calculus and linear algebra workshop for university students",
-      date: "2024-02-15",
-      time: "10:00 AM - 2:00 PM",
-      location: "Main Campus, Room 101",
-      type: "Workshop",
-      attendees: 45,
-      maxAttendees: 50,
-      status: "upcoming"
-    },
-    {
-      id: 2,
-      title: "Science Fair 2024",
-      description: "Annual science fair showcasing student projects and innovations",
-      date: "2024-02-20",
-      time: "9:00 AM - 5:00 PM",
-      location: "Science Building, Hall A",
-      type: "Fair",
-      attendees: 120,
-      maxAttendees: 150,
-      status: "upcoming"
-    },
-    {
-      id: 3,
-      title: "Career Guidance Seminar",
-      description: "Expert panel discussion on career paths in STEM fields",
-      date: "2024-02-25",
-      time: "2:00 PM - 4:00 PM",
-      location: "Auditorium",
-      type: "Seminar",
-      attendees: 80,
-      maxAttendees: 100,
-      status: "upcoming"
-    },
-    {
-      id: 4,
-      title: "Programming Bootcamp",
-      description: "Intensive coding bootcamp covering web development and algorithms",
-      date: "2024-01-30",
-      time: "9:00 AM - 6:00 PM",
-      location: "Computer Lab 1",
-      type: "Bootcamp",
-      attendees: 25,
-      maxAttendees: 30,
-      status: "completed"
-    }
-  ];
+  const [events, setEvents] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        const res = await fetch('/api/admin/content/events');
+        if (!res.ok) throw new Error('Failed to load events');
+        const data = await res.json();
+        setEvents(data);
+      } catch (err) {
+        console.error('Error loading events', err);
+        setEvents([]);
+      }
+    };
+    fetchEvents();
+  }, []);
 
   const getEventTypeColor = (type: string) => {
     switch (type) {

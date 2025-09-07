@@ -1,11 +1,13 @@
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
+import path from 'path';
 
 // Helper function to get database connection
 async function getConnection(): Promise<Database> {
   try {
+    const dbFile = path.resolve('/workspace/APP-Database.db');
     const db = await open({
-      filename: './APP-Database.db',
+      filename: dbFile,
       driver: sqlite3.Database
     });
     return db;
@@ -20,7 +22,7 @@ async function executeQuery<T = any>(query: string, params?: any[]): Promise<T[]
   const db = await getConnection();
   try {
     const rows = await db.all<T>(query, params);
-    return rows;
+    return rows as unknown as T[];
   } catch (error) {
     console.error('Error executing query:', error);
     throw error;
