@@ -392,7 +392,7 @@ export default function TutorsPage() {
 
     // Simulate API call with timeout
     setTimeout(() => {
-      const updatedTutors = tutorList.map((tutor) => {
+      const updatedTutors = tutors.map((tutor) => {
         if (tutor.id === selectedTutor.id) {
           const newRatingObj = {
             id: tutor.ratings.length + 1,
@@ -411,8 +411,7 @@ export default function TutorsPage() {
       })
 
       // Update the tutor list
-      tutorList.length = 0
-      tutorList.push(...updatedTutors)
+      setTutors(updatedTutors)
 
       // Reset form and close dialog
       setNewRating({
@@ -607,7 +606,7 @@ export default function TutorsPage() {
             </AnimatePresence>
 
             <div className="text-sm text-blue-200 mt-4">
-              Showing {filteredTutors.length} of {tutorList.length} tutors
+              Showing {filteredTutors.length} of {tutors.length} tutors
               {(searchTerm || selectedSubject !== "") && <span> • Filtered results</span>}
             </div>
           </div>
