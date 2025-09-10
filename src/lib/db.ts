@@ -5,7 +5,7 @@ import path from 'path';
 // Helper function to get database connection
 async function getConnection(): Promise<Database> {
   try {
-    const dbFile = path.resolve('/workspace/APP-Database.db');
+    const dbFile = path.resolve(process.cwd(), 'APP-Database.db');
     const db = await open({
       filename: dbFile,
       driver: sqlite3.Database

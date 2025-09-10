@@ -492,7 +492,8 @@ export default function StudentPortal() {
   const [filterCourseId, setFilterCourseId] = useState<string | null>(null)
 
   // Derived state
-  const enrolledCourses = courses.filter((course) => user.enrolledCourses.includes(course.id))
+  // user.enrolledCourses may be undefined if loaded from API; use safe fallback
+  const enrolledCourses = courses.filter((course) => (user.enrolledCourses || []).includes(course.id))
   const upcomingTests = enrolledCourses.flatMap((course) =>
     course.tests
       .filter((test) => test.status === "upcoming")

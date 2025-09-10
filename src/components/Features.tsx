@@ -58,7 +58,11 @@ const Features = () => {
       const response = await fetch('/api/admin/content/features')
       if (!response.ok) throw new Error('Failed to load features')
       const data = await response.json()
-      setFeatures(data)
+      // Normalize incoming data: ensure benefits is always an array
+      const normalizedFeatures = Array.isArray(data)
+        ? data.map((f) => ({ ...f, benefits: Array.isArray(f?.benefits) ? f.benefits : [] }))
+        : []
+      setFeatures(normalizedFeatures)
     } catch (error) {
       console.error('Error fetching features:', error)
       setFeatures([])
@@ -320,7 +324,7 @@ const Features = () => {
                       <CardContent>
                         <p className="text-gray-600 mb-4">{feature.description}</p>
                         <div className="space-y-2">
-                          {feature.benefits.map((benefit, index) => (
+                          {(Array.isArray(feature?.benefits) ? feature.benefits : []).map((benefit, index) => (
                             <div key={index} className="flex items-start space-x-2">
                               <CheckCircle className="h-4 w-4 text-green-500 mt-1 flex-shrink-0" />
                               <span className="text-sm text-gray-600">{benefit}</span>
@@ -521,14 +525,14 @@ const Features = () => {
                 </div>
                 <div className="space-y-2">
                   <Label>Benefits</Label>
-                  {editingFeature.benefits.map((benefit, index) => (
+                  {(Array.isArray(editingFeature?.benefits) ? editingFeature.benefits : []).map((benefit, index) => (
                     <div key={index} className="flex items-center space-x-2">
                       <input
                         value={benefit}
                         onChange={(e) => {
-                          const newBenefits = [...editingFeature.benefits]
-                          newBenefits[index] = e.target.value
-                          setEditingFeature({ ...editingFeature, benefits: newBenefits })
+                          const currentBenefits = Array.isArray(editingFeature?.benefits) ? [...editingFeature.benefits] : []
+                          currentBenefits[index] = e.target.value
+                          setEditingFeature({ ...editingFeature, benefits: currentBenefits })
                         }}
                         className="flex-1 p-2 border rounded-md"
                       />
@@ -536,8 +540,8 @@ const Features = () => {
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          const newBenefits = editingFeature.benefits.filter((_, i) => i !== index)
-                          setEditingFeature({ ...editingFeature, benefits: newBenefits })
+                          const currentBenefits = Array.isArray(editingFeature?.benefits) ? editingFeature.benefits.filter((_, i) => i !== index) : []
+                          setEditingFeature({ ...editingFeature, benefits: currentBenefits })
                         }}
                         className="h-8 w-8 text-red-500"
                       >
@@ -549,9 +553,10 @@ const Features = () => {
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      const currentBenefits = Array.isArray(editingFeature?.benefits) ? editingFeature.benefits : []
                       setEditingFeature({
                         ...editingFeature,
-                        benefits: [...editingFeature.benefits, "New benefit"],
+                        benefits: [...currentBenefits, "New benefit"],
                       })
                     }}
                     className="mt-2"

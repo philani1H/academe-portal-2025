@@ -4,7 +4,9 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckCircle, AlertCircle, MoreHorizontal, Send, ChevronDown, Mail, Check, X, Edit, User, Settings, LogOut, Menu, Home, Shield, BarChart4, UserPlus, Trash2, Building, GraduationCap, UserCheck, Filter, RefreshCw, Eye } from 'lucide-react'
+import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckCircle, AlertCircle, MoreHorizontal, Send, ChevronDown, Mail, Check, X, Edit, User, Settings, LogOut, Menu, Home, Shield, BarChart4, UserPlus, Trash2, Building, GraduationCap, UserCheck, Filter, RefreshCw, Eye, Download, Layout } from 'lucide-react'
+
+import ContentManagement from './ContentManagement'
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -121,310 +123,28 @@ interface SystemStats {
   pendingApprovals: number
 }
 
-// Mock data
-const mockTutors: Tutor[] = [
-  {
-    id: "t1",
-    name: "Dr. Smith",
-    email: "dr.smith@university.edu",
-    role: "tutor",
-    status: "active",
-    department: "Mathematics",
-    specialization: "Calculus",
-    courses: ["c1", "c4"],
-    rating: 4.8,
-    students: 45,
-    createdAt: "2023-09-15",
-    lastActive: "2024-05-19 15:30",
-  },
-  {
-    id: "t2",
-    name: "Prof. Johnson",
-    email: "prof.johnson@university.edu",
-    role: "tutor",
-    status: "active",
-    department: "Physics",
-    specialization: "Quantum Mechanics",
-    courses: ["c2"],
-    rating: 4.5,
-    students: 32,
-    createdAt: "2023-10-05",
-    lastActive: "2024-05-18 10:15",
-  },
-  {
-    id: "t3",
-    name: "Dr. Williams",
-    email: "dr.williams@university.edu",
-    role: "tutor",
-    status: "active",
-    department: "Computer Science",
-    specialization: "Algorithms",
-    courses: ["c3"],
-    rating: 4.9,
-    students: 60,
-    createdAt: "2023-08-20",
-    lastActive: "2024-05-19 09:30",
-  },
-  {
-    id: "t4",
-    name: "Prof. Davis",
-    email: "prof.davis@university.edu",
-    role: "tutor",
-    status: "pending",
-    department: "Biology",
-    specialization: "Genetics",
-    courses: [],
-    createdAt: "2024-05-10",
-  },
-  {
-    id: "t5",
-    name: "Dr. Martinez",
-    email: "dr.martinez@university.edu",
-    role: "tutor",
-    status: "pending",
-    department: "Chemistry",
-    specialization: "Organic Chemistry",
-    courses: [],
-    createdAt: "2024-05-12",
-  },
-]
-
-const mockStudents: Student[] = [
-  {
-    id: "s1",
-    name: "Alex Johnson",
-    email: "alex.johnson@example.com",
-    role: "student",
-    status: "active",
-    enrolledCourses: ["c1", "c2", "c3"],
-    progress: 75,
-    grade: 85,
-    createdAt: "2023-09-20",
-    lastActive: "2024-05-19 16:45",
-  },
-  {
-    id: "s2",
-    name: "Emma Wilson",
-    email: "emma.wilson@example.com",
-    role: "student",
-    status: "active",
-    enrolledCourses: ["c1"],
-    progress: 60,
-    grade: 78,
-    createdAt: "2023-10-10",
-    lastActive: "2024-05-19 14:20",
-  },
-  {
-    id: "s3",
-    name: "Michael Brown",
-    email: "michael.brown@example.com",
-    role: "student",
-    status: "active",
-    enrolledCourses: ["c2", "c3"],
-    progress: 90,
-    grade: 92,
-    createdAt: "2023-09-05",
-    lastActive: "2024-05-19 11:45",
-  },
-  {
-    id: "s4",
-    name: "Sophia Garcia",
-    email: "sophia.garcia@example.com",
-    role: "student",
-    status: "pending",
-    enrolledCourses: [],
-    createdAt: "2024-05-15",
-  },
-  {
-    id: "s5",
-    name: "James Miller",
-    email: "james.miller@example.com",
-    role: "student",
-    status: "inactive",
-    enrolledCourses: ["c4"],
-    progress: 30,
-    grade: 65,
-    createdAt: "2023-11-15",
-    lastActive: "2024-04-10 09:20",
-  },
-]
-
-const mockCourses: Course[] = [
-  {
-    id: "c1",
-    name: "Mathematics 101",
-    description: "Introduction to basic mathematical concepts and principles",
-    department: "Mathematics",
-    tutorId: "t1",
-    status: "active",
-    students: 25,
-    createdAt: "2023-09-01",
-    startDate: "2023-09-15",
-    endDate: "2024-06-30",
-    color: "#4f46e5",
-  },
-  {
-    id: "c2",
-    name: "Physics Advanced",
-    description: "Advanced concepts in physics including mechanics and thermodynamics",
-    department: "Physics",
-    tutorId: "t2",
-    status: "active",
-    students: 18,
-    createdAt: "2023-09-05",
-    startDate: "2023-09-20",
-    endDate: "2024-06-25",
-    color: "#0ea5e9",
-  },
-  {
-    id: "c3",
-    name: "Computer Science Fundamentals",
-    description: "Introduction to programming concepts, algorithms, and data structures",
-    department: "Computer Science",
-    tutorId: "t3",
-    status: "active",
-    students: 30,
-    createdAt: "2023-08-15",
-    startDate: "2023-09-10",
-    endDate: "2024-06-20",
-    color: "#10b981",
-  },
-  {
-    id: "c4",
-    name: "Advanced Calculus",
-    description: "In-depth study of calculus concepts including limits, derivatives, and integrals",
-    department: "Mathematics",
-    tutorId: "t1",
-    status: "pending",
-    students: 0,
-    createdAt: "2024-05-10",
-    startDate: "2024-06-01",
-    endDate: "2024-12-15",
-    color: "#f59e0b",
-  },
-]
-
-const mockNotifications: Notification[] = [
-  {
-    id: "n1",
-    title: "System Maintenance",
-    message: "The system will be down for maintenance on Saturday, May 25th from 2:00 AM to 4:00 AM.",
-    date: "2024-05-19",
-    type: "system",
-    status: "sent",
-    recipients: {
-      tutors: true,
-      students: true,
-    },
-    read: false,
-  },
-  {
-    id: "n2",
-    title: "New Course Approval",
-    message: "A new course 'Advanced Calculus' has been submitted for approval by Dr. Smith.",
-    date: "2024-05-10",
-    type: "approval",
-    status: "sent",
-    recipients: {
-      tutors: false,
-      students: false,
-      specific: ["admin"],
-    },
-    read: true,
-  },
-  {
-    id: "n3",
-    title: "New Tutor Registration",
-    message: "Prof. Davis has registered as a new tutor and is awaiting approval.",
-    date: "2024-05-10",
-    type: "approval",
-    status: "sent",
-    recipients: {
-      tutors: false,
-      students: false,
-      specific: ["admin"],
-    },
-    read: true,
-  },
-  {
-    id: "n4",
-    title: "End of Semester Reminder",
-    message: "The current semester ends on June 30th. Please ensure all grades are submitted by July 5th.",
-    date: "2024-05-15",
-    type: "system",
-    status: "sent",
-    recipients: {
-      tutors: true,
-      students: false,
-    },
-    read: false,
-  },
-]
-
-const mockDepartments: Department[] = [
-  {
-    id: "d1",
-    name: "Mathematics",
-    courses: 2,
-    tutors: 1,
-    students: 25,
-    color: "#4f46e5",
-  },
-  {
-    id: "d2",
-    name: "Physics",
-    courses: 1,
-    tutors: 1,
-    students: 18,
-    color: "#0ea5e9",
-  },
-  {
-    id: "d3",
-    name: "Computer Science",
-    courses: 1,
-    tutors: 1,
-    students: 30,
-    color: "#10b981",
-  },
-  {
-    id: "d4",
-    name: "Biology",
-    courses: 0,
-    tutors: 1,
-    students: 0,
-    color: "#f59e0b",
-  },
-  {
-    id: "d5",
-    name: "Chemistry",
-    courses: 0,
-    tutors: 1,
-    students: 0,
-    color: "#ef4444",
-  },
-]
-
-const mockSystemStats: SystemStats = {
-  totalUsers: 13,
-  activeUsers: 10,
-  totalCourses: 4,
-  activeCourses: 3,
-  newUsersToday: 2,
-  activeStudents: 3,
-  activeTutors: 3,
-  pendingApprovals: 4,
-}
+// Mock data removed — Admin dashboard now fetches live data from the API / database on mount.
+// If an API endpoint is unavailable the UI will gracefully fall back to empty lists.
 
 // Main component
 export default function AdminDashboard() {
   // State
   const [user, setUser] = useState({ name: "Admin User", email: "admin@university.edu", role: "admin" })
-  const [tutors, setTutors] = useState<Tutor[]>(mockTutors)
-  const [students, setStudents] = useState<Student[]>(mockStudents)
-  const [courses, setCourses] = useState<Course[]>(mockCourses)
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
-  const [departments, setDepartments] = useState<Department[]>(mockDepartments)
-  const [systemStats, setSystemStats] = useState<SystemStats>(mockSystemStats)
+  const [tutors, setTutors] = useState<Tutor[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [courses, setCourses] = useState<Course[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [systemStats, setSystemStats] = useState<SystemStats>({
+    totalUsers: 0,
+    activeUsers: 0,
+    totalCourses: 0,
+    activeCourses: 0,
+    newUsersToday: 0,
+    activeStudents: 0,
+    activeTutors: 0,
+    pendingApprovals: 0,
+  })
   
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
@@ -465,6 +185,7 @@ export default function AdminDashboard() {
   })
   
   const [activeTab, setActiveTab] = useState("dashboard")
+  const [showContentManager, setShowContentManager] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
@@ -476,12 +197,84 @@ export default function AdminDashboard() {
   const [isCreatingCourse, setIsCreatingCourse] = useState(false)
   const [isCreatingDepartment, setIsCreatingDepartment] = useState(false)
   const [isSendingNotification, setIsSendingNotification] = useState(false)
+  const [isContentManagerOpen, setIsContentManagerOpen] = useState(false)
 
   // Effects
   useEffect(() => {
     // Calculate unread notifications
     setUnreadCount(notifications.filter((n) => !n.read).length)
   }, [notifications])
+
+  // Fetch data from API
+  const apiBase = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || ''
+
+  const fetchTutors = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/admin/content/tutors`)
+      if (res.ok) { const data = await res.json(); setTutors(Array.isArray(data) ? data : []); }
+    } catch (e) { console.error('Failed to fetch tutors', e); }
+  }
+
+  const fetchStudents = async () => {
+    try {
+      // No dedicated students endpoint in content; attempt generic users table via /api/users or fallback to empty
+      const res = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT id, name, email, role, created_at as createdAt FROM users WHERE role = "student"' }) })
+      if (res.ok) { const data = await res.json(); setStudents(Array.isArray(data) ? data : []); }
+    } catch (e) { console.error('Failed to fetch students', e); }
+  }
+
+  const fetchCourses = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/courses`)
+      if (res.ok) { const data = await res.json(); setCourses(Array.isArray(data) ? data : []); }
+    } catch (e) { console.error('Failed to fetch courses', e); }
+  }
+
+  const fetchNotifications = async () => {
+    try {
+      // No authenticated user id available; fetch recent notifications via generic query
+      const res = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT id as id, message as message, read as read, created_at as date FROM notifications ORDER BY created_at DESC LIMIT 20' }) })
+      if (res.ok) { const data = await res.json(); const mapped = Array.isArray(data) ? data.map((n: any) => ({ id: n.id?.toString() || `${Date.now()}`, title: n.message?.slice(0, 40) || 'Notification', message: n.message || '', date: n.date || '', type: 'system', status: 'sent', recipients: { tutors: true, students: true }, read: !!n.read })) : []; setNotifications(mapped); }
+    } catch (e) { console.error('Failed to fetch notifications', e); }
+  }
+
+  const fetchDepartmentsAndStats = async () => {
+    try {
+      // Departments are not a dedicated table in Prisma schema; derive from subjects or use a safe default
+      const res = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT name, COUNT(*) as courses FROM subjects GROUP BY name' }) })
+      if (res.ok) {
+        const data = await res.json()
+        // Map to Department minimal shape
+        const depts = Array.isArray(data) ? data.map((d: any, i: number) => ({ id: `d-${i}`, name: d.name || `Dept ${i+1}`, courses: Number(d.courses || 0), tutors: 0, students: 0, color: '#4f46e5' })) : []
+        setDepartments(depts)
+      }
+
+      // Stats: attempt to compute via queries
+      const statsRes = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT (SELECT COUNT(*) FROM users) as totalUsers, (SELECT COUNT(*) FROM users WHERE role = "student") as activeStudents, (SELECT COUNT(*) FROM courses) as totalCourses' }) })
+      if (statsRes.ok) {
+        const stats = await statsRes.json()
+        if (Array.isArray(stats) && stats[0]) {
+          setSystemStats((prev) => ({
+            ...prev,
+            totalUsers: Number(stats[0].totalUsers || 0),
+            activeStudents: Number(stats[0].activeStudents || 0),
+            totalCourses: Number(stats[0].totalCourses || 0),
+          }))
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch departments/stats', e)
+    }
+  }
+
+  useEffect(() => {
+    // Load all admin data on mount
+    fetchTutors()
+    fetchStudents()
+    fetchCourses()
+    fetchNotifications()
+    fetchDepartmentsAndStats()
+  }, [])
 
   // Handlers
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1126,6 +919,18 @@ export default function AdminDashboard() {
                 {!sidebarOpen && unreadCount > 0 && (
                   <Badge className="absolute top-0 right-0 -mt-1 -mr-1 bg-red-500 text-white">{unreadCount}</Badge>
                 )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("content")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "content" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <Layout className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Content</span>}
               </button>
 
               <button
@@ -2201,7 +2006,7 @@ export default function AdminDashboard() {
                               {tutor.status}
                             </Badge>
                           </TableCell>
-                          <TableCell>{tutor.courses.length}</TableCell>
+                          <TableCell>{tutor.courses?.length ?? 0}</TableCell>
                           <TableCell>{tutor.students || 0}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
@@ -2338,7 +2143,7 @@ export default function AdminDashboard() {
                               {student.status}
                             </Badge>
                           </TableCell>
-                          <TableCell>{student.enrolledCourses.length}</TableCell>
+                          <TableCell>{student.enrolledCourses?.length ?? 0}</TableCell>
                           <TableCell>
                             {student.progress !== undefined ? (
                               <div className="flex items-center gap-2">
@@ -2401,6 +2206,16 @@ export default function AdminDashboard() {
                   )}
                 </CardContent>
               </Card>
+            </div>
+          )}
+
+          {/* Content Management Tab */}
+          {activeTab === "content" && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <h2 className="text-2xl font-bold">Content Management</h2>
+              </div>
+              <ContentManagement />
             </div>
           )}
 
@@ -3198,7 +3013,7 @@ export default function AdminDashboard() {
                       <div className="grid grid-cols-2 gap-4 text-center">
                         <Card>
                           <CardContent className="pt-6">
-                            <div className="text-2xl font-bold">{selectedTutor.courses.length}</div>
+                            <div className="text-2xl font-bold">{selectedTutor.courses?.length ?? 0}</div>
                             <p className="text-xs text-muted-foreground">Courses</p>
                           </CardContent>
                         </Card>
@@ -3220,12 +3035,12 @@ export default function AdminDashboard() {
                         <Plus className="mr-2 h-4 w-4" /> Assign Course
                       </Button>
                     </div>
-                    {selectedTutor.courses.length === 0 ? (
+                    {(selectedTutor.courses?.length ?? 0) === 0 ? (
                       <div className="text-center py-6 text-muted-foreground">No courses assigned</div>
                     ) : (
                       <div className="space-y-2">
                         {courses
-                          .filter((course) => selectedTutor.courses.includes(course.id))
+                          .filter((course) => (selectedTutor.courses || []).includes(course.id))
                           .map((course) => (
                             <div
                               key={course.id}
@@ -3282,7 +3097,7 @@ export default function AdminDashboard() {
                     ) : (
                       <div className="space-y-2">
                         <p className="text-muted-foreground">
-                          This tutor has {selectedTutor.students} students across {selectedTutor.courses.length} courses.
+                          This tutor has {selectedTutor.students} students across {selectedTutor.courses?.length ?? 0} courses.
                         </p>
                       </div>
                     )}
@@ -3369,7 +3184,7 @@ export default function AdminDashboard() {
                       <div className="grid grid-cols-2 gap-4 text-center">
                         <Card>
                           <CardContent className="pt-6">
-                            <div className="text-2xl font-bold">{selectedStudent.enrolledCourses.length}</div>
+                            <div className="text-2xl font-bold">{selectedStudent.enrolledCourses?.length ?? 0}</div>
                             <p className="text-xs text-muted-foreground">Enrolled Courses</p>
                           </CardContent>
                         </Card>
@@ -3391,12 +3206,12 @@ export default function AdminDashboard() {
                         <Plus className="mr-2 h-4 w-4" /> Enroll in Course
                       </Button>
                     </div>
-                    {selectedStudent.enrolledCourses.length === 0 ? (
+                    {(selectedStudent.enrolledCourses?.length ?? 0) === 0 ? (
                       <div className="text-center py-6 text-muted-foreground">Not enrolled in any courses</div>
                     ) : (
                       <div className="space-y-2">
                         {courses
-                          .filter((course) => selectedStudent.enrolledCourses.includes(course.id))
+                          .filter((course) => (selectedStudent.enrolledCourses || []).includes(course.id))
                           .map((course) => (
                             <div
                               key={course.id}
@@ -3430,7 +3245,7 @@ export default function AdminDashboard() {
                 <TabsContent value="grades" className="mt-4">
                   <div className="space-y-4">
                     <h3 className="font-medium">Grades</h3>
-                    {selectedStudent.enrolledCourses.length === 0 ? (
+                    {(selectedStudent.enrolledCourses?.length ?? 0) === 0 ? (
                       <div className="text-center py-6 text-muted-foreground">No grades available</div>
                     ) : (
                       <Table>
@@ -3444,7 +3259,7 @@ export default function AdminDashboard() {
                         </TableHeader>
                         <TableBody>
                           {courses
-                            .filter((course) => selectedStudent.enrolledCourses.includes(course.id))
+                            .filter((course) => (selectedStudent.enrolledCourses || []).includes(course.id))
                             .map((course) => (
                               <TableRow key={course.id}>
                                 <TableCell className="font-medium">

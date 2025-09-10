@@ -3,16 +3,6 @@
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { Check, X, Star, Shield, Calendar, ChevronRight, Award } from "lucide-react"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 
 interface PricingPlan {
   id: string;
@@ -28,32 +18,73 @@ interface PricingPlan {
   order: number;
 }
 
-const defaultPlans: PricingPlan[] = []
-
 export default function Pricing() {
-  const [plans, setPlans] = useState<PricingPlan[]>(defaultPlans);
+  const [plans, setPlans] = useState<PricingPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [activeTab, setActiveTab] = useState("monthly")
   const [activeHash, setActiveHash] = useState("")
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchPricingPlans();
-  }, []);
-
-  const fetchPricingPlans = async () => {
-    try {
-      const response = await fetch('/api/admin/content/pricing');
-      if (!response.ok) throw new Error('Failed to load pricing')
-      const data = await response.json();
-      setPlans(data);
-    } catch (error) {
-      console.error('Error fetching pricing plans:', error);
-      setPlans([])
-    } finally {
-      setLoading(false);
+  // Helper function to get icon component
+  const getIconComponent = (iconName: string) => {
+    switch (iconName.toLowerCase()) {
+      case 'calendar':
+        return <Calendar className="w-6 h-6" />;
+      case 'star':
+        return <Star className="w-6 h-6" />;
+      case 'award':
+        return <Award className="w-6 h-6" />;
+      case 'shield':
+        return <Shield className="w-6 h-6" />;
+      default:
+        return <Calendar className="w-6 h-6" />;
     }
   };
+
+  // Helper function to parse JSON strings
+  const parseJsonField = (field: string | string[]): string[] => {
+    if (Array.isArray(field)) {
+      return field;
+    }
+    try {
+      const parsed = JSON.parse(field);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.error('Error parsing JSON field:', error);
+      return [];
+    }
+  };
+
+  useEffect(() => {
+    const fetchPricingPlans = async () => {
+      try {
+        const response = await fetch('/api/admin/content/pricing')
+        if (!response.ok) throw new Error('Failed to load pricing')
+        const data = await response.json()
+
+        // Process the data to parse JSON strings and sort by order
+        const processedPlans = Array.isArray(data)
+          ? data
+              .filter((plan: any) => plan.isActive)
+              .sort((a: any, b: any) => a.order - b.order)
+              .map((plan: any) => ({
+                ...plan,
+                features: parseJsonField(plan.features),
+                notIncluded: parseJsonField(plan.notIncluded),
+              }))
+          : []
+
+        setPlans(processedPlans)
+      } catch (error) {
+        console.error('Error fetching pricing plans:', error)
+        setPlans([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchPricingPlans()
+  }, [])
 
   // Handle hash changes for scrolling to specific plan
   useEffect(() => {
@@ -90,6 +121,19 @@ export default function Pricing() {
   const calculateAnnualPrice = (monthlyPrice) => {
     const priceNumber = Number.parseInt(monthlyPrice.replace("R ", ""))
     return `R ${Math.round(priceNumber * 10.2)}`
+  }
+
+  if (loading) {
+    return (
+      <section id="pricing" className="py-24 bg-gradient-to-b from-white to-blue-50">
+        <div className="container mx-auto px-4">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-900 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading pricing plans...</p>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -130,94 +174,100 @@ export default function Pricing() {
           </motion.div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
-          {plans.map((plan, index) => (
-            <motion.div
-              id={plan.id}
-              key={index}
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: index * 0.2 }}
-              className={`relative p-1 rounded-2xl transition-all duration-500 transform hover:scale-105 ${activeHash === plan.id ? "ring-4 ring-blue-500 ring-opacity-50" : ""}`}
-            >
-              {/* Gradient border */}
-              <div
-                className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${plan.popular ? "from-blue-400 via-indigo-500 to-purple-600" : "from-gray-200 to-gray-300"} opacity-70`}
-              ></div>
-
-              <div
-                className={`relative p-8 rounded-xl backdrop-blur-sm shadow-xl h-full flex flex-col ${plan.id === "standard" ? "bg-gradient-to-br from-indigo-900 via-blue-900 to-blue-800 text-white" : "bg-white"}`}
+        {plans.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-600 text-lg">No pricing plans available at the moment.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+            {plans.map((plan, index) => (
+              <motion.div
+                id={plan.id}
+                key={plan.id}
+                initial={{ opacity: 0, y: 50 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: index * 0.2 }}
+                className={`relative p-1 rounded-2xl transition-all duration-500 transform hover:scale-105 ${activeHash === plan.id ? "ring-4 ring-blue-500 ring-opacity-50" : ""}`}
               >
-                {plan.popular && (
-                  <div className="absolute top-0 right-8 transform -translate-y-1/2">
-                    <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-1 px-4 rounded-full font-semibold text-sm flex items-center gap-1 shadow-lg">
-                      <Star className="w-4 h-4 fill-white" /> Most Popular
-                    </div>
-                  </div>
-                )}
+                {/* Gradient border */}
+                <div
+                  className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${plan.popular ? "from-blue-400 via-indigo-500 to-purple-600" : "from-gray-200 to-gray-300"} opacity-70`}
+                ></div>
 
-                <div className="flex items-center gap-3 mb-4">
-                  <div className={`p-2 rounded-lg ${plan.id === "standard" ? "bg-white/20" : `bg-blue-100`}`}>
-                    {plan.icon}
-                  </div>
-                  <h3
-                    className={`text-2xl font-bold ${plan.id === "standard" ? "text-white" : "bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"}`}
-                  >
-                    {plan.name}
-                  </h3>
-                </div>
-
-                <div className="mb-8">
-                  <div className="flex items-end">
-                    <p className={`text-5xl font-bold ${plan.id === "standard" ? "text-white" : "text-gray-900"}`}>
-                      {activeTab === "monthly" ? plan.price : calculateAnnualPrice(plan.price)}
-                    </p>
-                    <span className={`text-lg ml-2 mb-1 ${plan.id === "standard" ? "text-blue-200" : "text-gray-500"}`}>
-                      /{activeTab === "monthly" ? "mo" : "yr"}
-                    </span>
-                  </div>
-                  <p className={`text-sm mt-1 ${plan.id === "standard" ? "text-blue-200" : "text-gray-500"}`}>
-                    Billed {activeTab === "monthly" ? "monthly" : "annually"}
-                    {activeTab === "annually" && " (15% discount applied)"}
-                  </p>
-                </div>
-
-                <ul className={`space-y-4 mb-8 flex-grow ${plan.id === "standard" ? "text-white" : ""}`}>
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className="flex items-start">
-                      <Check
-                        className={`w-5 h-5 mr-3 mt-0.5 ${plan.id === "standard" ? "text-green-300" : "text-green-500"}`}
-                      />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                  {plan.notIncluded.map((feature, i) => (
-                    <li key={i} className={`flex items-start ${plan.id === "standard" ? "opacity-40" : "opacity-50"}`}>
-                      <X
-                        className={`w-5 h-5 mr-3 mt-0.5 ${plan.id === "standard" ? "text-red-300" : "text-red-500"}`}
-                      />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setSelectedPlan(plan)}
-                  className={`w-full py-4 rounded-xl font-semibold transition-all duration-300 shadow-lg flex items-center justify-center gap-2 
-                    ${
-                      plan.id === "standard"
-                        ? "bg-gradient-to-r from-white to-blue-100 text-blue-900 hover:from-blue-100 hover:to-white"
-                        : "bg-gradient-to-r from-blue-700 to-indigo-700 text-white hover:from-blue-800 hover:to-indigo-800"
-                    }`}
+                <div
+                  className={`relative p-8 rounded-xl backdrop-blur-sm shadow-xl h-full flex flex-col ${plan.name === "STANDARD" ? "bg-gradient-to-br from-indigo-900 via-blue-900 to-blue-800 text-white" : "bg-white"}`}
                 >
-                  Choose Plan <ChevronRight className="w-5 h-5" />
-                </motion.button>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                  {plan.popular && (
+                    <div className="absolute top-0 right-8 transform -translate-y-1/2">
+                      <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-1 px-4 rounded-full font-semibold text-sm flex items-center gap-1 shadow-lg">
+                        <Star className="w-4 h-4 fill-white" /> Most Popular
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={`p-2 rounded-lg ${plan.name === "STANDARD" ? "bg-white/20" : `bg-blue-100`}`}>
+                      {getIconComponent(plan.icon)}
+                    </div>
+                    <h3
+                      className={`text-2xl font-bold ${plan.name === "STANDARD" ? "text-white" : "bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent"}`}
+                    >
+                      {plan.name}
+                    </h3>
+                  </div>
+
+                  <div className="mb-8">
+                    <div className="flex items-end">
+                      <p className={`text-5xl font-bold ${plan.name === "STANDARD" ? "text-white" : "text-gray-900"}`}>
+                        {activeTab === "monthly" ? plan.price : calculateAnnualPrice(plan.price)}
+                      </p>
+                      <span className={`text-lg ml-2 mb-1 ${plan.name === "STANDARD" ? "text-blue-200" : "text-gray-500"}`}>
+                        /{activeTab === "monthly" ? "mo" : "yr"}
+                      </span>
+                    </div>
+                    <p className={`text-sm mt-1 ${plan.name === "STANDARD" ? "text-blue-200" : "text-gray-500"}`}>
+                      Billed {activeTab === "monthly" ? "monthly" : "annually"}
+                      {activeTab === "annually" && " (15% discount applied)"}
+                    </p>
+                  </div>
+
+                  <ul className={`space-y-4 mb-8 flex-grow ${plan.name === "STANDARD" ? "text-white" : ""}`}>
+                    {plan.features.map((feature, i) => (
+                      <li key={i} className="flex items-start">
+                        <Check
+                          className={`w-5 h-5 mr-3 mt-0.5 ${plan.name === "STANDARD" ? "text-green-300" : "text-green-500"}`}
+                        />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                    {plan.notIncluded.map((feature, i) => (
+                      <li key={i} className={`flex items-start ${plan.name === "STANDARD" ? "opacity-40" : "opacity-50"}`}>
+                        <X
+                          className={`w-5 h-5 mr-3 mt-0.5 ${plan.name === "STANDARD" ? "text-red-300" : "text-red-500"}`}
+                        />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <motion.button
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => setSelectedPlan(plan)}
+                    className={`w-full py-4 rounded-xl font-semibold transition-all duration-300 shadow-lg flex items-center justify-center gap-2 
+                      ${
+                        plan.name === "STANDARD"
+                          ? "bg-gradient-to-r from-white to-blue-100 text-blue-900 hover:from-blue-100 hover:to-white"
+                          : "bg-gradient-to-r from-blue-700 to-indigo-700 text-white hover:from-blue-800 hover:to-indigo-800"
+                      }`}
+                  >
+                    Choose Plan <ChevronRight className="w-5 h-5" />
+                  </motion.button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -240,19 +290,18 @@ export default function Pricing() {
         </motion.div>
       </div>
 
-      <AlertDialog open={selectedPlan !== null} onOpenChange={() => setSelectedPlan(null)}>
-        <AlertDialogContent className="max-w-md bg-white rounded-2xl p-0 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-2xl font-bold">Subscribe to {selectedPlan?.name}</AlertDialogTitle>
+      {/* Modal Dialog */}
+      {selectedPlan && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="max-w-md bg-white rounded-2xl overflow-hidden shadow-2xl">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white">
+              <h3 className="text-2xl font-bold">Subscribe to {selectedPlan?.name}</h3>
               <p className="text-blue-100 mt-2">
                 {selectedPlan?.price}/{selectedPlan?.period.toLowerCase()} • Unlock your academic potential
               </p>
-            </AlertDialogHeader>
-          </div>
+            </div>
 
-          <div className="p-6">
-            <AlertDialogDescription className="text-gray-700">
+            <div className="p-6">
               <div className="text-center mb-6">
                 <h4 className="text-xl font-semibold mb-3 text-gray-900">Complete Your Registration</h4>
                 <p className="text-gray-600 mb-6">Fill out the form below to secure your place in our program.</p>
@@ -267,17 +316,20 @@ export default function Pricing() {
                   title="Subscription Form"
                 ></iframe>
               </div>
-            </AlertDialogDescription>
-          </div>
+            </div>
 
-          <AlertDialogFooter className="p-6 pt-0 flex flex-col sm:flex-row gap-3">
-            <AlertDialogCancel className="w-full sm:w-auto order-2 sm:order-1 mt-0">Close</AlertDialogCancel>
-            <AlertDialogAction className="w-full sm:w-auto order-1 sm:order-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700">
+            <div className="p-6 pt-0 flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => setSelectedPlan(null)}
+                className="w-full sm:w-auto order-2 sm:order-1 mt-0 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
               <a
                 href="https://wa.me/27793867427"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center w-full gap-2"
+                className="w-full sm:w-auto order-1 sm:order-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg inline-flex items-center justify-center gap-2 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -294,12 +346,12 @@ export default function Pricing() {
                 </svg>
                 Contact via WhatsApp
               </a>
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <style jsx>{`
+      <style>{`
         .animate-blob {
           animation: blob-bounce 7s infinite;
         }

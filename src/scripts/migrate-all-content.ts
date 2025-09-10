@@ -1,26 +1,7 @@
 import prisma from '../lib/prisma'
 
-// Tutors data from Tutors.tsx
+// Updated tutors data with new additions
 const tutorsData = [
-  {
-    name: "Sir Raphael",
-    subjects: JSON.stringify(["Maths Literacy", "English FAL", "History"]),
-    image: "https://media-hosting.imagekit.io/b0f14e9cd7c04663/WhatsApp%20Image%202025-05-01%20at%2017.51.06_9b6f06d5.jpg?Expires=1841310263&Key-Pair-Id=K2ZIVPTIP2VGHC&Signature=ljztxmw-I6~Xh722izM58x2kFLzby8tvwS94aMVLD-VoFavdzLkPtLWovsyimHY97gAkebJyTLONPvBLRbebhXEIErl~bj7GkLUUHhxE0vgqBA~h9z~Jqhb3ZxZnfsHD8AmTfOs0Y63e61SjiIQd9gLrMcdFKtf-PFLcmq055kFgZNTt9t4jJNCNF95uJAyeWuCPmHxP7hx9RBk5McLl7pVWKNUC1LVfIQupvFqzJfRGLHLOsB~9K-Dp0tQLKQVI2a11Pogn6bKqnLBuW1eIWid0uV7QTzqRD2dDOB3UCgL2fDzIgTD2~l4D~fFPtF0VAeH-tKfb6YFkdPB5m8ZVEA__",
-    contactName: "Sir Raphael",
-    contactPhone: "+27698635814",
-    contactEmail: "ExcellenceAcademia2025@gmail.com",
-    description: "Sir Raphael specializes in Maths Literacy, English FAL, and History. He is dedicated to helping students achieve their academic goals through personalized instruction and comprehensive understanding.",
-    ratings: JSON.stringify([
-      {
-        id: 1,
-        studentName: "Initial Rating",
-        rating: 4,
-        comment: "Excellent teaching methodology and student engagement.",
-        date: "2025-04-02"
-      }
-    ]),
-    order: 1
-  },
   {
     name: "Roshan (mr mvp)",
     subjects: JSON.stringify(["Geography", "Business Studies", "Economics"]),
@@ -45,45 +26,185 @@ const tutorsData = [
         date: "2025-02-28"
       }
     ]),
-    order: 2
+    order: 1
   },
   {
-    name: "Paballo",
-    subjects: JSON.stringify(["Pure Mathematics", "Economics", "Business", "Accounting"]),
-    image: "https://i.imgur.com/mreslkv.jpeg",
-    contactName: "Paballo A.L Sempe",
-    contactPhone: "+27761328919",
+    name: "Mr Smooth-Accountant",
+    subjects: JSON.stringify(["Accounting", "Economics", "Business"]),
+    image: "https://i.imgur.com/Nsa0PWv.jpeg",
+    contactName: "Mr. Smooth",
+    contactPhone: "+27 63 416 1147",
     contactEmail: "ExcellenceAcademia2025@gmail.com",
-    description: "Paballo has a strong background in pure mathematics, economics, and accounting. She focuses on making complex concepts accessible and engaging for students.",
+    description: "Mr. Smooth specializes in accounting and business studies, providing real-world insights that bridge the gap between theory and practice.",
     ratings: JSON.stringify([
       {
         id: 1,
-        studentName: "David K.",
+        studentName: "James P.",
         rating: 5,
-        comment: "Paballo explains math concepts clearly and patiently.",
-        date: "2025-03-20"
+        comment: "Best accounting teacher I've ever had!",
+        date: "2025-03-22"
+      }
+    ]),
+    order: 2
+  },
+  {
+    name: "Amanda (Miss Penguin)",
+    subjects: JSON.stringify(["Life Science", "Physical Science", "Geography", "English"]),
+    image: "https://i.imgur.com/WW80efP.jpeg",
+    contactName: "Amanda Utembe",
+    contactPhone: "+27 62 950 7687",
+    contactEmail: "ExcellenceAcademia2025@gmail.com",
+    description: "Amanda, also known as Miss Penguin, brings her expertise in life science, physical science, geography, and English. She strives to make learning both informative and fun.",
+    ratings: JSON.stringify([
+      {
+        id: 1,
+        studentName: "Nomsa K.",
+        rating: 5,
+        comment: "Miss Penguin makes science fun and easy to understand!",
+        date: "2025-03-18"
+      },
+      {
+        id: 2,
+        studentName: "Peter L.",
+        rating: 4,
+        comment: "Great teacher with creative teaching methods.",
+        date: "2025-02-25"
       }
     ]),
     order: 3
   },
   {
-    name: "Promise Chabalala",
-    subjects: JSON.stringify(["Afrikaans FAL", "English HL", "Business Studies", "History"]),
-    image: "https://i.imgur.com/pf6NDEJ.jpeg",
-    contactName: "Promise Chabalala",
-    contactPhone: "+27 67 401 6982",
+    name: "Miss K",
+    subjects: JSON.stringify(["Accounting", "English", "Physical Science"]),
+    image: "https://i.imgur.com/grXHk5O.jpeg",
+    contactName: "Miss K",
+    contactPhone: "+27 83 520 7064",
     contactEmail: "ExcellenceAcademia2025@gmail.com",
-    description: "Promise brings a wealth of knowledge in language and humanities. She believes in fostering critical thinking skills and a love for learning.",
+    description: "Miss K specializes in accounting, English, and physical science. She is dedicated to helping students excel in these subjects with clarity and confidence.",
     ratings: JSON.stringify([
       {
         id: 1,
-        studentName: "Thabo M.",
-        rating: 5,
-        comment: "Excellent Afrikaans tutor! Very patient and understanding.",
-        date: "2025-03-10"
+        studentName: "Tumi S.",
+        rating: 4,
+        comment: "Miss K is very patient and explains concepts clearly.",
+        date: "2025-03-12"
       }
     ]),
     order: 4
+  },
+  {
+    name: "Jacob",
+    subjects: JSON.stringify(["Tourism", "English", "CAT", "Maths"]),
+    image: "https://i.imgur.com/SwZblK8.jpeg",
+    contactName: "Jacob",
+    contactPhone: "+27 71 683 5713",
+    contactEmail: "ExcellenceAcademia2025@gmail.com",
+    description: "Jacob specializes in tourism, English, CAT, and maths. He is dedicated to ensuring his students understand key concepts in an engaging and approachable way.",
+    ratings: JSON.stringify([
+      {
+        id: 1,
+        studentName: "Sipho N.",
+        rating: 5,
+        comment: "Jacob is an excellent CAT teacher. Very knowledgeable!",
+        date: "2025-03-08"
+      }
+    ]),
+    order: 5
+  },
+  {
+    name: "Miss Keturah",
+    subjects: JSON.stringify(["Life Sciences", "Physical Sciences", "Mathematics"]),
+    image: "https://media-hosting.imagekit.io/ead232ae99dd4dc2/WhatsApp%20Image%202025-04-02%20at%2018.40.37_2e9a0094.jpg?Expires=1838456745&Key-Pair-Id=K2ZIVPTIP2VGHC&Signature=2GQwXVeBJ~2FqX3DA66OMXmKnzbh6LtLZeAsSVlbpXCSvE5u-KrFryvFGerhsw~tZZoXkhhaIa1eH-N7W0dbLWMoD7HF3mRx1Z0LfbcbkzHIp1bdEFMeEQ6Rb2hOWOIj37HugVCKXsyRCilCkFGSscSFF0~RnjCT6oX0dkfE1yRcM8AISo7PGibOFlzq8CbUvRrdtATM227iQhmkL51uxvT5beKcnt24rIyN62aHy7iaD1qWltwSt1MTZJNbL4X440ehX0XP34YYfbWJxrv04YbM14a0g6SsKnNFfmofW2yKj8NWGcmNqaqzmg~VdQJvVFWH~CBVva2XEz89PIM9hA__",
+    contactName: "Miss Keturah",
+    contactPhone: "083 669 4983",
+    contactEmail: "ExcellenceAcademia2025@gmail.com",
+    description: "Miss Keturah is dedicated to teaching Life Sciences, Physical Sciences, and Mathematics. She focuses on fostering deep understanding and academic excellence in her students.",
+    ratings: JSON.stringify([
+      {
+        id: 1,
+        studentName: "Thandi K.",
+        rating: 5,
+        comment: "Miss Keturah is an amazing science teacher!",
+        date: "2025-03-20"
+      }
+    ]),
+    order: 6
+  },
+  {
+    name: "Unobuhle",
+    subjects: JSON.stringify(["Math Literacy"]),
+    image: "https://used-bronze-nnmiofy2ws.edgeone.app/78701011-63ce-4bf9-af08-8a1b8f1854bf.jpeg",
+    contactName: "Unobuhle",
+    contactPhone: "+27 XXX XXX XXXX",
+    contactEmail: "ExcellenceAcademia2025@gmail.com",
+    description: "Unobuhle specializes in Math Literacy. She is dedicated to helping students build confidence and understanding in mathematical concepts.",
+    ratings: JSON.stringify([
+      {
+        id: 1,
+        studentName: "Initial Rating",
+        rating: 4,
+        comment: "Excellent approach to making math literacy accessible.",
+        date: "2025-09-10"
+      }
+    ]),
+    order: 7
+  },
+  {
+    name: "SIR/MR LOVERS",
+    subjects: JSON.stringify(["English FAL", "Business Studies", "Economics"]),
+    image: "https://postimg.cc/8fbvc2NN",
+    contactName: "SIR/MR LOVERS",
+    contactPhone: "+27 XXX XXX XXXX",
+    contactEmail: "ExcellenceAcademia2025@gmail.com",
+    description: "SIR/MR LOVERS brings expertise in English FAL, Business Studies, and Economics. He is passionate about helping students excel in language and business subjects.",
+    ratings: JSON.stringify([
+      {
+        id: 1,
+        studentName: "Initial Rating",
+        rating: 4,
+        comment: "Great teacher with strong knowledge in business and economics.",
+        date: "2025-09-10"
+      }
+    ]),
+    order: 8
+  },
+  {
+    name: "E.A Abby",
+    subjects: JSON.stringify(["History", "English HL", "English FAL"]),
+    image: "https://favourite-white-hffiigk1ng.edgeone.app/f8461f6a-360d-48ab-a83f-5c5d9ddba9ea.jpeg",
+    contactName: "E.A Abby",
+    contactPhone: "+27 XXX XXX XXXX",
+    contactEmail: "ExcellenceAcademia2025@gmail.com",
+    description: "E.A Abby specializes in History, English Home Language, and English First Additional Language. She is dedicated to helping students develop critical thinking and language skills.",
+    ratings: JSON.stringify([
+      {
+        id: 1,
+        studentName: "Initial Rating",
+        rating: 5,
+        comment: "Excellent history and English teacher with engaging lessons.",
+        date: "2025-09-10"
+      }
+    ]),
+    order: 9
+  },
+  {
+    name: "Rohan",
+    subjects: JSON.stringify(["Mathematics", "English HL"]),
+    image: "https://military-moccasin-evrpzkorak.edgeone.app/f5f4976d-112e-4a9f-abe2-fe1c9e69de3d.jpeg",
+    contactName: "Rohan",
+    contactPhone: "+27 XXX XXX XXXX",
+    contactEmail: "ExcellenceAcademia2025@gmail.com",
+    description: "Rohan is a dedicated Mathematics and English Home Language tutor. He focuses on building strong foundations in both analytical and language skills to help students excel.",
+    ratings: JSON.stringify([
+      {
+        id: 1,
+        studentName: "Initial Rating",
+        rating: 5,
+        comment: "Outstanding math and English tutor with clear explanations.",
+        date: "2025-09-10"
+      }
+    ]),
+    order: 10
   }
 ]
 
@@ -94,7 +215,7 @@ const subjectsData = [
     description: "From algebra to calculus, master any math topic with our expert tutors.",
     image: "https://images.unsplash.com/photo-1509228468518-180dd4864904",
     category: "STEM",
-    tutorsCount: 12,
+    tutorsCount: 14, // Updated count to include new tutors
     popularTopics: JSON.stringify(["Algebra", "Calculus", "Geometry", "Trigonometry"]),
     difficulty: JSON.stringify(["Grade 10", "Grade 11", "Grade 12"]),
     order: 1
@@ -124,7 +245,7 @@ const subjectsData = [
     description: "Improve your language skills, essay writing, and literature analysis.",
     image: "https://images.unsplash.com/photo-1457369804613-52c61a468e7d",
     category: "Languages",
-    tutorsCount: 10,
+    tutorsCount: 13, // Updated count to include new tutors (HL and FAL)
     popularTopics: JSON.stringify(["Grammar", "Essay Writing", "Literature", "Comprehension"]),
     difficulty: JSON.stringify(["Grade 10", "Grade 11", "Grade 12"]),
     order: 4
@@ -184,7 +305,7 @@ const subjectsData = [
     description: "Discover historical events and develop critical analysis skills.",
     image: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570",
     category: "Humanities",
-    tutorsCount: 4,
+    tutorsCount: 5, // Updated count to include E.A Abby
     popularTopics: JSON.stringify(["World Wars", "South African History", "Cold War", "Apartheid"]),
     difficulty: JSON.stringify(["Grade 10", "Grade 11", "Grade 12"]),
     order: 10

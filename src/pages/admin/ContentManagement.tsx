@@ -136,7 +136,7 @@ interface AboutUsContent {
   id?: string
   goal: string
   mission: string
-  rolesResponsibilities: any
+  rolesResponsibilities: Record<string, unknown>
   isActive?: boolean
 }
 
@@ -149,7 +149,7 @@ interface Tutor {
   contactPhone: string
   contactEmail: string
   description: string
-  ratings: any[]
+  ratings: Array<Record<string, unknown>>
   isActive?: boolean
   order?: number
 }
@@ -175,9 +175,9 @@ interface FooterContent {
   contactEmail: string
   contactPerson: string
   whatsappLink: string
-  socialLinks: any
-  quickLinks: any[]
-  resourceLinks: any[]
+  socialLinks: Record<string, string>
+  quickLinks: Array<Record<string, string>>
+  resourceLinks: Array<Record<string, string>>
   copyrightText: string
   isActive?: boolean
 }
@@ -197,7 +197,7 @@ interface ContactUsContent {
   description: string
   logo: string
   formEndpoint: string
-  contactInfo: any
+  contactInfo: Record<string, string>
   isActive?: boolean
 }
 
@@ -224,7 +224,7 @@ interface ExamRewriteContent {
   applicationFormUrl: string
   grade11FormUrl?: string
   grade12FormUrl?: string
-  pricingInfo: any
+  pricingInfo: Record<string, unknown>
   isActive?: boolean
 }
 
@@ -235,13 +235,14 @@ interface UniversityApplicationContent {
   services: string[]
   process: string[]
   requirements: string[]
-  pricing: any
+  pricing: Record<string, unknown>
   formUrl?: string
   isActive?: boolean
 }
 
 const ContentManagement = () => {
   const { toast } = useToast()
+  const baseUrl = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || ''
   
   // State for different content types
   const [heroContent, setHeroContent] = useState<HeroContent | null>(null)
@@ -280,11 +281,7 @@ const ContentManagement = () => {
   const [loading, setLoading] = useState(true)
 
   // Fetch all content on component mount
-  useEffect(() => {
-    fetchAllContent()
-  }, [])
-
-  const fetchAllContent = async () => {
+  const fetchAllContent = React.useCallback(async () => {
     setLoading(true)
     try {
       await Promise.all([
@@ -314,12 +311,16 @@ const ContentManagement = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchAllContent()
+  }, [fetchAllContent])
 
   // API functions
   const fetchHeroContent = async () => {
     try {
-      const response = await fetch('/api/admin/content/hero')
+  const response = await fetch(`${baseUrl}/api/admin/content/hero`)
       if (response.ok) {
         const data = await response.json()
         setHeroContent(data)
@@ -331,7 +332,7 @@ const ContentManagement = () => {
 
   const fetchFeatures = async () => {
     try {
-      const response = await fetch('/api/admin/content/features')
+  const response = await fetch(`${baseUrl}/api/admin/content/features`)
       if (response.ok) {
         const data = await response.json()
         setFeatures(data)
@@ -343,7 +344,7 @@ const ContentManagement = () => {
 
   const fetchAnnouncements = async () => {
     try {
-      const response = await fetch('/api/admin/content/announcements')
+  const response = await fetch(`${baseUrl}/api/admin/content/announcements`)
       if (response.ok) {
         const data = await response.json()
         setAnnouncements(data)
@@ -355,7 +356,7 @@ const ContentManagement = () => {
 
   const fetchPricingPlans = async () => {
     try {
-      const response = await fetch('/api/admin/content/pricing')
+  const response = await fetch(`${baseUrl}/api/admin/content/pricing`)
       if (response.ok) {
         const data = await response.json()
         setPricingPlans(data)
@@ -367,7 +368,7 @@ const ContentManagement = () => {
 
   const fetchTestimonials = async () => {
     try {
-      const response = await fetch('/api/admin/content/testimonials')
+  const response = await fetch(`${baseUrl}/api/admin/content/testimonials`)
       if (response.ok) {
         const data = await response.json()
         setTestimonials(data)
@@ -379,7 +380,7 @@ const ContentManagement = () => {
 
   const fetchTeamMembers = async () => {
     try {
-      const response = await fetch('/api/admin/content/team-members')
+  const response = await fetch(`${baseUrl}/api/admin/content/team-members`)
       if (response.ok) {
         const data = await response.json()
         setTeamMembers(data)
@@ -391,7 +392,7 @@ const ContentManagement = () => {
 
   const fetchAboutUsContent = async () => {
     try {
-      const response = await fetch('/api/admin/content/about-us')
+  const response = await fetch(`${baseUrl}/api/admin/content/about-us`)
       if (response.ok) {
         const data = await response.json()
         setAboutUsContent(data)
@@ -403,7 +404,7 @@ const ContentManagement = () => {
 
   const fetchTutors = async () => {
     try {
-      const response = await fetch('/api/admin/content/tutors')
+  const response = await fetch(`${baseUrl}/api/admin/content/tutors`)
       if (response.ok) {
         const data = await response.json()
         setTutors(data)
@@ -415,7 +416,7 @@ const ContentManagement = () => {
 
   const fetchSubjects = async () => {
     try {
-      const response = await fetch('/api/admin/content/subjects')
+  const response = await fetch(`${baseUrl}/api/admin/content/subjects`)
       if (response.ok) {
         const data = await response.json()
         setSubjects(data)
@@ -427,7 +428,7 @@ const ContentManagement = () => {
 
   const fetchFooterContent = async () => {
     try {
-      const response = await fetch('/api/admin/content/footer')
+  const response = await fetch(`${baseUrl}/api/admin/content/footer`)
       if (response.ok) {
         const data = await response.json()
         setFooterContent(data)
@@ -439,7 +440,7 @@ const ContentManagement = () => {
 
   const fetchNavigationItems = async () => {
     try {
-      const response = await fetch('/api/admin/content/navigation')
+  const response = await fetch(`${baseUrl}/api/admin/content/navigation`)
       if (response.ok) {
         const data = await response.json()
         setNavigationItems(data)
@@ -451,7 +452,7 @@ const ContentManagement = () => {
 
   const fetchContactUsContent = async () => {
     try {
-      const response = await fetch('/api/admin/content/contact-us')
+  const response = await fetch(`${baseUrl}/api/admin/content/contact-us`)
       if (response.ok) {
         const data = await response.json()
         setContactUsContent(data)
@@ -463,7 +464,7 @@ const ContentManagement = () => {
 
   const fetchBecomeTutorContent = async () => {
     try {
-      const response = await fetch('/api/admin/content/become-tutor')
+  const response = await fetch(`${baseUrl}/api/admin/content/become-tutor`)
       if (response.ok) {
         const data = await response.json()
         setBecomeTutorContent(data)
@@ -475,7 +476,7 @@ const ContentManagement = () => {
 
   const fetchExamRewriteContent = async () => {
     try {
-      const response = await fetch('/api/admin/content/exam-rewrite')
+  const response = await fetch(`${baseUrl}/api/admin/content/exam-rewrite`)
       if (response.ok) {
         const data = await response.json()
         setExamRewriteContent(data)
@@ -487,7 +488,7 @@ const ContentManagement = () => {
 
   const fetchUniversityApplicationContent = async () => {
     try {
-      const response = await fetch('/api/admin/content/university-application')
+  const response = await fetch(`${baseUrl}/api/admin/content/university-application`)
       if (response.ok) {
         const data = await response.json()
         setUniversityApplicationContent(data)
@@ -501,7 +502,7 @@ const ContentManagement = () => {
   const saveHeroContent = async (content: HeroContent) => {
     try {
       const method = content.id ? 'PUT' : 'POST'
-      const response = await fetch('/api/admin/content/hero', {
+  const response = await fetch(`${baseUrl}/api/admin/content/hero`, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(content)
