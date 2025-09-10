@@ -1,18 +1,19 @@
 {
-	"compilerOptions": {
-		"target": "ES2020",
-		"module": "CommonJS",
-		"moduleResolution": "node",
-		"esModuleInterop": true,
-		"outDir": "./dist",
-		"rootDir": "./src",
-		"strict": false,
-		"skipLibCheck": true,
-		"baseUrl": ".",
-		"paths": {
-			"@/*": ["./src/*"]
-		}
-	},
-	"include": ["src/server/**/*", "src/lib/db.ts"],
-	"exclude": ["node_modules", "src/lib/email.ts"]
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "nodenext",
+
+    "esModuleInterop": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": false,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/server/**/*", "src/lib/db.ts"],
+  "exclude": ["node_modules", "src/lib/email.ts"]
 }

@@ -127,78 +127,7 @@ interface Question {
   points: number
 }
 
-// Mock data
-const mockStudents: Student[] = [
-  {
-    id: "1",
-    name: "John Doe",
-    email: "john.doe@example.com",
-    progress: 75,
-    lastActivity: "2024-05-19 15:30",
-    status: "active",
-    enrolledCourses: ["1", "2"],
-    grades: { "1": 85, "2": 92 },
-  },
-  {
-    id: "2",
-    name: "Jane Smith",
-    email: "jane.smith@example.com",
-    progress: 90,
-    lastActivity: "2024-05-19 16:45",
-    status: "active",
-    enrolledCourses: ["1"],
-    grades: { "1": 78 },
-  },
-  {
-    id: "3",
-    name: "Mike Johnson",
-    email: "mike.johnson@example.com",
-    progress: 45,
-    lastActivity: "2024-05-18 10:15",
-    status: "inactive",
-    enrolledCourses: ["2"],
-    grades: { "2": 65 },
-  },
-  {
-    id: "4",
-    name: "Sarah Williams",
-    email: "sarah.williams@example.com",
-    progress: 60,
-    lastActivity: "2024-05-19 09:30",
-    status: "pending",
-    enrolledCourses: [],
-  },
-  {
-    id: "5",
-    name: "David Brown",
-    email: "david.brown@example.com",
-    progress: 85,
-    lastActivity: "2024-05-19 14:20",
-    status: "active",
-    enrolledCourses: ["1", "2", "3"],
-    grades: { "1": 91, "2": 88, "3": 79 },
-  },
-  {
-    id: "6",
-    name: "Emily Davis",
-    email: "emily.davis@example.com",
-    progress: 70,
-    lastActivity: "2024-05-19 11:45",
-    status: "active",
-    enrolledCourses: ["3"],
-    grades: { "3": 82 },
-  },
-  {
-    id: "7",
-    name: "Michael Wilson",
-    email: "michael.wilson@example.com",
-    progress: 55,
-    lastActivity: "2024-05-18 13:20",
-    status: "active",
-    enrolledCourses: ["2", "3"],
-    grades: { "2": 75, "3": 68 },
-  },
-]
+// Live data will be loaded from the API. Fallback to empty lists.
 
 const mockCourses: Course[] = [
   {
@@ -378,7 +307,7 @@ export default function TutorDashboard() {
   // State
   const [user, setUser] = useState({ name: "Dr. Smith", email: "dr.smith@university.edu", role: "tutor" })
   const [courses, setCourses] = useState<Course[]>(mockCourses)
-  const [students, setStudents] = useState<Student[]>(mockStudents)
+  const [students, setStudents] = useState<Student[]>([])
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
@@ -420,6 +349,40 @@ export default function TutorDashboard() {
     // Calculate unread notifications
     setUnreadCount(notifications.filter((n) => !n.read).length)
   }, [notifications])
+
+  // Load live data from API (safe fallbacks if endpoints unavailable)
+  const apiBase = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || ''
+
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT id, name, email, created_at as createdAt FROM users WHERE role = "student"' }) })
+        if (res.ok) {
+          const data = await res.json()
+          const mapped = Array.isArray(data) ? data.map((s: any) => ({ id: s.id?.toString(), name: s.name, email: s.email, progress: 0, lastActivity: s.createdAt, status: 'active', enrolledCourses: [] })) : []
+          setStudents(mapped)
+        }
+      } catch (e) {
+        console.error('Failed to fetch students', e)
+      }
+    }
+
+    const fetchCourses = async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/courses`)
+        if (res.ok) {
+          const data = await res.json()
+          const mapped = Array.isArray(data) ? data.map((c: any) => ({ id: c.id?.toString(), name: c.title || c.name || 'Course', description: c.description || '', students: 0, nextSession: '', progress: 0, materials: [], tests: [], color: '#4f46e5' })) : []
+          setCourses(mapped)
+        }
+      } catch (e) {
+        console.error('Failed to fetch courses', e)
+      }
+    }
+
+    fetchStudents()
+    fetchCourses()
+  }, [])
 
   // Handlers
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -656,7 +619,8 @@ export default function TutorDashboard() {
       student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.email.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesCourse = filterCourse ? student.enrolledCourses.includes(filterCourse) : true
+    // enrolledCourses may be undefined when loaded from API; guard with fallback
+    const matchesCourse = filterCourse ? (student.enrolledCourses || []).includes(filterCourse) : true
 
     const matchesStatus = filterStatus ? student.status === filterStatus : true
 
@@ -1632,7 +1596,7 @@ export default function TutorDashboard() {
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
-                              {student.enrolledCourses.map((courseId) => {
+                              {(student.enrolledCourses || []).map((courseId) => {
                                 const course = courses.find((c) => c.id === courseId)
                                 return course ? (
                                   <Badge key={courseId} variant="outline" className="text-xs">
@@ -1640,7 +1604,7 @@ export default function TutorDashboard() {
                                   </Badge>
                                 ) : null
                               })}
-                              {student.enrolledCourses.length === 0 && (
+                              {(student.enrolledCourses?.length ?? 0) === 0 && (
                                 <span className="text-xs text-muted-foreground">None</span>
                               )}
                             </div>

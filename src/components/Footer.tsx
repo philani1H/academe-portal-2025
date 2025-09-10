@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFacebook, faTwitter, faInstagram, faWhatsapp, faTiktok } from "@fortawesome/free-brands-svg-icons";
@@ -8,32 +7,8 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";  // Import useAuth hook
 
 export default function Footer() {
-  const [footerContent, setFooterContent] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const whatsappLink = "https://wa.me/27793867427";
   const { user } = useAuth();  // Get user from auth context
-
-  // No local fallback; content must come from API
-
-  // Fetch footer content from API
-  useEffect(() => {
-    fetchFooterContent();
-  }, []);
-
-  const fetchFooterContent = async () => {
-    try {
-      const response = await fetch('/api/admin/content/footer');
-      if (!response.ok) throw new Error('Failed to load footer')
-      const data = await response.json();
-      setFooterContent(data);
-    } catch (error) {
-      console.error('Error fetching footer content:', error);
-      setFooterContent(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const content = footerContent;
 
   return (
     <motion.footer
@@ -48,8 +23,8 @@ export default function Footer() {
           <div className="space-y-2">
             <h3 className="text-xl font-semibold mb-4">Contact Us</h3>
             <div className="text-gray-300">
-              <p>Phone: {content?.contactPhone}</p>
-              <p>Email: {content?.contactEmail}</p>
+              <p>Phone: +27 79 386 7427</p>
+              <p>Email: ExcellenceAcademia2025@gmail.com</p>
             </div>
           </div>
 
@@ -57,13 +32,11 @@ export default function Footer() {
           <div className="space-y-2">
             <h3 className="text-xl font-semibold mb-4">Quick Links</h3>
             <ul className="space-y-2">
-              {(content?.quickLinks || []).map((link, index) => (
-                <li key={index}>
-                  <Link to={link.path} className="text-gray-300 hover:text-white transition-colors">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
+              <li><Link to="/about-us" className="text-gray-300 hover:text-white transition-colors">About Us</Link></li>
+              <li><Link to="/pricing" className="text-gray-300 hover:text-white transition-colors">Admissions</Link></li>
+              <li><Link to="/subjects" className="text-gray-300 hover:text-white transition-colors">Programs</Link></li>
+              <li><Link to="/university-application" className="text-gray-300 hover:text-white transition-colors">University Application</Link></li>
+
             </ul>
           </div>
 
@@ -71,13 +44,12 @@ export default function Footer() {
           <div className="space-y-2">
             <h3 className="text-xl font-semibold mb-4">Resources</h3>
             <ul className="space-y-2">
-              {(content?.resourceLinks || []).map((link, index) => (
-                <li key={index}>
-                  <Link to={link.path} className="text-gray-300 hover:text-white transition-colors">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
+              <li><Link to="/student-login" className="text-gray-300 hover:text-white transition-colors">Student Portal</Link></li>
+              <li><Link to="/tutor-login" className="text-gray-300 hover:text-white transition-colors">Tutor Portal</Link></li>
+              <li><Link to="/admin-login" className="text-gray-300 hover:text-white transition-colors">Admin Portal</Link></li>
+              <li><Link to="/exam-rewrite" className="text-gray-300 hover:text-white transition-colors">Exam Rewrite</Link></li>
+              <li><Link to="/become-tutor" className="text-gray-300 hover:text-white transition-colors">Become a Tutor</Link></li>
+              <li><Link to="/testimonials" className="text-gray-300 hover:text-white transition-colors">Testimonials</Link></li>
             </ul>
           </div>
 
@@ -85,16 +57,16 @@ export default function Footer() {
           <div className="space-y-4">
             <div className="text-center">
               <h3 className="text-2xl font-bold mb-3 text-blue-200">
-                {content?.companyName}
+                EXCELLENCE Akademie 25
               </h3>
-              <p className="text-blue-100 mb-6">{content?.tagline}</p>
+              <p className="text-blue-100 mb-6">Empowering Minds, One Click at a Time!</p>
 
               <h4 className="text-xl font-semibold mb-3 text-blue-200">
                 Contact:
               </h4>
-              <p className="text-blue-100">{content?.contactPerson}</p>
-              <p className="text-blue-100">{content?.contactPhone}</p>
-              <p className="text-blue-100 mb-6">{content?.contactEmail}</p>
+              <p className="text-blue-100">Roshan Singh</p>
+              <p className="text-blue-100">+27 79 386 7427</p>
+              <p className="text-blue-100 mb-6">ExcellenceAcademia2025@gmail.com</p>
 
               <h4 className="text-xl font-semibold mb-3 text-blue-200">
                 Connect With Us:
@@ -102,7 +74,7 @@ export default function Footer() {
               {/* Social Media Links */}
               <div className="flex justify-center gap-4 mb-4">
                 <a
-                  href={content?.socialLinks?.facebook}
+                  href="https://facebook.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:opacity-80 transition-opacity text-blue-100"
@@ -110,7 +82,7 @@ export default function Footer() {
                   <FontAwesomeIcon icon={faFacebook} size="2x" />
                 </a>
                 <a
-                  href={content?.socialLinks?.twitter}
+                  href="https://twitter.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:opacity-80 transition-opacity text-blue-100"
@@ -118,7 +90,7 @@ export default function Footer() {
                   <FontAwesomeIcon icon={faTwitter} size="2x" />
                 </a>
                 <a
-                  href={content?.socialLinks?.instagram}
+                  href="https://www.instagram.com/excellence.academia25?igsh=eHAxMjJ0ZGVzbzk1"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:opacity-80 transition-opacity text-blue-100"
@@ -126,7 +98,7 @@ export default function Footer() {
                   <FontAwesomeIcon icon={faInstagram} size="2x" />
                 </a>
                 <a
-                  href={content?.socialLinks?.whatsapp}
+                  href={whatsappLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:opacity-80 transition-opacity text-blue-100"
@@ -134,7 +106,7 @@ export default function Footer() {
                   <FontAwesomeIcon icon={faWhatsapp} size="2x" />
                 </a>
                 <a
-                  href={content?.socialLinks?.tiktok}
+                  href="https://www.tiktok.com/@excellence.academia25?_t=ZM-8tahfNmyA3a&_r=1"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:opacity-80 transition-opacity text-blue-100"
@@ -144,13 +116,13 @@ export default function Footer() {
               </div>
               {/* WhatsApp QR Code */}
               <a
-                href={content?.whatsappLink}
+                href={whatsappLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block hover:opacity-80 transition-opacity"
               >
                 <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(content?.whatsappLink || '')}`}
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(whatsappLink)}`}
                   alt="WhatsApp QR Code"
                   width={100}
                   height={100}
@@ -163,7 +135,7 @@ export default function Footer() {
 
         {/* Copyright Section */}
         <div className="mt-8 pt-4 border-t border-gray-700 text-center text-gray-300">
-          <p>{content?.copyrightText}</p>
+          <p>© 2025 Excellence Academia. All rights reserved.</p>
         </div>
       </div>
     </motion.footer>

@@ -254,7 +254,7 @@ const aboutUsContentData = {
   })
 }
 
-// Sample testimonials data
+// Extended testimonials data
 const testimonialsData = [
   {
     content: "My grades improved significantly after just a few sessions. The tutors are knowledgeable and patient. I went from struggling with mathematics to scoring an A in my final exam!",
@@ -295,6 +295,116 @@ const testimonialsData = [
     image: "/placeholder.svg?height=100&width=100",
     rating: 5,
     order: 4
+  },
+  {
+    content: "The chemistry tutoring sessions transformed my understanding completely. What seemed impossible before became crystal clear. I never thought I'd enjoy science, but now I'm considering it as a career path!",
+    author: "Lisa P.",
+    role: "Chemistry Student",
+    subject: "Chemistry",
+    improvement: "F to B+",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 5
+  },
+  {
+    content: "As an adult learner returning to education, I was nervous about keeping up. The tutors at Excellence Akademie made me feel comfortable and supported throughout my journey. Highly recommended!",
+    author: "David T.",
+    role: "Adult Learner",
+    subject: "Accounting",
+    improvement: "Beginner to B",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 6
+  },
+  {
+    content: "The online tutoring platform is fantastic! I could access help from anywhere, and the interactive tools made learning engaging. My essay writing skills improved dramatically in just two months.",
+    author: "Rachel H.",
+    role: "Literature Student",
+    subject: "Literature",
+    improvement: "C+ to A-",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 7
+  },
+  {
+    content: "I struggled with biology for years until I found Excellence Akademie. The visual aids and practical examples they used made complex topics easy to grasp. Now I'm pursuing a career in medicine!",
+    author: "Alex C.",
+    role: "Biology Student",
+    subject: "Biology",
+    improvement: "D+ to A",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 8
+  },
+  {
+    content: "The group study sessions were incredibly valuable. Learning alongside other students while having expert guidance created the perfect learning environment. My Spanish fluency improved rapidly!",
+    author: "Maria S.",
+    role: "Language Student",
+    subject: "Spanish",
+    improvement: "B to A+",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 9
+  },
+  {
+    content: "Preparing for university entrance exams was stressful, but Excellence Akademie made it manageable. Their structured approach and practice tests gave me the confidence I needed to succeed.",
+    author: "Thomas L.",
+    role: "University Prep Student",
+    subject: "Multiple Subjects",
+    improvement: "Average to Top 10%",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 10
+  },
+  {
+    content: "The computer science tutoring exceeded my expectations. From basic programming to advanced algorithms, they covered everything I needed. I landed my dream internship thanks to their guidance!",
+    author: "Jennifer K.",
+    role: "Computer Science Student",
+    subject: "Computer Science",
+    improvement: "C- to A",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 11
+  },
+  {
+    content: "History was always my weakest subject until I started with Excellence Akademie. Their storytelling approach made historical events come alive. I actually look forward to history class now!",
+    author: "Marcus W.",
+    role: "History Student",
+    subject: "History",
+    improvement: "D to B+",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 12
+  },
+  {
+    content: "The specialized exam preparation course was exactly what I needed for my professional certification. The tutors understood the exam format perfectly and helped me pass on my first attempt!",
+    author: "Helen R.",
+    role: "Professional Student",
+    subject: "Project Management",
+    improvement: "Failed to Certified",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 13
+  },
+  {
+    content: "As a parent, I was amazed by how quickly my daughter's attitude toward learning changed. The tutors don't just teach subjects; they inspire confidence and curiosity. Money well spent!",
+    author: "Patricia N.",
+    role: "Parent",
+    subject: "Multiple Subjects",
+    improvement: "C average to B+ average",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 14
+  },
+  {
+    content: "The psychology tutoring sessions were incredibly insightful. The tutor helped me understand complex theories and apply them practically. My research paper received the highest grade in the class!",
+    author: "Daniel F.",
+    role: "Psychology Student",
+    subject: "Psychology",
+    improvement: "B- to A+",
+    image: "/placeholder.svg?height=100&width=100",
+    rating: 5,
+    order: 15
   }
 ]
 

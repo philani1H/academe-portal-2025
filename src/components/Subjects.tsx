@@ -164,7 +164,15 @@ const Subjects = () => {
       const response = await fetch('/api/admin/content/subjects')
       if (response.ok) {
         const data = await response.json()
-        setSubjects(data)
+        // Normalize subject data to ensure array fields are arrays
+        const normalized = Array.isArray(data)
+          ? data.map((s) => ({
+              ...s,
+              popularTopics: Array.isArray(s?.popularTopics) ? s.popularTopics : [],
+              difficulty: Array.isArray(s?.difficulty) ? s.difficulty : [],
+            }))
+          : []
+        setSubjects(normalized)
       } else {
         // Fallback to default subjects if API fails
         setSubjects(defaultSubjectData)

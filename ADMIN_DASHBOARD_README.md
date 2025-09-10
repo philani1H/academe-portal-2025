@@ -119,7 +119,7 @@ A comprehensive admin dashboard has been created to manage all website content d
 - `DELETE /api/admin/content/team-members?id={id}` - Delete team member
 
 ### About Us
-- `GET /api/admin/content/about-us` - Get active about us content
+- `GET us/api/admin/content/about-` - Get active about us content
 - `POST /api/admin/content/about-us` - Create new about us content
 - `PUT /api/admin/content/about-us` - Update about us content
 
