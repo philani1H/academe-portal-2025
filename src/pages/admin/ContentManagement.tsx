@@ -244,6 +244,38 @@ const ContentManagement = () => {
   const { toast } = useToast()
   const baseUrl = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || ''
   
+  // Helper: fetch wrapper that unwraps { success, data }
+  const apiFetch = async <T = any>(path: string, init?: RequestInit): Promise<T> => {
+    const res = await fetch(path, {
+      credentials: 'include',
+      ...(init || {}),
+    })
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`)
+    const json = await res.json().catch(() => null)
+    return (json && (json.data !== undefined ? json.data : json)) as T
+  }
+  
+  // Helper: convert file to base64 data URL
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+  
+  // Helper: upload image via API, returns URL string
+  const uploadImage = async (file: File): Promise<string> => {
+    const dataUrl = await fileToBase64(file)
+    const res = await apiFetch<{ url: string }>(`${baseUrl}/api/admin/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: dataUrl, fileName: file.name }),
+    })
+    return (res as any).url || (res as any)
+  }
+  
   // State for different content types
   const [heroContent, setHeroContent] = useState<HeroContent | null>(null)
   const [features, setFeatures] = useState<Feature[]>([])
@@ -320,11 +352,8 @@ const ContentManagement = () => {
   // API functions
   const fetchHeroContent = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/hero`)
-      if (response.ok) {
-        const data = await response.json()
-        setHeroContent(data)
-      }
+      const data = await apiFetch<HeroContent | null>(`${baseUrl}/api/admin/content/hero`)
+      if (data) setHeroContent(data)
     } catch (error) {
       console.error('Error fetching hero content:', error)
     }
@@ -332,11 +361,8 @@ const ContentManagement = () => {
 
   const fetchFeatures = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/features`)
-      if (response.ok) {
-        const data = await response.json()
-        setFeatures(data)
-      }
+      const data = await apiFetch<Feature[]>(`${baseUrl}/api/admin/content/features`)
+      setFeatures(data || [])
     } catch (error) {
       console.error('Error fetching features:', error)
     }
@@ -344,11 +370,8 @@ const ContentManagement = () => {
 
   const fetchAnnouncements = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/announcements`)
-      if (response.ok) {
-        const data = await response.json()
-        setAnnouncements(data)
-      }
+      const data = await apiFetch<Announcement[]>(`${baseUrl}/api/admin/content/announcements`)
+      setAnnouncements(data || [])
     } catch (error) {
       console.error('Error fetching announcements:', error)
     }
@@ -356,11 +379,8 @@ const ContentManagement = () => {
 
   const fetchPricingPlans = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/pricing`)
-      if (response.ok) {
-        const data = await response.json()
-        setPricingPlans(data)
-      }
+      const data = await apiFetch<PricingPlan[]>(`${baseUrl}/api/admin/content/pricing`)
+      setPricingPlans(data || [])
     } catch (error) {
       console.error('Error fetching pricing plans:', error)
     }
@@ -368,11 +388,8 @@ const ContentManagement = () => {
 
   const fetchTestimonials = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/testimonials`)
-      if (response.ok) {
-        const data = await response.json()
-        setTestimonials(data)
-      }
+      const data = await apiFetch<Testimonial[]>(`${baseUrl}/api/admin/content/testimonials`)
+      setTestimonials(data || [])
     } catch (error) {
       console.error('Error fetching testimonials:', error)
     }
@@ -380,11 +397,8 @@ const ContentManagement = () => {
 
   const fetchTeamMembers = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/team-members`)
-      if (response.ok) {
-        const data = await response.json()
-        setTeamMembers(data)
-      }
+      const data = await apiFetch<TeamMember[]>(`${baseUrl}/api/admin/content/team-members`)
+      setTeamMembers(data || [])
     } catch (error) {
       console.error('Error fetching team members:', error)
     }
@@ -392,11 +406,8 @@ const ContentManagement = () => {
 
   const fetchAboutUsContent = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/about-us`)
-      if (response.ok) {
-        const data = await response.json()
-        setAboutUsContent(data)
-      }
+      const data = await apiFetch<AboutUsContent | null>(`${baseUrl}/api/admin/content/about-us`)
+      if (data) setAboutUsContent(data)
     } catch (error) {
       console.error('Error fetching about us content:', error)
     }
@@ -404,11 +415,8 @@ const ContentManagement = () => {
 
   const fetchTutors = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/tutors`)
-      if (response.ok) {
-        const data = await response.json()
-        setTutors(data)
-      }
+      const data = await apiFetch<Tutor[]>(`${baseUrl}/api/admin/content/tutors`)
+      setTutors(data || [])
     } catch (error) {
       console.error('Error fetching tutors:', error)
     }
@@ -416,11 +424,8 @@ const ContentManagement = () => {
 
   const fetchSubjects = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/subjects`)
-      if (response.ok) {
-        const data = await response.json()
-        setSubjects(data)
-      }
+      const data = await apiFetch<Subject[]>(`${baseUrl}/api/admin/content/subjects`)
+      setSubjects(data || [])
     } catch (error) {
       console.error('Error fetching subjects:', error)
     }
@@ -428,11 +433,8 @@ const ContentManagement = () => {
 
   const fetchFooterContent = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/footer`)
-      if (response.ok) {
-        const data = await response.json()
-        setFooterContent(data)
-      }
+      const data = await apiFetch<FooterContent | null>(`${baseUrl}/api/admin/content/footer`)
+      if (data) setFooterContent(data)
     } catch (error) {
       console.error('Error fetching footer content:', error)
     }
@@ -440,11 +442,8 @@ const ContentManagement = () => {
 
   const fetchNavigationItems = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/navigation`)
-      if (response.ok) {
-        const data = await response.json()
-        setNavigationItems(data)
-      }
+      const data = await apiFetch<NavigationItem[]>(`${baseUrl}/api/admin/content/navigation`)
+      setNavigationItems(data || [])
     } catch (error) {
       console.error('Error fetching navigation items:', error)
     }
@@ -452,11 +451,8 @@ const ContentManagement = () => {
 
   const fetchContactUsContent = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/contact-us`)
-      if (response.ok) {
-        const data = await response.json()
-        setContactUsContent(data)
-      }
+      const data = await apiFetch<ContactUsContent | null>(`${baseUrl}/api/admin/content/contact-us`)
+      if (data) setContactUsContent(data)
     } catch (error) {
       console.error('Error fetching contact us content:', error)
     }
@@ -464,11 +460,8 @@ const ContentManagement = () => {
 
   const fetchBecomeTutorContent = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/become-tutor`)
-      if (response.ok) {
-        const data = await response.json()
-        setBecomeTutorContent(data)
-      }
+      const data = await apiFetch<BecomeTutorContent | null>(`${baseUrl}/api/admin/content/become-tutor`)
+      if (data) setBecomeTutorContent(data)
     } catch (error) {
       console.error('Error fetching become tutor content:', error)
     }
@@ -476,11 +469,8 @@ const ContentManagement = () => {
 
   const fetchExamRewriteContent = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/exam-rewrite`)
-      if (response.ok) {
-        const data = await response.json()
-        setExamRewriteContent(data)
-      }
+      const data = await apiFetch<ExamRewriteContent | null>(`${baseUrl}/api/admin/content/exam-rewrite`)
+      if (data) setExamRewriteContent(data)
     } catch (error) {
       console.error('Error fetching exam rewrite content:', error)
     }
@@ -488,11 +478,8 @@ const ContentManagement = () => {
 
   const fetchUniversityApplicationContent = async () => {
     try {
-  const response = await fetch(`${baseUrl}/api/admin/content/university-application`)
-      if (response.ok) {
-        const data = await response.json()
-        setUniversityApplicationContent(data)
-      }
+      const data = await apiFetch<UniversityApplicationContent | null>(`${baseUrl}/api/admin/content/university-application`)
+      if (data) setUniversityApplicationContent(data)
     } catch (error) {
       console.error('Error fetching university application content:', error)
     }
@@ -502,23 +489,14 @@ const ContentManagement = () => {
   const saveHeroContent = async (content: HeroContent) => {
     try {
       const method = content.id ? 'PUT' : 'POST'
-  const response = await fetch(`${baseUrl}/api/admin/content/hero`, {
+      const data = await apiFetch<HeroContent>(`${baseUrl}/api/admin/content/hero`, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(content)
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        setHeroContent(data)
-        setEditingHero(null)
-        toast({
-          title: "Success",
-          description: "Hero content saved successfully",
-        })
-      } else {
-        throw new Error('Failed to save hero content')
-      }
+      setHeroContent(data)
+      setEditingHero(null)
+      toast({ title: "Success", description: "Hero content saved successfully" })
     } catch (error) {
       console.error('Error saving hero content:', error)
       toast({
@@ -532,27 +510,18 @@ const ContentManagement = () => {
   const saveFeature = async (feature: Feature) => {
     try {
       const method = feature.id ? 'PUT' : 'POST'
-      const response = await fetch('/api/admin/content/features', {
+      const data = await apiFetch<Feature>(`${baseUrl}/api/admin/content/features`, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(feature)
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (feature.id) {
-          setFeatures(features.map(f => f.id === feature.id ? data : f))
-        } else {
-          setFeatures([...features, data])
-        }
-        setEditingFeature(null)
-        toast({
-          title: "Success",
-          description: "Feature saved successfully",
-        })
+      if (feature.id) {
+        setFeatures(features.map(f => f.id === feature.id ? data : f))
       } else {
-        throw new Error('Failed to save feature')
+        setFeatures([...features, data])
       }
+      setEditingFeature(null)
+      toast({ title: "Success", description: "Feature saved successfully" })
     } catch (error) {
       console.error('Error saving feature:', error)
       toast({
@@ -565,19 +534,9 @@ const ContentManagement = () => {
 
   const deleteFeature = async (id: string) => {
     try {
-      const response = await fetch(`/api/admin/content/features?id=${id}`, {
-        method: 'DELETE'
-      })
-
-      if (response.ok) {
-        setFeatures(features.filter(f => f.id !== id))
-        toast({
-          title: "Success",
-          description: "Feature deleted successfully",
-        })
-      } else {
-        throw new Error('Failed to delete feature')
-      }
+      await apiFetch(`${baseUrl}/api/admin/content/features?id=${id}`, { method: 'DELETE' })
+      setFeatures(features.filter(f => f.id !== id))
+      toast({ title: "Success", description: "Feature deleted successfully" })
     } catch (error) {
       console.error('Error deleting feature:', error)
       toast({
@@ -586,6 +545,40 @@ const ContentManagement = () => {
         variant: "destructive",
       })
     }
+  }
+
+  // Testimonial save
+  const saveTestimonial = async (testimonial: Testimonial) => {
+    const method = testimonial.id ? 'PUT' : 'POST'
+    const data = await apiFetch<Testimonial>(`${baseUrl}/api/admin/content/testimonials`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(testimonial)
+    })
+    if (testimonial.id) {
+      setTestimonials(testimonials.map(t => t.id === testimonial.id ? data : t))
+    } else {
+      setTestimonials([...testimonials, data])
+    }
+    setEditingTestimonial(null)
+    toast({ title: 'Success', description: 'Testimonial saved' })
+  }
+
+  // Team member save
+  const saveTeamMember = async (member: TeamMember) => {
+    const method = member.id ? 'PUT' : 'POST'
+    const data = await apiFetch<TeamMember>(`${baseUrl}/api/admin/content/team-members`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(member)
+    })
+    if (member.id) {
+      setTeamMembers(teamMembers.map(m => m.id === member.id ? data : m))
+    } else {
+      setTeamMembers([...teamMembers, data])
+    }
+    setEditingTeamMember(null)
+    toast({ title: 'Success', description: 'Team member saved' })
   }
 
   // Similar functions for other content types...
@@ -957,6 +950,118 @@ const ContentManagement = () => {
           </Button>
           <Button onClick={() => editingFeature && saveFeature(editingFeature)}>
             {editingFeature?.id ? 'Update' : 'Create'} Feature
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Testimonial Edit Dialog
+  const TestimonialEditDialog = () => (
+    <Dialog open={!!editingTestimonial} onOpenChange={() => setEditingTestimonial(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{editingTestimonial?.id ? 'Edit' : 'Add'} Testimonial</DialogTitle>
+          <DialogDescription>Manage testimonial content and image</DialogDescription>
+        </DialogHeader>
+        {editingTestimonial && (
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Author</Label>
+                <Input value={editingTestimonial.author} onChange={e => setEditingTestimonial({ ...editingTestimonial, author: e.target.value })} />
+              </div>
+              <div>
+                <Label>Role</Label>
+                <Input value={editingTestimonial.role} onChange={e => setEditingTestimonial({ ...editingTestimonial, role: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Subject</Label>
+                <Input value={editingTestimonial.subject} onChange={e => setEditingTestimonial({ ...editingTestimonial, subject: e.target.value })} />
+              </div>
+              <div>
+                <Label>Rating</Label>
+                <Input type="number" min={1} max={5} value={editingTestimonial.rating} onChange={e => setEditingTestimonial({ ...editingTestimonial, rating: Number(e.target.value) })} />
+              </div>
+            </div>
+            <div>
+              <Label>Content</Label>
+              <Textarea rows={3} value={editingTestimonial.content} onChange={e => setEditingTestimonial({ ...editingTestimonial, content: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4 items-end">
+              <div>
+                <Label>Image URL</Label>
+                <Input value={editingTestimonial.image} onChange={e => setEditingTestimonial({ ...editingTestimonial, image: e.target.value })} placeholder="/uploads/.. or https://" />
+              </div>
+              <div>
+                <Label>Upload Image</Label>
+                <Input type="file" accept="image/*" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const url = await uploadImage(file)
+                  setEditingTestimonial({ ...editingTestimonial, image: url })
+                }} />
+              </div>
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingTestimonial(null)}>Cancel</Button>
+          <Button onClick={() => editingTestimonial && saveTestimonial(editingTestimonial)}>
+            {editingTestimonial?.id ? 'Update' : 'Create'} Testimonial
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Team Member Edit Dialog
+  const TeamMemberEditDialog = () => (
+    <Dialog open={!!editingTeamMember} onOpenChange={() => setEditingTeamMember(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{editingTeamMember?.id ? 'Edit' : 'Add'} Team Member</DialogTitle>
+          <DialogDescription>Manage team member details and image</DialogDescription>
+        </DialogHeader>
+        {editingTeamMember && (
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Name</Label>
+                <Input value={editingTeamMember.name} onChange={e => setEditingTeamMember({ ...editingTeamMember, name: e.target.value })} />
+              </div>
+              <div>
+                <Label>Role</Label>
+                <Input value={editingTeamMember.role} onChange={e => setEditingTeamMember({ ...editingTeamMember, role: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>Bio</Label>
+              <Textarea rows={3} value={editingTeamMember.bio} onChange={e => setEditingTeamMember({ ...editingTeamMember, bio: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4 items-end">
+              <div>
+                <Label>Image URL</Label>
+                <Input value={editingTeamMember.image} onChange={e => setEditingTeamMember({ ...editingTeamMember, image: e.target.value })} placeholder="/uploads/..." />
+              </div>
+              <div>
+                <Label>Upload Image</Label>
+                <Input type="file" accept="image/*" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const url = await uploadImage(file)
+                  setEditingTeamMember({ ...editingTeamMember, image: url })
+                }} />
+              </div>
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingTeamMember(null)}>Cancel</Button>
+          <Button onClick={() => editingTeamMember && saveTeamMember(editingTeamMember)}>
+            {editingTeamMember?.id ? 'Update' : 'Create'} Team Member
           </Button>
         </DialogFooter>
       </DialogContent>

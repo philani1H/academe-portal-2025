@@ -5,12 +5,15 @@ import prisma from '../lib/prisma';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken';
+import { sendEmail } from '../lib/email';
 
 // Resolve base path in both ESM and CJS
 const resolvedDir = (typeof __dirname !== 'undefined')
   ? __dirname
   : path.dirname(fileURLToPath(import.meta.url));
 const baseDir = path.resolve(resolvedDir, '..');
+const uploadsDir = path.resolve(baseDir, '..', 'public', 'uploads');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -42,6 +45,13 @@ app.use(cors({
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
+// Serve static uploads (images)
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  next();
+});
+app.use('/uploads', express.static(uploadsDir));
+
 // Request compression for better performance
 app.set('trust proxy', 1);
 
@@ -56,6 +66,45 @@ app.use((req, res, next) => {
   
   next();
 });
+
+// Basic cookie parser
+function parseCookies(req) {
+  const header = req.headers?.cookie || '';
+  return header.split(';').reduce((acc, part) => {
+    const [key, ...v] = part.trim().split('=');
+    if (!key) return acc;
+    acc[key] = decodeURIComponent(v.join('='));
+    return acc;
+  }, {} as Record<string, string>);
+}
+
+// JWT auth helpers
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+function authenticateJWT(req, res, next) {
+  try {
+    const cookies = parseCookies(req);
+    const headerToken = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.slice('Bearer '.length)
+      : undefined;
+    const token = headerToken || cookies['admin_token'] || cookies['auth_token'];
+    if (!token) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ success: false, error: 'Invalid token' });
+  }
+}
+
+function authorizeRoles(...allowedRoles: string[]) {
+  return (req, res, next) => {
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+    next();
+  };
+}
 
 // Global error handling middleware
 app.use((err, req, res, next) => {
@@ -93,6 +142,30 @@ app.get('/api/health', async (req, res) => {
       error: 'Database connection failed'
     });
   }
+});
+
+// Admin auth endpoints
+app.post('/api/admin/auth/login', async (req, res) => {
+  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+  const { username, password } = req.body || {};
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const token = jwt.sign({ username, role: 'admin', exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) }, JWT_SECRET);
+    const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
+    res.setHeader('Set-Cookie', `admin_token=${token}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Strict;${secure}`);
+    return res.status(200).json({ success: true, message: 'Login successful', user: { username, role: 'admin' } });
+  }
+  return res.status(401).json({ success: false, message: 'Invalid credentials' });
+});
+
+app.get('/api/admin/auth/verify', authenticateJWT, authorizeRoles('admin'), (req, res) => {
+  return res.status(200).json({ success: true, user: req.user });
+});
+
+app.post('/api/admin/auth/logout', (req, res) => {
+  const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
+  res.setHeader('Set-Cookie', `admin_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict;${secure}`);
+  return res.status(200).json({ success: true, message: 'Logged out' });
 });
 
 // Optimized generic query endpoint with validation
@@ -514,6 +587,326 @@ app.get('/api/admin/content/:type', async (req, res) => {
       error: `Failed to fetch ${req.params.type} content`,
       message: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+});
+
+// Content configuration for CRUD
+const contentConfig = {
+  'features': { model: () => prisma.feature, jsonFields: ['benefits'], isSingleton: false },
+  'testimonials': { model: () => prisma.testimonial, jsonFields: [], isSingleton: false },
+  'team-members': { model: () => prisma.teamMember, jsonFields: [], isSingleton: false },
+  'pricing': { model: () => prisma.pricingPlan, jsonFields: ['features', 'notIncluded'], isSingleton: false },
+  'announcements': { model: () => prisma.announcement, jsonFields: [], isSingleton: false },
+  'subjects': { model: () => prisma.subject, jsonFields: ['popularTopics', 'difficulty'], isSingleton: false },
+  'navigation': { model: () => prisma.navigationItem, jsonFields: [], isSingleton: false },
+  'tutors': { model: () => prisma.tutor, jsonFields: ['subjects', 'ratings'], isSingleton: false },
+  'footer': { model: () => prisma.footerContent, jsonFields: ['socialLinks', 'quickLinks', 'resourceLinks'], isSingleton: true },
+  'hero': { model: () => prisma.heroContent, jsonFields: ['universities', 'features'], isSingleton: true },
+  'about-us': { model: () => prisma.aboutUsContent, jsonFields: ['rolesResponsibilities'], isSingleton: true },
+  'contact-us': { model: () => prisma.contactUsContent, jsonFields: ['contactInfo'], isSingleton: true },
+  'exam-rewrite': { model: () => prisma.examRewriteContent, jsonFields: ['benefits', 'process', 'subjects', 'pricingInfo'], isSingleton: true },
+  'university-application': { model: () => prisma.universityApplicationContent, jsonFields: ['services', 'process', 'requirements', 'pricing'], isSingleton: true },
+  'become-tutor': { model: () => prisma.becomeTutorContent, jsonFields: ['requirements', 'benefits'], isSingleton: true }
+} as const;
+
+function stringifyJsonFields(data: Record<string, any>, fields: string[]) {
+  const out: Record<string, any> = { ...data };
+  for (const f of fields) {
+    if (out[f] !== undefined) out[f] = JSON.stringify(out[f]);
+  }
+  return out;
+}
+
+function parseJsonFields(entity: any, fields: string[]) {
+  if (!entity) return entity;
+  const out: any = { ...entity };
+  for (const f of fields) {
+    try {
+      out[f] = entity[f] ? JSON.parse(entity[f]) : (Array.isArray(out[f]) ? out[f] : (out[f] ?? null));
+    } catch {
+      // ignore parse errors
+    }
+  }
+  return out;
+}
+
+// Create content
+app.post('/api/admin/content/:type', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { type } = req.params as { type: keyof typeof contentConfig };
+    const cfg = contentConfig[type];
+    if (!cfg) return res.status(404).json({ success: false, error: 'Content type not found' });
+    const model = cfg.model();
+    const payload = stringifyJsonFields(req.body || {}, cfg.jsonFields);
+
+    let created;
+    if (cfg.isSingleton) {
+      await model.updateMany({ where: { isActive: true }, data: { isActive: false } });
+      created = await model.create({ data: { ...payload, isActive: true } });
+    } else {
+      created = await model.create({ data: { ...payload, isActive: true } });
+    }
+
+    const parsed = parseJsonFields(created, cfg.jsonFields);
+    return res.status(201).json({ success: true, data: parsed });
+  } catch (error) {
+    console.error('Content create error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create content' });
+  }
+});
+
+// Update content
+app.put('/api/admin/content/:type', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { type } = req.params as { type: keyof typeof contentConfig };
+    const cfg = contentConfig[type];
+    if (!cfg) return res.status(404).json({ success: false, error: 'Content type not found' });
+    const model = cfg.model();
+    const { id, ...rest } = req.body || {};
+    if (!id) return res.status(400).json({ success: false, error: 'ID is required' });
+    const data = stringifyJsonFields(rest, cfg.jsonFields);
+    const updated = await model.update({ where: { id }, data });
+    const parsed = parseJsonFields(updated, cfg.jsonFields);
+    return res.status(200).json({ success: true, data: parsed });
+  } catch (error) {
+    console.error('Content update error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update content' });
+  }
+});
+
+// Delete content (soft delete where applicable)
+app.delete('/api/admin/content/:type', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { type } = req.params as { type: keyof typeof contentConfig };
+    const cfg = contentConfig[type];
+    if (!cfg) return res.status(404).json({ success: false, error: 'Content type not found' });
+    const model = cfg.model();
+    const id = (req.query.id as string) || (req.body && req.body.id);
+    if (!id) return res.status(400).json({ success: false, error: 'ID is required' });
+    await model.update({ where: { id }, data: { isActive: false } });
+    return res.status(200).json({ success: true, message: 'Deleted' });
+  } catch (error) {
+    console.error('Content delete error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete content' });
+  }
+});
+
+// Image upload endpoint (base64)
+app.post('/api/admin/upload', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { file, fileName } = req.body || {};
+    if (!file || typeof file !== 'string') {
+      return res.status(400).json({ success: false, error: 'file (base64) is required' });
+    }
+
+    const match = /^data:(image\/(png|jpeg|jpg|webp|svg\+xml));base64,(.+)$/i.exec(file);
+    if (!match) return res.status(400).json({ success: false, error: 'Invalid image data URL' });
+    const mime = match[1];
+    const ext = mime.includes('svg') ? 'svg' : mime.split('/')[1].replace('jpeg', 'jpg');
+    const base64 = match[3];
+    const buffer = Buffer.from(base64, 'base64');
+
+    await fs.mkdir(uploadsDir, { recursive: true });
+    const safeBase = (fileName?.toString().toLowerCase().replace(/[^a-z0-9-_]/g, '-') || 'image');
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const name = `${safeBase}-${unique}.${ext}`;
+    const fullPath = path.join(uploadsDir, name);
+    await fs.writeFile(fullPath, buffer);
+
+    // Public URL
+    const urlPath = `/uploads/${name}`;
+    return res.status(201).json({ success: true, url: urlPath, mime, size: buffer.length });
+  } catch (error) {
+    console.error('Upload error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to upload image' });
+  }
+});
+
+// Contact email endpoint
+app.post('/api/contact', async (req, res) => {
+  try {
+    const { name, email, subject, message } = req.body || {};
+    if (!name || !email || !message) {
+      return res.status(400).json({ success: false, error: 'name, email, and message are required' });
+    }
+    const to = process.env.CONTACT_EMAIL || 'admin@excellenceacademia.com';
+    const adminHtml = `
+      <div>
+        <h2>New Contact Form Submission</h2>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        ${subject ? `<p><strong>Subject:</strong> ${subject}</p>` : ''}
+        <p><strong>Message:</strong></p>
+        <p>${(message || '').replace(/\n/g, '<br/>')}</p>
+      </div>
+    `;
+    const adminSend = await sendEmail({ to, subject: subject || 'New Contact Message', content: adminHtml });
+
+    // Optional: send acknowledgement to user (best UX)
+    if (email) {
+      const ackHtml = `
+        <div>
+          <p>Hi ${name},</p>
+          <p>We received your message and will get back to you shortly.</p>
+          <p>Best regards,<br/>Excellence Academia</p>
+        </div>
+      `;
+      try { await sendEmail({ to: email, subject: 'We received your message', content: ackHtml }); } catch {}
+    }
+
+    if (!adminSend.success) throw new Error('Email send failed');
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Contact email error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send message' });
+  }
+});
+
+// Student Dashboard
+app.get('/api/student/dashboard', async (req, res) => {
+  try {
+    const studentId = (req.query.studentId as string) || (req as any).user?.id;
+    if (!studentId) return res.status(400).json({ success: false, error: 'Student ID is required' });
+
+    const student = await prisma.user.findUnique({ where: { id: studentId } });
+    if (!student) return res.status(404).json({ success: false, error: 'Student not found' });
+
+    const enrollments = await prisma.courseEnrollment.findMany({
+      where: { userId: studentId },
+      include: {
+        course: {
+          include: {
+            tests: {
+              include: {
+                submissions: { where: { userId: studentId } }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const testSubmissions = await prisma.testSubmission.findMany({
+      where: { userId: studentId },
+      include: { test: { include: { course: true } } },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const notifications = await prisma.notification.findMany({
+      where: { userId: studentId },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+
+    const averageGrade = testSubmissions.length > 0
+      ? testSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / testSubmissions.length
+      : 0;
+
+    const courses = enrollments.map(e => {
+      const course = e.course as any;
+      const courseTests = (course.tests || []) as any[];
+      const completedTests = courseTests.filter(t => t.submissions && t.submissions.length > 0);
+      return {
+        id: course.id,
+        name: course.title,
+        description: course.description,
+        tutor: 'Dr. Smith',
+        tutorEmail: 'dr.smith@example.com',
+        nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        progress: courseTests.length > 0 ? (completedTests.length / courseTests.length) * 100 : 0,
+        materials: [
+          { id: '1', name: 'Course Syllabus', type: 'pdf', url: '/materials/syllabus.pdf', dateAdded: new Date().toISOString(), completed: true },
+          { id: '2', name: 'Lecture Notes - Chapter 1', type: 'pdf', url: '/materials/lecture-1.pdf', dateAdded: new Date().toISOString(), completed: false }
+        ],
+        tests: courseTests.map(t => ({ id: t.id, title: t.title, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), questions: 10, totalPoints: 100, status: (t.submissions && t.submissions.length > 0) ? 'completed' : 'upcoming', score: (t.submissions && t.submissions.length > 0) ? t.submissions[0].score : null })),
+        color: 'blue',
+        announcements: [ { id: '1', title: 'Important: Midterm Exam Next Week', content: 'Please prepare for the midterm exam scheduled for next Tuesday.', date: new Date().toISOString(), type: 'info' } ],
+        grade: averageGrade,
+        enrollmentDate: new Date().toISOString(),
+        status: e.status
+      };
+    });
+
+    const dashboardData = {
+      student: { id: student.id, name: student.name, email: student.email, avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random` },
+      statistics: {
+        totalCourses: enrollments.length,
+        completedCourses: enrollments.filter(e => e.status === 'completed').length,
+        activeCourses: enrollments.filter(e => e.status === 'enrolled').length,
+        averageGrade: Math.round(averageGrade * 100) / 100,
+        totalStudyHours: 45,
+        streak: 7
+      },
+      upcomingSessions: [
+        { id: '1', courseName: 'Mathematics Grade 12', tutorName: 'Dr. Smith', date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), time: '10:00 AM', duration: '60 minutes', type: '1-on-1', location: 'Online' }
+      ],
+      recentActivities: [
+        { id: '1', type: 'assignment_submitted', message: 'Submitted Mathematics assignment', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), courseName: 'Mathematics Grade 12' }
+      ],
+      courses,
+      notifications: notifications.map(n => ({ id: n.id, message: n.message, read: n.read, timestamp: (n.createdAt as Date).toISOString() })),
+      achievements: [ { id: '1', title: 'First Assignment', description: 'Completed your first assignment', icon: '🎯', unlocked: true, date: new Date().toISOString() } ]
+    };
+
+    return res.status(200).json(dashboardData);
+  } catch (error) {
+    console.error('Error fetching student dashboard:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch student dashboard' });
+  }
+});
+
+// Tutor Dashboard
+app.get('/api/tutor/dashboard', async (req, res) => {
+  try {
+    const tutorId = (req.query.tutorId as string) || (req as any).user?.id;
+    if (!tutorId) return res.status(400).json({ success: false, error: 'Tutor ID is required' });
+
+    const tutor = await prisma.tutor.findUnique({ where: { id: tutorId } });
+    if (!tutor) return res.status(404).json({ success: false, error: 'Tutor not found' });
+
+    const students = await prisma.user.findMany({
+      where: { role: 'student' },
+      include: { enrollments: { include: { course: true } } }
+    });
+
+    const courses = await prisma.course.findMany({
+      include: {
+        enrollments: { include: { user: true } },
+        tests: { include: { submissions: true } }
+      }
+    });
+
+    const notifications = await prisma.notification.findMany({ where: { userId: tutorId }, orderBy: { createdAt: 'desc' }, take: 10 });
+
+    const dashboardData = {
+      tutor: {
+        id: tutor.id,
+        name: tutor.name,
+        subjects: (() => { try { return JSON.parse(tutor.subjects || '[]'); } catch { return []; } })(),
+        contactEmail: tutor.contactEmail,
+        contactPhone: tutor.contactPhone,
+        description: tutor.description,
+        image: tutor.image
+      },
+      statistics: {
+        totalStudents: students.length,
+        totalCourses: courses.length,
+        activeStudents: students.filter(s => s.enrollments.some(e => e.status === 'enrolled')).length,
+        completedSessions: 45,
+        averageRating: 4.8,
+        totalEarnings: 12500
+      },
+      upcomingSessions: [ { id: '1', courseName: 'Mathematics Grade 12', studentName: 'John Doe', studentEmail: 'john@example.com', date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), time: '10:00 AM', duration: 60, type: '1-on-1', status: 'scheduled', location: 'Online', notes: 'Focus on calculus problems', materials: [] } ],
+      recentActivities: [ { id: '1', type: 'session_completed', message: 'Completed session with John Doe - Mathematics', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), studentName: 'John Doe' } ],
+      students: students.map(s => ({ id: s.id, name: s.name, email: s.email, progress: Math.floor(Math.random() * 100), lastActivity: (s.updatedAt as Date).toISOString(), status: 'active', enrolledCourses: s.enrollments.map(e => e.course.title), avatar: `https://ui-avatars.com/api/?name=${s.name}&background=random`, grades: {}, totalSessions: 0, nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })),
+      courses: courses.map(c => ({ id: c.id, name: c.title, description: c.description, students: c.enrollments.length, nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), progress: Math.floor(Math.random() * 100), materials: [], tests: c.tests.map(t => ({ id: t.id, title: t.title, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), submissions: t.submissions.length, totalPoints: 100 })), color: 'blue' })),
+      notifications: notifications.map(n => ({ id: n.id, message: n.message, read: n.read, timestamp: (n.createdAt as Date).toISOString() }))
+    };
+
+    return res.status(200).json(dashboardData);
+  } catch (error) {
+    console.error('Error fetching tutor dashboard:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch tutor dashboard' });
   }
 });
 
