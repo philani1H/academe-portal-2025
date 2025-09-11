@@ -45,6 +45,7 @@ app.use(cors({
           if (isAllowed) return callback(null, true);
         } catch {}
 
+        console.warn(`[CORS] Denied origin: ${origin}`);
         callback(new Error('Not allowed by CORS'));
       }
     : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'],
@@ -76,15 +77,22 @@ app.use('/uploads', express.static(uploadsDir));
 // Request compression for better performance
 app.set('trust proxy', 1);
 
-// Enhanced request logging with performance metrics
+// Structured request logging with request id
+function generateRequestId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 app.use((req, res, next) => {
+  const reqId = generateRequestId();
+  (req as any).id = reqId;
+  res.setHeader('X-Request-Id', reqId);
   const start = Date.now();
-  
   res.on('finish', () => {
     const duration = Date.now() - start;
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
+    const origin = (req.headers['origin'] as string) || '-';
+    const ua = ((req.headers['user-agent'] as string) || '').split(' ').slice(0,2).join(' ');
+    console.log(`${new Date().toISOString()} rid=${reqId} ${req.method} ${req.path} status=${res.statusCode} durMs=${duration} origin=${origin} ua="${ua}"`);
   });
-  
   next();
 });
 
@@ -163,6 +171,21 @@ app.get('/api/health', async (req, res) => {
       error: 'Database connection failed'
     });
   }
+});
+
+// CORS diagnostics endpoint
+app.get('/api/diagnostics/cors', (req, res) => {
+  const origin = req.headers['origin'] || null;
+  const host = req.headers['host'] || null;
+  const referer = req.headers['referer'] || null;
+  res.json({
+    success: true,
+    time: new Date().toISOString(),
+    origin,
+    host,
+    referer,
+    allowedFrontend: process.env.FRONTEND_URL || null
+  });
 });
 
 // Admin auth endpoints
