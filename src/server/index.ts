@@ -38,7 +38,8 @@ app.use(cors({
         ].filter(Boolean as any);
 
         try {
-          const originHost = new URL(origin).host;
+          const originUrl = new URL(origin);
+          const originHost = originUrl.host;
           const allowedHosts = allowedOrigins.map((u: string) => new URL(u).host);
           const isAllowed = allowedHosts.some((h: string) => originHost === h);
           if (isAllowed) return callback(null, true);
@@ -49,7 +50,16 @@ app.use(cors({
     : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'],
   credentials: true,
   optionsSuccessStatus: 200,
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS']
+}));
+
+// Preflight handler to avoid framework default errors
+app.options('*', cors({
+  origin: true,
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS']
 }));
 
 // Security and performance middleware
