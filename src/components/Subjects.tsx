@@ -11,7 +11,7 @@ import { Input } from "./ui/input"
 
 // Interface for subject data
 interface Subject {
-  id: string
+  id: string | number
   name: string
   description: string
   image: string
@@ -22,7 +22,7 @@ interface Subject {
 }
 
 // Default subject data (fallback)
-const defaultSubjectData = [
+const defaultSubjectData: Subject[] = [
   {
     id: 1,
     name: "Mathematics",
@@ -163,19 +163,16 @@ const Subjects = () => {
   const fetchSubjects = async () => {
     try {
       const data = await apiFetch<any[]>('/api/admin/content/subjects')
-        // Normalize subject data to ensure array fields are arrays
-        const normalized = Array.isArray(data)
-          ? data.map((s) => ({
-              ...s,
-              popularTopics: Array.isArray(s?.popularTopics) ? s.popularTopics : [],
-              difficulty: Array.isArray(s?.difficulty) ? s.difficulty : [],
-            }))
-          : []
-        setSubjects(normalized)
-    } else {
-      // Fallback to default subjects if API fails
-      setSubjects(defaultSubjectData)
-    }
+      
+      // Normalize subject data to ensure array fields are arrays
+      const normalized = Array.isArray(data)
+        ? data.map((s) => ({
+            ...s,
+            popularTopics: Array.isArray(s?.popularTopics) ? s.popularTopics : [],
+            difficulty: Array.isArray(s?.difficulty) ? s.difficulty : [],
+          }))
+        : []
+      setSubjects(normalized)
     } catch (error) {
       console.error('Error fetching subjects:', error)
       // Set fallback content
@@ -218,6 +215,36 @@ const Subjects = () => {
       opacity: 1,
       transition: { duration: 0.5 },
     },
+  }
+
+  if (loading) {
+    return (
+      <section className="py-20 bg-gradient-to-b from-blue-50 to-white">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="text-center">
+            <div className="animate-pulse">
+              <div className="h-8 bg-blue-200 rounded w-64 mx-auto mb-4"></div>
+              <div className="h-4 bg-blue-100 rounded w-96 mx-auto"></div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-12">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="animate-pulse">
+                  <div className="bg-gray-200 h-48 rounded-t-xl"></div>
+                  <div className="bg-white p-5 rounded-b-xl shadow-md">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-100 rounded w-full mb-4"></div>
+                    <div className="flex gap-1 mb-4">
+                      <div className="h-6 bg-blue-100 rounded w-16"></div>
+                      <div className="h-6 bg-blue-100 rounded w-20"></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    )
   }
 
   return (
