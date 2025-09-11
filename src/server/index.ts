@@ -903,6 +903,58 @@ app.get('/api/student/dashboard', async (req, res) => {
   }
 });
 
+// Enroll in a course
+app.post('/api/student/courses', async (req, res) => {
+  try {
+    const { studentId, courseId } = req.body || {};
+    if (!studentId || !courseId) {
+      return res.status(400).json({ success: false, error: 'studentId and courseId are required' });
+    }
+    // Verify user and course exist
+    const [user, course] = await Promise.all([
+      prisma.user.findUnique({ where: { id: studentId } }),
+      prisma.course.findUnique({ where: { id: courseId } })
+    ]);
+    if (!user) return res.status(404).json({ success: false, error: 'Student not found' });
+    if (!course) return res.status(404).json({ success: false, error: 'Course not found' });
+
+    // Check if already enrolled
+    const existing = await prisma.courseEnrollment.findFirst({ where: { userId: studentId, courseId } });
+    if (!existing) {
+      await prisma.courseEnrollment.create({ data: { userId: studentId, courseId, status: 'enrolled' } });
+    }
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Enroll course error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to enroll course' });
+  }
+});
+
+// Submit test answers
+app.post('/api/student/tests', async (req, res) => {
+  try {
+    const { studentId, testId, answers } = req.body || {};
+    if (!studentId || !testId || !answers) {
+      return res.status(400).json({ success: false, error: 'studentId, testId and answers are required' });
+    }
+    // Basic validation
+    const [user, test] = await Promise.all([
+      prisma.user.findUnique({ where: { id: studentId } }),
+      prisma.test.findUnique({ where: { id: testId } })
+    ]);
+    if (!user) return res.status(404).json({ success: false, error: 'Student not found' });
+    if (!test) return res.status(404).json({ success: false, error: 'Test not found' });
+
+    const submission = await prisma.testSubmission.create({
+      data: { userId: studentId, testId, answers: JSON.stringify(answers), score: 0 }
+    });
+    return res.status(200).json({ success: true, data: { id: submission.id } });
+  } catch (error) {
+    console.error('Submit test error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to submit test' });
+  }
+});
+
 // Tutor Dashboard
 app.get('/api/tutor/dashboard', async (req, res) => {
   try {
@@ -955,6 +1007,56 @@ app.get('/api/tutor/dashboard', async (req, res) => {
   } catch (error) {
     console.error('Error fetching tutor dashboard:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch tutor dashboard' });
+  }
+});
+
+// Tutor adds student to a course (creates user if missing)
+app.post('/api/tutor/students', async (req, res) => {
+  try {
+    const { tutorId, studentEmail, courseId } = req.body || {};
+    if (!tutorId || !studentEmail) {
+      return res.status(400).json({ success: false, error: 'tutorId and studentEmail are required' });
+    }
+    // Ensure tutor exists
+    const tutor = await prisma.tutor.findUnique({ where: { id: tutorId } });
+    if (!tutor) return res.status(404).json({ success: false, error: 'Tutor not found' });
+
+    let student = await prisma.user.findUnique({ where: { email: studentEmail } });
+    if (!student) {
+      student = await prisma.user.create({
+        data: {
+          email: studentEmail,
+          name: studentEmail.split('@')[0],
+          role: 'student'
+        }
+      });
+    }
+
+    if (courseId) {
+      const course = await prisma.course.findUnique({ where: { id: courseId } });
+      if (course) {
+        const existing = await prisma.courseEnrollment.findFirst({ where: { userId: student.id, courseId } });
+        if (!existing) {
+          await prisma.courseEnrollment.create({ data: { userId: student.id, courseId, status: 'enrolled' } });
+        }
+      }
+    }
+
+    return res.status(200).json({ success: true, data: { studentId: student.id } });
+  } catch (error) {
+    console.error('Tutor add student error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to add student' });
+  }
+});
+
+// Tutor schedules a session (no persistent model; acknowledge request)
+app.post('/api/tutor/sessions', async (req, res) => {
+  try {
+    // In production, you would persist the session; for now, accept and return success
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Tutor session create error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create session' });
   }
 });
 
