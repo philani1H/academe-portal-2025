@@ -136,3 +136,24 @@ export function renderStudentInvite(params: { studentName: string; tutorName?: s
   return baseTemplate({ title: 'Your tutor invited you to join', bodyHtml: body, ctaLabel: 'Create your account', ctaUrl: url, preheaderText: 'Join to access your courses and materials.' });
 }
 
+export function renderEnrollmentConfirmation(params: { studentName: string; courseTitle: string }): string {
+  const { studentName, courseTitle } = params;
+  const body = `
+    <p>Hi ${escapeHtml(studentName)},</p>
+    <p>You are enrolled in <strong>${escapeHtml(courseTitle)}</strong>.</p>
+    <p>Access your dashboard to view materials, sessions, and tests.</p>
+  `;
+  return baseTemplate({ title: 'Enrollment confirmed', bodyHtml: body, ctaLabel: 'Open dashboard', ctaUrl: `${BRAND_URL}/student`, preheaderText: `You are enrolled in ${courseTitle}` });
+}
+
+export function renderTestSubmissionReceipt(params: { studentName: string; courseName: string; testTitle: string; submittedAt?: string }): string {
+  const { studentName, courseName, testTitle, submittedAt } = params;
+  const body = `
+    <p>Hi ${escapeHtml(studentName)},</p>
+    <p>We received your submission for <strong>${escapeHtml(testTitle)}</strong> in <strong>${escapeHtml(courseName)}</strong>.</p>
+    ${submittedAt ? `<p>Submitted on ${escapeHtml(new Date(submittedAt).toLocaleString())}</p>` : ''}
+    <p>We will notify you once your test has been graded.</p>
+  `;
+  return baseTemplate({ title: 'Test submitted successfully', bodyHtml: body, ctaLabel: 'View tests', ctaUrl: `${BRAND_URL}/student`, preheaderText: `You submitted ${testTitle}` });
+}
+

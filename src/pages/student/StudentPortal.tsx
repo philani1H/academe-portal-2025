@@ -554,7 +554,7 @@ export default function StudentPortal() {
     }
   }
 
-  const handleSubmitTest = () => {
+  const handleSubmitTest = async () => {
     if (!selectedTest || !selectedCourse) return
 
     // Update the test status
@@ -595,6 +595,15 @@ export default function StudentPortal() {
       courseId: selectedCourse.id,
     }
     setNotifications((prev) => [newNotification, ...prev])
+
+    // Notify server to record submission and send email receipt (best-effort)
+    try {
+      await fetch(`/api/student/tests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: user.id || 'unknown', testId: selectedTest.id, answers: currentTestAnswers })
+      })
+    } catch {}
   }
 
   const handleMarkMaterialComplete = (courseId: string, materialId: string, completed: boolean) => {

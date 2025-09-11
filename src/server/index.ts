@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { sendEmail } from '../lib/email';
-import { renderContactAdmin, renderContactAck, renderAdminNotification, renderTutorInvite, renderStudentInvite } from '../lib/emailTemplates';
+import { renderContactAdmin, renderContactAck, renderAdminNotification, renderTutorInvite, renderStudentInvite, renderEnrollmentConfirmation, renderTestSubmissionReceipt } from '../lib/emailTemplates';
 
 // Resolve base path in both ESM and CJS
 const resolvedDir = (typeof __dirname !== 'undefined')
@@ -994,24 +994,47 @@ app.get('/api/student/dashboard', async (req, res) => {
 // Enroll in a course
 app.post('/api/student/courses', async (req, res) => {
   try {
-    const { studentId, courseId } = req.body || {};
-    if (!studentId || !courseId) {
-      return res.status(400).json({ success: false, error: 'studentId and courseId are required' });
-    }
-    // Verify user and course exist
-    const [user, course] = await Promise.all([
-      prisma.user.findUnique({ where: { id: studentId } }),
-      prisma.course.findUnique({ where: { id: courseId } })
-    ]);
-    if (!user) return res.status(404).json({ success: false, error: 'Student not found' });
-    if (!course) return res.status(404).json({ success: false, error: 'Course not found' });
+    const { studentId, courseId, studentEmail, studentName, courseTitle } = req.body || {};
 
-    // Check if already enrolled
-    const existing = await prisma.courseEnrollment.findFirst({ where: { userId: studentId, courseId } });
-    if (!existing) {
-      await prisma.courseEnrollment.create({ data: { userId: studentId, courseId, status: 'enrolled' } });
+    if (studentId && courseId) {
+      // Verify user and course exist
+      const [user, course] = await Promise.all([
+        prisma.user.findUnique({ where: { id: studentId } }),
+        prisma.course.findUnique({ where: { id: courseId } })
+      ]);
+      if (!user) return res.status(404).json({ success: false, error: 'Student not found' });
+      if (!course) return res.status(404).json({ success: false, error: 'Course not found' });
+
+      // Check if already enrolled
+      const existing = await prisma.courseEnrollment.findFirst({ where: { userId: studentId, courseId } });
+      if (!existing) {
+        await prisma.courseEnrollment.create({ data: { userId: studentId, courseId, status: 'enrolled' } });
+        try {
+          await sendEmail({
+            to: user.email,
+            subject: 'Enrollment confirmed',
+            content: renderEnrollmentConfirmation({ studentName: user.name, courseTitle: course.title })
+          });
+        } catch {}
+      }
+      return res.status(200).json({ success: true });
     }
-    return res.status(200).json({ success: true });
+
+    // Fallback: send email only if details provided
+    if (studentEmail && (studentName || courseTitle)) {
+      try {
+        await sendEmail({
+          to: studentEmail,
+          subject: 'Enrollment confirmed',
+          content: renderEnrollmentConfirmation({ studentName: studentName || 'Student', courseTitle: courseTitle || 'your course' })
+        });
+        return res.status(200).json({ success: true, emailOnly: true });
+      } catch (e) {
+        return res.status(500).json({ success: false, error: 'Failed to send enrollment email' });
+      }
+    }
+
+    return res.status(400).json({ success: false, error: 'studentId and courseId are required' });
   } catch (error) {
     console.error('Enroll course error:', error);
     return res.status(500).json({ success: false, error: 'Failed to enroll course' });
@@ -1021,22 +1044,45 @@ app.post('/api/student/courses', async (req, res) => {
 // Submit test answers
 app.post('/api/student/tests', async (req, res) => {
   try {
-    const { studentId, testId, answers } = req.body || {};
-    if (!studentId || !testId || !answers) {
-      return res.status(400).json({ success: false, error: 'studentId, testId and answers are required' });
-    }
-    // Basic validation
-    const [user, test] = await Promise.all([
-      prisma.user.findUnique({ where: { id: studentId } }),
-      prisma.test.findUnique({ where: { id: testId } })
-    ]);
-    if (!user) return res.status(404).json({ success: false, error: 'Student not found' });
-    if (!test) return res.status(404).json({ success: false, error: 'Test not found' });
+    const { studentId, testId, answers, studentEmail, studentName, courseName, testTitle } = req.body || {};
 
-    const submission = await prisma.testSubmission.create({
-      data: { userId: studentId, testId, answers: JSON.stringify(answers), score: 0 }
-    });
-    return res.status(200).json({ success: true, data: { id: submission.id } });
+    if (studentId && testId && answers) {
+      // Basic validation
+      const [user, test] = await Promise.all([
+        prisma.user.findUnique({ where: { id: studentId } }),
+        prisma.test.findUnique({ where: { id: testId }, include: { course: true } })
+      ]);
+      if (!user) return res.status(404).json({ success: false, error: 'Student not found' });
+      if (!test) return res.status(404).json({ success: false, error: 'Test not found' });
+
+      const submission = await prisma.testSubmission.create({
+        data: { userId: studentId, testId, answers: JSON.stringify(answers), score: 0 }
+      });
+      try {
+        await sendEmail({
+          to: user.email,
+          subject: 'Test submitted',
+          content: renderTestSubmissionReceipt({ studentName: user.name, courseName: test.course.title, testTitle: test.title, submittedAt: new Date().toISOString() })
+        });
+      } catch {}
+      return res.status(200).json({ success: true, data: { id: submission.id } });
+    }
+
+    // Fallback: email only
+    if (studentEmail && (testTitle || courseName)) {
+      try {
+        await sendEmail({
+          to: studentEmail,
+          subject: 'Test submitted',
+          content: renderTestSubmissionReceipt({ studentName: studentName || 'Student', courseName: courseName || 'Your course', testTitle: testTitle || 'Your test', submittedAt: new Date().toISOString() })
+        });
+        return res.status(200).json({ success: true, emailOnly: true });
+      } catch (e) {
+        return res.status(500).json({ success: false, error: 'Failed to send submission email' });
+      }
+    }
+
+    return res.status(400).json({ success: false, error: 'studentId, testId and answers are required' });
   } catch (error) {
     console.error('Submit test error:', error);
     return res.status(500).json({ success: false, error: 'Failed to submit test' });
