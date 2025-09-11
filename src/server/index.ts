@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import { sendEmail } from '../lib/email';
+import { renderContactAdmin, renderContactAck, renderAdminNotification, renderTutorInvite, renderStudentInvite } from '../lib/emailTemplates';
 
 // Resolve base path in both ESM and CJS
 const resolvedDir = (typeof __dirname !== 'undefined')
@@ -778,27 +779,12 @@ app.post('/api/contact', async (req, res) => {
       return res.status(400).json({ success: false, error: 'name, email, and message are required' });
     }
     const to = process.env.CONTACT_EMAIL || 'admin@excellenceacademia.com';
-    const adminHtml = `
-      <div>
-        <h2>New Contact Form Submission</h2>
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        ${subject ? `<p><strong>Subject:</strong> ${subject}</p>` : ''}
-        <p><strong>Message:</strong></p>
-        <p>${(message || '').replace(/\n/g, '<br/>')}</p>
-      </div>
-    `;
+    const adminHtml = renderContactAdmin({ name, email, subject, message });
     const adminSend = await sendEmail({ to, subject: subject || 'New Contact Message', content: adminHtml });
 
     // Optional: send acknowledgement to user (best UX)
     if (email) {
-      const ackHtml = `
-        <div>
-          <p>Hi ${name},</p>
-          <p>We received your message and will get back to you shortly.</p>
-          <p>Best regards,<br/>Excellence Academia</p>
-        </div>
-      `;
+      const ackHtml = renderContactAck({ name });
       try { await sendEmail({ to: email, subject: 'We received your message', content: ackHtml }); } catch {}
     }
 
@@ -832,7 +818,7 @@ app.post('/api/admin/email/notify', authenticateJWT, authorizeRoles('admin'), as
 
     if (emails.length === 0) return res.status(400).json({ success: false, error: 'No recipient emails resolved' });
 
-    const content = `<div><p>${message.replace(/\n/g, '<br/>')}</p></div>`;
+    const content = renderAdminNotification({ subject, message });
     const results = [] as any[];
     for (const to of emails) {
       const r = await sendEmail({ to, subject, content });
@@ -872,12 +858,7 @@ app.post('/api/admin/tutors/invite', authenticateJWT, authorizeRoles('admin'), a
     }
 
     const subject = 'You have been invited as a Tutor';
-    const content = `<div>
-      <p>Hi ${name},</p>
-      <p>You have been added as a tutor on Excellence Academia.</p>
-      <p>Please complete your profile and set your password.</p>
-      <p>Login URL: ${process.env.FRONTEND_URL || ''}/auth/tutor</p>
-    </div>`;
+    const content = renderTutorInvite({ name, loginUrl: `${process.env.FRONTEND_URL || ''}/auth/tutor` });
     const sent = await sendEmail({ to: email, subject, content });
     if (!sent.success) return res.status(500).json({ success: false, error: 'Failed to send invite email' });
     return res.status(201).json({ success: true, data: { tutorId: tutor.id } });
@@ -906,12 +887,7 @@ app.post('/api/tutor/students/invite', async (req, res) => {
         user = await prisma.user.create({ data: { email, name: email.split('@')[0], role: 'student' } });
       }
       const subject = 'Invitation to join Excellence Academia';
-      const content = `<div>
-        <p>Hi ${user.name},</p>
-        <p>You have been invited by ${tutor.name} to join Excellence Academia.</p>
-        <p>Create your account and enroll in courses:</p>
-        <p><a href="${process.env.FRONTEND_URL || ''}/auth/student" target="_blank">Get started</a></p>
-      </div>`;
+      const content = renderStudentInvite({ studentName: user.name, tutorName: tutor.name, studentUrl: `${process.env.FRONTEND_URL || ''}/auth/student` });
       const sent = await sendEmail({ to: email, subject, content });
       results.push({ to: email, ok: !!sent.success });
     }
