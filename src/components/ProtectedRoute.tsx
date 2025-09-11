@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { AlertTriangle } from 'lucide-react';
@@ -18,26 +18,16 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   allowedRoles,
   redirectPath = '/login'
 }) => {
-  const router = useRouter();
-  const { user, isLoading } = useAuth();
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
   React.useEffect(() => {
-    if (!isLoading && !user) {
-      router.push(redirectPath);
+    if (!user) {
+      navigate(redirectPath);
     }
-  }, [user, isLoading, router, redirectPath]);
+  }, [user, navigate, redirectPath]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   if (!allowedRoles.includes(user.role)) {
     return (
@@ -53,10 +43,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             <p className="text-gray-600 mb-4">
               You do not have permission to access this page. Please contact your administrator if you believe this is a mistake.
             </p>
-            <Button
-              onClick={() => router.push('/')}
-              className="w-full"
-            >
+            <Button onClick={() => navigate('/')} className="w-full">
               Return to Home
             </Button>
           </CardContent>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,9 +21,7 @@ const UniversityApplication = () => {
   useEffect(() => {
     const fetchContent = async () => {
       try {
-        const res = await fetch('/api/admin/content/university-application')
-        if (!res.ok) throw new Error('Failed to load university application content')
-        const data = await res.json()
+        const data = await apiFetch<any>('/api/admin/content/university-application')
         const services = Array.isArray(JSON.parse(data.services || '[]')) ? JSON.parse(data.services) : []
         const reqs = Array.isArray(JSON.parse(data.requirements || '[]')) ? JSON.parse(data.requirements) : []
         const coursesList = Array.isArray(JSON.parse(data.process || '[]')) ? JSON.parse(data.process) : []

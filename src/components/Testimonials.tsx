@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { apiFetch } from "@/lib/api"
 import { motion } from "framer-motion"
 import { ChevronLeft, ChevronRight, Quote, Star } from "lucide-react"
 import { Button } from "./ui/button"
@@ -36,9 +37,7 @@ const Testimonials = () => {
 
   const fetchTestimonials = async () => {
     try {
-      const response = await fetch('/api/admin/content/testimonials');
-      if (!response.ok) throw new Error('Failed to load testimonials')
-      const data = await response.json();
+      const data = await apiFetch<any[]>('/api/admin/content/testimonials');
       setTestimonials(data);
     } catch (error) {
       console.error('Error fetching testimonials:', error);

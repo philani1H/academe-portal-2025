@@ -15,6 +15,22 @@ const ContactUs = () => {
     });
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      if (!res.ok) throw new Error('Failed to send');
+      alert('Message sent! We will get back to you soon.');
+      setFormData({ name: '', email: '', subject: '', message: '' });
+    } catch (err) {
+      alert('Failed to send your message. Please try again.');
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto p-6 mt-10 bg-white shadow-lg rounded-lg">
       {/* Logo Image */}
@@ -31,11 +47,7 @@ const ContactUs = () => {
         Have any questions or feedback? Fill out the form below and we'll get back to you as soon as possible.
       </p>
 
-      <form
-        className="mt-6 space-y-4"
-        action="https://formspree.io/f/xrbeqgqe" // Replace with your Formspree endpoint
-        method="POST"
-      >
+      <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
         <div>
           <label className="block text-gray-700 font-medium">Full Name</label>
           <input
