@@ -205,6 +205,7 @@ const tutorsData = [
       }
     ]),
     order: 10
+  },
   {
     name: "Simon",
     subjects: JSON.stringify(["Mathematics", "Physical Science"]),
@@ -223,7 +224,6 @@ const tutorsData = [
       }
     ]),
     order: 11
-
   }
 ]
 
@@ -460,11 +460,22 @@ async function migrateAllContent() {
   console.log('Starting comprehensive content migration...')
 
   try {
+    // Clear content tables for idempotent seeding
+    console.log('Clearing existing content tables...')
+    await prisma.$transaction([
+      prisma.navigationItem.deleteMany(),
+      prisma.footerContent.deleteMany(),
+      prisma.contactUsContent.deleteMany(),
+      prisma.becomeTutorContent.deleteMany(),
+      prisma.examRewriteContent.deleteMany(),
+      prisma.subject.deleteMany(),
+      prisma.tutor.deleteMany(),
+    ])
     // Migrate Tutors
     console.log('Migrating tutors...')
     for (const tutor of tutorsData) {
       await prisma.tutor.create({
-        data: tutor
+        data: { ...tutor, isActive: true }
       })
     }
 
@@ -472,40 +483,40 @@ async function migrateAllContent() {
     console.log('Migrating subjects...')
     for (const subject of subjectsData) {
       await prisma.subject.create({
-        data: subject
+        data: { ...subject, isActive: true }
       })
     }
 
     // Migrate Footer Content
     console.log('Migrating footer content...')
     await prisma.footerContent.create({
-      data: footerContentData
+      data: { ...footerContentData, isActive: true }
     })
 
     // Migrate Navigation Items
     console.log('Migrating navigation items...')
     for (const navItem of navigationItemsData) {
       await prisma.navigationItem.create({
-        data: navItem
+        data: { ...navItem, isActive: true }
       })
     }
 
     // Migrate Contact Us Content
     console.log('Migrating contact us content...')
     await prisma.contactUsContent.create({
-      data: contactUsContentData
+      data: { ...contactUsContentData, isActive: true }
     })
 
     // Migrate Become Tutor Content
     console.log('Migrating become tutor content...')
     await prisma.becomeTutorContent.create({
-      data: becomeTutorContentData
+      data: { ...becomeTutorContentData, isActive: true }
     })
 
     // Migrate Exam Rewrite Content
     console.log('Migrating exam rewrite content...')
     await prisma.examRewriteContent.create({
-      data: examRewriteContentData
+      data: { ...examRewriteContentData, isActive: true }
     })
 
     console.log('All content migration completed successfully!')
