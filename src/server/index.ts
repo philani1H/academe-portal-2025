@@ -20,25 +20,36 @@ const port = process.env.PORT || 3000;
 
 // Enhanced CORS configuration for production
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
+  origin: process.env.NODE_ENV === 'production'
     ? (origin, callback) => {
         // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
-        
+
         const allowedOrigins = [
           'https://excellence-akademie.com',
           'https://www.excellence-akademie.com',
+          'https://excellence-akademie.co.za',
+          'https://www.excellence-akademie.co.za',
+          'https://excellenceakademie.co.za',
+          'https://www.excellenceakademie.co.za',
+          'https://excellenceacademia.co.za',
+          'https://www.excellenceacademia.co.za',
           process.env.FRONTEND_URL
-        ].filter(Boolean);
-        
-        if (allowedOrigins.some(allowed => origin.includes(allowed.replace('https://', '')))) {
-          return callback(null, true);
-        }
+        ].filter(Boolean as any);
+
+        try {
+          const originHost = new URL(origin).host;
+          const allowedHosts = allowedOrigins.map((u: string) => new URL(u).host);
+          const isAllowed = allowedHosts.some((h: string) => originHost === h);
+          if (isAllowed) return callback(null, true);
+        } catch {}
+
         callback(new Error('Not allowed by CORS'));
       }
     : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'],
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Security and performance middleware
@@ -582,10 +593,14 @@ app.get('/api/admin/content/:type', async (req, res) => {
     }
   } catch (error) {
     console.error(`Error fetching ${req.params.type} content:`, error);
+    // In production, avoid leaking error details
+    const status = 500;
+    const isProd = process.env.NODE_ENV === 'production';
+    const message = isProd ? 'Failed to fetch content' : (error as any)?.message;
     res.status(500).json({ 
       success: false,
       error: `Failed to fetch ${req.params.type} content`,
-      message: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message
     });
   }
 });
