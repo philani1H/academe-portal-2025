@@ -13,76 +13,139 @@ const resolvedDir = (typeof __dirname !== 'undefined')
 const baseDir = path.resolve(resolvedDir, '..');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
+// Enhanced CORS configuration for production
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://excellence-akademie.com', 'https://www.excellence-akademie.com']
+    ? (origin, callback) => {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+          'https://excellence-akademie.com',
+          'https://www.excellence-akademie.com',
+          process.env.FRONTEND_URL
+        ].filter(Boolean);
+        
+        if (allowedOrigins.some(allowed => origin.includes(allowed.replace('https://', '')))) {
+          return callback(null, true);
+        }
+        callback(new Error('Not allowed by CORS'));
+      }
     : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'],
-  credentials: true
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
+// Security and performance middleware
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+
+// Request compression for better performance
+app.set('trust proxy', 1);
+
+// Enhanced request logging with performance metrics
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  const start = Date.now();
+  
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
+  });
+  
   next();
 });
 
-// Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(`Error in ${req.method} ${req.path}:`, err.stack);
-  res.status(500).json({ 
-    error: 'Something went wrong!',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+// Global error handling middleware
+app.use((err, req, res, next) => {
+  console.error(`Error in ${req.method} ${req.path}:`, {
+    message: err.message,
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    timestamp: new Date().toISOString()
+  });
+  
+  res.status(err.status || 500).json({ 
+    success: false,
+    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'healthy', 
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
+// Enhanced health check with database connectivity
+app.get('/api/health', async (req, res) => {
+  try {
+    // Quick database connectivity check
+    await prisma.$queryRaw`SELECT 1`;
+    
+    res.json({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      database: 'connected'
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: 'Database connection failed'
+    });
+  }
 });
 
-// Enhanced generic query endpoint with better error handling
+// Optimized generic query endpoint with validation
 app.post('/api/query', async (req, res) => {
   try {
     const { query, params } = req.body;
     
-    if (!query) {
-      return res.status(400).json({ error: 'Query is required' });
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Valid query string is required' 
+      });
+    }
+
+    // Basic SQL injection protection - restrict dangerous operations
+    const dangerousPatterns = /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE)\b/i;
+    if (dangerousPatterns.test(query)) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Query contains restricted operations' 
+      });
     }
 
     const db = await getConnection();
-    const result = await db.all(query, params);
+    const result = await db.all(query, params || []);
     await db.close();
     
     res.json({ 
       success: true,
       data: result,
-      count: Array.isArray(result) ? result.length : 1
+      count: Array.isArray(result) ? result.length : 1,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('Query error:', error);
     res.status(500).json({ 
       success: false,
       error: 'Database query failed',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// Enhanced User routes
+// Optimized User routes with caching headers
 app.get('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    if (!id || id.trim() === '') {
-      return res.status(400).json({ error: 'User ID is required' });
+    if (!id?.trim()) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'User ID is required' 
+      });
     }
 
     const db = await getConnection();
@@ -90,53 +153,64 @@ app.get('/api/users/:id', async (req, res) => {
     await db.close();
     
     if (user) {
+      // Set cache headers for better performance
+      res.set('Cache-Control', 'public, max-age=300'); // 5 minutes
       res.json({ success: true, data: user });
     } else {
-      res.status(404).json({ error: 'User not found' });
+      res.status(404).json({ 
+        success: false,
+        error: 'User not found' 
+      });
     }
   } catch (error) {
     console.error('Error fetching user:', error);
-    res.status(500).json({ error: 'Failed to fetch user' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch user' 
+    });
   }
 });
 
-// Enhanced Course routes
+// High-performance Course routes
 app.get('/api/courses', async (req, res) => {
   try {
-    const { limit, offset, category } = req.query;
+    const { limit = 50, offset = 0, category } = req.query;
+    const limitInt = Math.min(parseInt(limit) || 50, 100); // Max 100 items
+    const offsetInt = Math.max(parseInt(offset) || 0, 0);
     
     const db = await getConnection();
     let query = 'SELECT * FROM courses';
-    const params: any[] = [];
+    const params = [];
     
     if (category) {
       query += ' WHERE category = ?';
       params.push(category);
     }
     
-    query += ' ORDER BY created_at DESC';
-    
-    if (limit) {
-      query += ' LIMIT ?';
-      params.push(parseInt(limit as string));
-    }
-    
-    if (offset) {
-      query += ' OFFSET ?';
-      params.push(parseInt(offset as string));
-    }
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limitInt, offsetInt);
     
     const courses = await db.all(query, params);
     await db.close();
     
+    // Cache for 10 minutes
+    res.set('Cache-Control', 'public, max-age=600');
     res.json({ 
       success: true,
       data: courses,
-      count: courses.length
+      pagination: {
+        limit: limitInt,
+        offset: offsetInt,
+        count: courses.length,
+        hasMore: courses.length === limitInt
+      }
     });
   } catch (error) {
     console.error('Error fetching courses:', error);
-    res.status(500).json({ error: 'Failed to fetch courses' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch courses' 
+    });
   }
 });
 
@@ -144,8 +218,11 @@ app.get('/api/courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    if (!id || id.trim() === '') {
-      return res.status(400).json({ error: 'Course ID is required' });
+    if (!id?.trim()) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Course ID is required' 
+      });
     }
 
     const db = await getConnection();
@@ -153,89 +230,106 @@ app.get('/api/courses/:id', async (req, res) => {
     await db.close();
     
     if (course) {
+      res.set('Cache-Control', 'public, max-age=300');
       res.json({ success: true, data: course });
     } else {
-      res.status(404).json({ error: 'Course not found' });
+      res.status(404).json({ 
+        success: false,
+        error: 'Course not found' 
+      });
     }
   } catch (error) {
     console.error('Error fetching course:', error);
-    res.status(500).json({ error: 'Failed to fetch course' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch course' 
+    });
   }
 });
 
-// Enhanced Tutors API with advanced features
+// High-performance Tutors API with advanced filtering
 app.get('/api/tutors', async (req, res) => {
   try {
-    const { subject, rating, limit, offset, search } = req.query;
+    const { 
+      subject, 
+      rating, 
+      limit = 20, 
+      offset = 0, 
+      search 
+    } = req.query;
     
-    let whereConditions = ['isActive = true'];
-    let orderBy = 'ORDER BY [order] ASC, createdAt DESC';
+    const limitInt = Math.min(parseInt(limit) || 20, 50);
+    const offsetInt = Math.max(parseInt(offset) || 0, 0);
     
-    // Filter by subject
+    const whereConditions = { isActive: true };
+    
+    // Apply filters
     if (subject) {
-      whereConditions.push(`subjects LIKE '%${subject}%'`);
+      whereConditions.subjects = { contains: subject };
     }
     
-    // Filter by minimum rating
-    if (rating) {
-      // This would require calculating average rating from JSON ratings
-      whereConditions.push('1=1'); // Placeholder - implement rating calculation
-    }
-    
-    // Search functionality
     if (search) {
-      whereConditions.push(`(name LIKE '%${search}%' OR description LIKE '%${search}%')`);
+      whereConditions.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ];
     }
     
     const tutors = await prisma.tutor.findMany({
-      where: { 
-        isActive: true,
-        ...(subject && { subjects: { contains: subject as string } }),
-        ...(search && { 
-          OR: [
-            { name: { contains: search as string, mode: 'insensitive' } },
-            { description: { contains: search as string, mode: 'insensitive' } }
-          ]
-        })
-      },
+      where: whereConditions,
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      ...(limit && { take: parseInt(limit as string) }),
-      ...(offset && { skip: parseInt(offset as string) })
+      take: limitInt,
+      skip: offsetInt
     });
 
-    // Calculate average ratings for each tutor
-    const tutorsWithAvgRating = tutors.map(tutor => {
-      const ratings = typeof tutor.ratings === 'string' 
-        ? JSON.parse(tutor.ratings) 
-        : tutor.ratings || [];
+    // Efficiently calculate ratings
+    const tutorsWithMetrics = tutors.map(tutor => {
+      let ratings = [];
+      let subjectsList = [];
+      
+      try {
+        ratings = typeof tutor.ratings === 'string' ? JSON.parse(tutor.ratings) : (tutor.ratings || []);
+        subjectsList = typeof tutor.subjects === 'string' ? JSON.parse(tutor.subjects) : (tutor.subjects || []);
+      } catch (e) {
+        console.warn('JSON parse error for tutor:', tutor.id);
+      }
       
       const avgRating = ratings.length > 0 
-        ? ratings.reduce((sum: number, r: any) => sum + r.rating, 0) / ratings.length
+        ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
         : 0;
       
       return {
         ...tutor,
-        averageRating: Math.round(avgRating * 10) / 10,
+        averageRating: avgRating,
         totalReviews: ratings.length,
-        subjectsList: typeof tutor.subjects === 'string' 
-          ? JSON.parse(tutor.subjects) 
-          : tutor.subjects || []
+        subjectsList,
+        // Remove large JSON fields for list view
+        ratings: undefined
       };
     });
 
+    // Filter by rating if specified
+    const filteredTutors = rating 
+      ? tutorsWithMetrics.filter(t => t.averageRating >= parseFloat(rating))
+      : tutorsWithMetrics;
+
+    res.set('Cache-Control', 'public, max-age=300'); // 5 minutes cache
     res.json({
       success: true,
-      data: tutorsWithAvgRating,
-      count: tutorsWithAvgRating.length,
+      data: filteredTutors,
       pagination: {
-        limit: limit ? parseInt(limit as string) : null,
-        offset: offset ? parseInt(offset as string) : 0,
-        hasMore: limit ? tutorsWithAvgRating.length === parseInt(limit as string) : false
+        limit: limitInt,
+        offset: offsetInt,
+        count: filteredTutors.length,
+        hasMore: filteredTutors.length === limitInt
       }
     });
   } catch (error) {
     console.error('Error fetching tutors:', error);
-    res.status(500).json({ error: 'Failed to fetch tutors' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch tutors' 
+    });
   }
 });
 
@@ -248,174 +342,164 @@ app.get('/api/tutors/:id', async (req, res) => {
     });
     
     if (!tutor) {
-      return res.status(404).json({ error: 'Tutor not found' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'Tutor not found' 
+      });
     }
     
-    // Parse and enhance tutor data
-    const ratings = typeof tutor.ratings === 'string' 
-      ? JSON.parse(tutor.ratings) 
-      : tutor.ratings || [];
+    // Parse JSON fields safely
+    let ratings = [];
+    let subjectsList = [];
+    
+    try {
+      ratings = typeof tutor.ratings === 'string' ? JSON.parse(tutor.ratings) : (tutor.ratings || []);
+      subjectsList = typeof tutor.subjects === 'string' ? JSON.parse(tutor.subjects) : (tutor.subjects || []);
+    } catch (e) {
+      console.warn('JSON parse error for tutor:', tutor.id);
+    }
     
     const avgRating = ratings.length > 0 
-      ? ratings.reduce((sum: number, r: any) => sum + r.rating, 0) / ratings.length
+      ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
       : 0;
     
     const enhancedTutor = {
       ...tutor,
-      averageRating: Math.round(avgRating * 10) / 10,
+      averageRating: avgRating,
       totalReviews: ratings.length,
-      subjectsList: typeof tutor.subjects === 'string' 
-        ? JSON.parse(tutor.subjects) 
-        : tutor.subjects || [],
+      subjectsList,
       ratingsList: ratings
     };
 
+    res.set('Cache-Control', 'public, max-age=600'); // 10 minutes cache
     res.json({ success: true, data: enhancedTutor });
   } catch (error) {
     console.error('Error fetching tutor:', error);
-    res.status(500).json({ error: 'Failed to fetch tutor' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch tutor' 
+    });
   }
 });
 
-// Enhanced Content routes with better error handling and caching
+// High-performance Content API with comprehensive caching
 app.get('/api/admin/content/:type', async (req, res) => {
   try {
     const contentType = req.params.type;
     let content;
+    let cacheTime = 600; // 10 minutes default
     
-    switch (contentType) {
-      case 'tutors':
-        content = await prisma.tutor.findMany({ 
+    const contentQueries = {
+      'tutors': async () => {
+        const tutors = await prisma.tutor.findMany({ 
           where: { isActive: true }, 
           orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
         });
-        // Enhance tutors with calculated ratings
-        content = content.map(tutor => {
-          const ratings = typeof tutor.ratings === 'string' 
-            ? JSON.parse(tutor.ratings) 
-            : tutor.ratings || [];
+        
+        return tutors.map(tutor => {
+          let ratings = [];
+          try {
+            ratings = typeof tutor.ratings === 'string' ? JSON.parse(tutor.ratings) : (tutor.ratings || []);
+          } catch (e) {
+            console.warn('Ratings parse error:', tutor.id);
+          }
+          
           const avgRating = ratings.length > 0 
-            ? ratings.reduce((sum: number, r: any) => sum + r.rating, 0) / ratings.length
+            ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
             : 0;
+          
           return {
             ...tutor,
-            averageRating: Math.round(avgRating * 10) / 10,
+            averageRating: avgRating,
             totalReviews: ratings.length
           };
         });
-        break;
-      case 'team-members':
-        content = await prisma.teamMember.findMany({ 
-          where: { isActive: true }, 
-          orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
-        });
-        break;
-      case 'about-us':
-        content = await prisma.aboutUsContent.findFirst({ 
-          where: { isActive: true }, 
-          orderBy: { updatedAt: 'desc' } 
-        });
-        break;
-      case 'hero':
-        content = await prisma.heroContent.findFirst({ 
-          orderBy: { updatedAt: 'desc' } 
-        });
-        break;
-      case 'features':
-        content = await prisma.feature.findMany({ 
-          where: { isActive: true }, 
-          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
-        });
-        break;
-      case 'announcements':
-        content = await prisma.announcement.findMany({ 
-          where: { isActive: true }, 
-          orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }] 
-        });
-        break;
-      case 'testimonials':
-        content = await prisma.testimonial.findMany({ 
-          where: { isActive: true }, 
-          orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
-        });
-        break;
-      case 'pricing':
-        content = await prisma.pricingPlan.findMany({ 
-          where: { isActive: true }, 
-          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
-        });
-        break;
-      case 'events':
-        content = await prisma.$queryRawUnsafe('SELECT * FROM events ORDER BY date ASC');
-        break;
-      case 'footer':
-        content = await prisma.footerContent.findFirst({ 
-          where: { isActive: true }, 
-          orderBy: { updatedAt: 'desc' } 
-        });
-        break;
-      case 'subjects':
-        content = await prisma.subject.findMany({ 
-          where: { isActive: true }, 
-          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
-        });
-        break;
-      case 'navigation':
-        content = await prisma.navigationItem.findMany({ 
-          where: { isActive: true }, 
-          select: { path: true, label: true, type: true }, 
-          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
-        });
-        break;
-      case 'exam-rewrite':
-        content = await prisma.examRewriteContent.findFirst({ 
-          where: { isActive: true }, 
-          orderBy: { updatedAt: 'desc' } 
-        });
-        break;
-      case 'university-application':
-        content = await prisma.universityApplicationContent.findFirst({ 
-          where: { isActive: true }, 
-          orderBy: { updatedAt: 'desc' } 
-        });
-        break;
-      case 'contact-us':
-        content = await prisma.contactUsContent.findFirst({ 
-          where: { isActive: true }, 
-          orderBy: { updatedAt: 'desc' } 
-        });
-        break;
-      case 'become-tutor':
-        content = await prisma.becomeTutorContent.findFirst({ 
-          where: { isActive: true }, 
-          orderBy: { updatedAt: 'desc' } 
-        });
-        break;
-      default:
-        return res.status(404).json({ 
-          success: false,
-          error: 'Content type not found',
-          availableTypes: [
-            'tutors', 'team-members', 'about-us', 'hero', 'features',
-            'announcements', 'testimonials', 'pricing', 'events', 'footer',
-            'subjects', 'navigation', 'exam-rewrite', 'university-application',
-            'contact-us', 'become-tutor'
-          ]
-        });
+      },
+      'team-members': () => prisma.teamMember.findMany({ 
+        where: { isActive: true }, 
+        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
+      }),
+      'about-us': () => prisma.aboutUsContent.findFirst({ 
+        where: { isActive: true }, 
+        orderBy: { updatedAt: 'desc' } 
+      }),
+      'hero': () => prisma.heroContent.findFirst({ 
+        orderBy: { updatedAt: 'desc' } 
+      }),
+      'features': () => prisma.feature.findMany({ 
+        where: { isActive: true }, 
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
+      }),
+      'announcements': () => prisma.announcement.findMany({ 
+        where: { isActive: true }, 
+        orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }] 
+      }),
+      'testimonials': () => prisma.testimonial.findMany({ 
+        where: { isActive: true }, 
+        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
+      }),
+      'pricing': () => prisma.pricingPlan.findMany({ 
+        where: { isActive: true }, 
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
+      }),
+      'events': () => prisma.$queryRawUnsafe('SELECT * FROM events ORDER BY date ASC'),
+      'footer': () => prisma.footerContent.findFirst({ 
+        where: { isActive: true }, 
+        orderBy: { updatedAt: 'desc' } 
+      }),
+      'subjects': () => prisma.subject.findMany({ 
+        where: { isActive: true }, 
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
+      }),
+      'navigation': () => prisma.navigationItem.findMany({ 
+        where: { isActive: true }, 
+        select: { path: true, label: true, type: true }, 
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
+      }),
+      'exam-rewrite': () => prisma.examRewriteContent.findFirst({ 
+        where: { isActive: true }, 
+        orderBy: { updatedAt: 'desc' } 
+      }),
+      'university-application': () => prisma.universityApplicationContent.findFirst({ 
+        where: { isActive: true }, 
+        orderBy: { updatedAt: 'desc' } 
+      }),
+      'contact-us': () => prisma.contactUsContent.findFirst({ 
+        where: { isActive: true }, 
+        orderBy: { updatedAt: 'desc' } 
+      }),
+      'become-tutor': () => prisma.becomeTutorContent.findFirst({ 
+        where: { isActive: true }, 
+        orderBy: { updatedAt: 'desc' } 
+      })
+    };
+
+    const queryFn = contentQueries[contentType];
+    
+    if (!queryFn) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Content type not found',
+        availableTypes: Object.keys(contentQueries)
+      });
     }
 
-    if (content) {
+    content = await queryFn();
+
+    if (content !== null && content !== undefined) {
       const listTypes = [
         'tutors', 'team-members', 'features', 'testimonials', 
         'pricing', 'subjects', 'announcements', 'events', 'navigation'
       ];
       
+      res.set('Cache-Control', `public, max-age=${cacheTime}`);
       res.json({ 
         success: true,
         data: content,
         type: contentType,
         isArray: listTypes.includes(contentType),
-        count: Array.isArray(content) ? content.length : 1
+        count: Array.isArray(content) ? content.length : 1,
+        timestamp: new Date().toISOString()
       });
     } else {
       res.status(404).json({ 
@@ -428,12 +512,12 @@ app.get('/api/admin/content/:type', async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: `Failed to fetch ${req.params.type} content`,
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
 
-// Statistics endpoint for admin dashboard
+// Optimized statistics endpoint
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const [
@@ -448,6 +532,7 @@ app.get('/api/admin/stats', async (req, res) => {
       prisma.announcement.count({ where: { isActive: true } })
     ]);
 
+    res.set('Cache-Control', 'public, max-age=300'); // 5 minutes cache
     res.json({
       success: true,
       data: {
@@ -460,24 +545,26 @@ app.get('/api/admin/stats', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching admin stats:', error);
-    res.status(500).json({ error: 'Failed to fetch statistics' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to fetch statistics' 
+    });
   }
 });
 
+// Database initialization (schema only, no seeding)
 async function initializeDatabase() {
   try {
-    console.log('Initializing database...');
+    console.log('Initializing database schema...');
     const db = await getConnection();
-    const files = [
+    const schemaFiles = [
       path.join(baseDir, 'database', 'schema.sql'),
       path.join(baseDir, 'database', 'content-schema.sql')
     ];
     
-    for (const file of files) {
+    for (const file of schemaFiles) {
       try {
-        console.log(`Executing SQL file: ${file}`);
         const sql = await fs.readFile(file, 'utf8');
-        // Split on semicolons to run sequentially
         const statements = sql
           .split(/;\s*\n/)
           .map(s => s.trim())
@@ -487,142 +574,89 @@ async function initializeDatabase() {
           try {
             await db.exec(stmt + ';');
           } catch (e) {
-            console.warn(`Statement execution warning:`, e);
+            // Ignore table exists errors in production
+            if (!e.message.includes('already exists')) {
+              console.warn(`Statement execution warning:`, e.message);
+            }
           }
         }
+        console.log(`✓ Executed ${file}`);
       } catch (e) {
-        console.warn(`File ${file} not found or error reading:`, e);
+        console.warn(`⚠️ File ${file} not found:`, e.message);
       }
     }
     await db.close();
-    console.log('Database initialization completed');
+    console.log('✓ Database schema initialization completed');
   } catch (e) {
-    console.error('DB initialization failed:', e);
+    console.error('❌ Database initialization failed:', e);
     throw e;
   }
 }
 
-async function seedDatabaseIfEmpty() {
+// Graceful shutdown handlers
+const gracefulShutdown = async (signal) => {
+  console.log(`Received ${signal}. Starting graceful shutdown...`);
   try {
-    console.log('Checking if database seeding is needed...');
-    const db = await getConnection();
-    
-    const singletons = [
-      {
-        table: 'hero_content',
-        insert: `INSERT INTO hero_content (id, title, subtitle, buttonText, buttonLink, imageUrl, updated_at)
-             VALUES (lower(hex(randomblob(16))), 'Welcome to Excellence Akademie', '25 Years of Academic Excellence - Empowering Minds, One Click at a Time!', 'Choose a Plan', '/pricing', '/placeholder.svg', CURRENT_TIMESTAMP)`
-      },
-      {
-        table: 'footer_content',
-        insert: `INSERT INTO footer_content (id, companyInfo, socialLinks, quickLinks, contactInfo, updated_at)
-                 VALUES (lower(hex(randomblob(16))), json('{"companyName":"EXCELLENCE Akademie 25","tagline":"Empowering Minds, One Click at a Time!","copyright":"© 2025 Excellence Academia. All rights reserved."}'), json('{"facebook":"https://facebook.com","instagram":"https://www.instagram.com/excellence.academia25","tiktok":"https://www.tiktok.com/@excellence.academia25"}'), json('[{"path":"/about-us","label":"About Us"},{"path":"/subjects","label":"Subjects"},{"path":"/university-application","label":"University Application"}]'), json('{"phone":"+27 79 386 7427","email":"ExcellenceAcademia2025@gmail.com","contactPerson":"Roshan Singh","whatsapp":"https://wa.me/27793867427"}'), CURRENT_TIMESTAMP)`
-      },
-      {
-        table: 'exam_rewrite_content',
-        insert: `INSERT INTO exam_rewrite_content (id, title, description, heroTitle, heroDescription, benefits, process, subjects, applicationFormUrl, pricingInfo, is_active, created_at, updated_at)
-                 VALUES (lower(hex(randomblob(16))), 'Exam Rewrite Program', 'Transform your academic future with our comprehensive exam rewrite program', 'Second Chances, First-Class Results', 'Don''t let one exam define your future. Our expert tutors will help you achieve the grades you deserve.', json('["Expert tutoring in all subjects","Personalized study plans","Practice exams and mock tests","Flexible scheduling","Proven success rate"]'), json('[{"title":"Assessment","description":"We evaluate your current knowledge and identify areas for improvement"},{"title":"Planning","description":"Create a personalized study plan tailored to your needs"},{"title":"Learning","description":"Work with expert tutors to master the content"},{"title":"Practice","description":"Take practice exams to build confidence"},{"title":"Success","description":"Achieve the grades you need for your future"}]'), json('["Mathematics","Physical Sciences","Life Sciences","English","Afrikaans","Accounting","Economics","Business Studies","Geography","History"]'), 'https://docs.google.com/forms/d/e/1FAIpQLScZUhGQsFhbgqLRdZ3PrZwr64pBIBgxKyY8EyQSE4REUxwWeA/viewform', json('{"basic":{"price":"R 150","period":"Monthly","subjects":3},"standard":{"price":"R 250","period":"Monthly","subjects":5},"premium":{"price":"R 350","period":"Monthly","subjects":"Unlimited"}}'), 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-      },
-      {
-        table: 'university_application_content',
-        insert: `INSERT INTO university_application_content (id, title, description, services, process, requirements, pricing, formUrl, is_active, created_at, updated_at)
-                 VALUES (lower(hex(randomblob(16))), 'University Application Assistance', 'Get expert help with your university applications', json('["University of Cape Town","University of Pretoria","University of the Witwatersrand","Stellenbosch University","Rhodes University"]'), json('["Initial Consultation","Document Preparation","Application Submission","Follow-up Support"]'), json('["Certified ID Document","Academic Transcripts","Proof of Registration","Personal Statement"]'), json('{"consultation":"R 200","full_service":"R 500"}'), 'https://forms.gle/ebjp3aUsutZni8jd9', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-      }
-    ];
-    
-    for (const s of singletons) {
-      try {
-        const row = await db.get<{ c: number }>(`SELECT COUNT(*) as c FROM ${s.table}`);
-        if ((row?.c ?? 0) === 0) {
-          await db.exec(s.insert);
-          console.log(`Seeded ${s.table}`);
-        }
-      } catch (e) { 
-        console.warn(`Failed to seed ${s.table}:`, e); 
-      }
-    }
-    
-    const collections = [
-      { 
-        table: 'features', 
-        insert: `INSERT INTO features (id, title, description, icon, benefits, created_at, updated_at) VALUES (lower(hex(randomblob(16))), 'Comprehensive Curriculum', 'Structured learning paths aligned with South African curriculum standards', 'curriculum', json('["CAPS Aligned","Grade 10-12 Coverage","Expert Tutors","Interactive Learning"]'), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)` 
-      },
-      { 
-        table: 'pricing_plans', 
-        insert: `INSERT INTO pricing_plans (id, name, price, interval, features, isPopular, created_at) VALUES (lower(hex(randomblob(16))), 'STANDARD', '250.00', 'Monthly', json('["All subjects tutoring","Flexible scheduling","Progress tracking","24/7 support"]'), 1, CURRENT_TIMESTAMP)` 
-      },
-      { 
-        table: 'testimonials', 
-        insert: `INSERT INTO testimonials (id, name, role, content, image, rating, created_at) VALUES (lower(hex(randomblob(16))), 'Sarah Johnson', 'Grade 12 Mathematics Student', 'Excellence Akademie helped me improve my maths from 45% to 78%! The tutors are amazing and really care about your success.', '/placeholder.svg?height=100&width=100', 5, CURRENT_TIMESTAMP)` 
-      },
-      { 
-        table: 'subjects', 
-        insert: `INSERT INTO subjects (id, name, description, icon, created_at) VALUES (lower(hex(randomblob(16))), 'Mathematics', 'From algebra to calculus, master any math topic with our expert tutors', 'calculator', CURRENT_TIMESTAMP)` 
-      },
-      { 
-        table: 'navigation_items', 
-        insert: `INSERT INTO navigation_items (id, path, label, type, [order], is_active, created_at, updated_at) VALUES (lower(hex(randomblob(16))), '/', 'Home', 'main', 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)` 
-      }
-    ];
-    
-    for (const c of collections) {
-      try {
-        const row = await db.get<{ c: number }>(`SELECT COUNT(*) as c FROM ${c.table}`);
-        if ((row?.c ?? 0) === 0) {
-          await db.exec(c.insert);
-          console.log(`Seeded ${c.table}`);
-        }
-      } catch (e) { 
-        console.warn(`Failed to seed ${c.table}:`, e); 
-      }
-    }
-    
-    await db.close();
-    console.log('Database seeding completed');
-  } catch (e) {
-    console.error('DB seed failed:', e);
-    throw e;
+    await prisma.$disconnect();
+    console.log('✓ Database connections closed');
+    process.exit(0);
+  } catch (error) {
+    console.error('Error during shutdown:', error);
+    process.exit(1);
   }
-}
+};
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('Received SIGINT. Graceful shutdown...');
-  await prisma.$disconnect();
-  process.exit(0);
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
 });
 
-process.on('SIGTERM', async () => {
-  console.log('Received SIGTERM. Graceful shutdown...');
-  await prisma.$disconnect();
-  process.exit(0);
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });
 
 // Initialize and start server
-initializeDatabase()
-  .then(() => seedDatabaseIfEmpty())
-  .then(() => {
-    console.log('Starting server...');
+const startServer = async () => {
+  try {
+    console.log('🚀 Starting Excellence Akademie API Server...');
+    
+    // Initialize database schema
+    await initializeDatabase();
+    
+    // Start server
     const server = app.listen(port, '0.0.0.0', () => {
-      console.log(`🚀 Server running at http://localhost:${port}`);
-      console.log(`📊 Health check: http://localhost:${port}/api/health`);
-      console.log(`👨‍🏫 Tutors API: http://localhost:${port}/api/tutors`);
+      console.log(`✓ Server running on port ${port}`);
+      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`✓ Health check: http://localhost:${port}/api/health`);
+      console.log(`✓ Tutors API: http://localhost:${port}/api/tutors`);
+      console.log(`✓ Ready for connections!`);
     });
     
-    server.on('error', (error: NodeJS.ErrnoException) => {
+    // Handle server errors
+    server.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
-        const fallback = port + 1;
-        console.error(`❌ Port ${port} is in use. Trying port ${fallback}...`);
-        app.listen(fallback, '0.0.0.0', () =>
-          console.log(`🚀 Server running at http://localhost:${fallback}`)
-        );
+        console.error(`❌ Port ${port} is in use`);
+        process.exit(1);
       } else {
         console.error('❌ Server error:', error);
         process.exit(1);
       }
     });
-  })
-  .catch((error) => {
+
+    // Prevent server timeout on Render
+    server.keepAliveTimeout = 120000; // 2 minutes
+    server.headersTimeout = 120000; // 2 minutes
+    
+  } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);
-  });
+  }
+};
+
+// Start the application
+startServer();

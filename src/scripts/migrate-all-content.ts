@@ -205,6 +205,25 @@ const tutorsData = [
       }
     ]),
     order: 10
+  {
+    name: "Simon",
+    subjects: JSON.stringify(["Mathematics", "Physical Science"]),
+    image: "",
+    contactName: "Simon",
+    contactPhone: "+27 XXX XXX XXXX",
+    contactEmail: "ExcellenceAcademia2025@gmail.com",
+    description: "Simon is a dedicated Mathematics and Phusical science  tutor. He focuses on building strong foundations in both analytical and physics understanding  skills to help students excel.",
+    ratings: JSON.stringify([
+      {
+        id: 1,
+        studentName: "Initial Rating",
+        rating: 5,
+        comment: "Outstanding math and science tutor with clear explanations.",
+        date: "2025-09-10"
+      }
+    ]),
+    order: 11
+
   }
 ]
 
