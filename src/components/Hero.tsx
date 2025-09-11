@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import { apiFetch } from "@/lib/api"
 import { Button } from "./ui/button"
 import { Link, useNavigate } from "react-router-dom"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog"
@@ -78,9 +79,7 @@ const Hero = () => {
 
   const fetchHeroContent = async () => {
     try {
-      const response = await fetch('/api/admin/content/hero')
-      if (!response.ok) throw new Error('Failed to load hero')
-      const data = await response.json()
+      const data = await apiFetch<any>('/api/admin/content/hero')
       
       // Validate and sanitize the data structure
       const validatedData: HeroContent = {

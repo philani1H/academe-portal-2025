@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
 import { Button } from "./ui/button"
@@ -161,9 +162,7 @@ const Subjects = () => {
 
   const fetchSubjects = async () => {
     try {
-      const response = await fetch('/api/admin/content/subjects')
-      if (response.ok) {
-        const data = await response.json()
+      const data = await apiFetch<any[]>('/api/admin/content/subjects')
         // Normalize subject data to ensure array fields are arrays
         const normalized = Array.isArray(data)
           ? data.map((s) => ({
@@ -173,10 +172,10 @@ const Subjects = () => {
             }))
           : []
         setSubjects(normalized)
-      } else {
-        // Fallback to default subjects if API fails
-        setSubjects(defaultSubjectData)
-      }
+    } else {
+      // Fallback to default subjects if API fails
+      setSubjects(defaultSubjectData)
+    }
     } catch (error) {
       console.error('Error fetching subjects:', error)
       // Set fallback content
