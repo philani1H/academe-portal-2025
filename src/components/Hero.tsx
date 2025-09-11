@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { apiFetch } from "@/lib/api"
 import { Button } from "./ui/button"
 import { Link, useNavigate } from "react-router-dom"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog"
@@ -18,99 +17,21 @@ import {
   Award
 } from "lucide-react"
 
-interface HeroContent {
-  id: string
-  title: string
-  subtitle: string
-  description: string
-  buttonText: string
-  secondaryButtonText: string
-  trustIndicatorText: string
-  universities: string[]
-  features: Array<{
-    title: string
-    description: string
-    icon: string
-  }>
-  backgroundGradient: string
-}
-
-// Default fallback content
-const defaultHeroContent: HeroContent = {
-  id: "default",
-  title: "Excellence Akademie",
-  subtitle: "Your Academic Success Partner",
-  description: "Transform your academic journey with personalized tutoring and expert guidance",
-  buttonText: "Start Your Journey",
-  secondaryButtonText: "Become a Tutor",
-  trustIndicatorText: "Trusted by students from top universities",
-  universities: ["UCT", "Wits", "UP", "Stellenbosch"],
-  features: [
-    {
-      title: "Expert Tutoring",
-      description: "Learn from qualified educators",
-      icon: "award"
-    },
-    {
-      title: "Small Classes",
-      description: "Personalized attention for every student",
-      icon: "users"
-    },
-    {
-      title: "Proven Results",
-      description: "Track record of academic success",
-      icon: "star"
-    }
-  ],
-  backgroundGradient: "bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199]"
-}
-
 const Hero = () => {
   const [showGradeDialog, setShowGradeDialog] = useState(false)
   const [animateParticles, setAnimateParticles] = useState(false)
-  const [heroContent, setHeroContent] = useState<HeroContent>(defaultHeroContent)
-  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
     setAnimateParticles(true)
-    fetchHeroContent()
   }, [])
 
-  const fetchHeroContent = async () => {
-    try {
-      const data = await apiFetch<any>('/api/admin/content/hero')
-      
-      // Validate and sanitize the data structure
-      const validatedData: HeroContent = {
-        id: data.id || defaultHeroContent.id,
-        title: data.title || defaultHeroContent.title,
-        subtitle: data.subtitle || defaultHeroContent.subtitle,
-        description: data.description || defaultHeroContent.description,
-        buttonText: data.buttonText || defaultHeroContent.buttonText,
-        secondaryButtonText: data.secondaryButtonText || defaultHeroContent.secondaryButtonText,
-        trustIndicatorText: data.trustIndicatorText || defaultHeroContent.trustIndicatorText,
-        universities: Array.isArray(data.universities) ? data.universities : defaultHeroContent.universities,
-        features: Array.isArray(data.features) ? data.features : defaultHeroContent.features,
-        backgroundGradient: data.backgroundGradient || defaultHeroContent.backgroundGradient
-      }
-      
-      setHeroContent(validatedData)
-    } catch (error) {
-      console.error('Error fetching hero content:', error)
-      // Keep default content on error instead of setting to null
-      setHeroContent(defaultHeroContent)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handlePlanClick = (e: React.MouseEvent) => {
+  const handlePlanClick = (e) => {
     e.preventDefault()
     setShowGradeDialog(true)
   }
 
-  const handleGradeSelection = (option: string) => {
+  const handleGradeSelection = (option) => {
     setShowGradeDialog(false)
 
     // Fixed navigation logic as requested
@@ -123,17 +44,26 @@ const Hero = () => {
     }
   }
 
-  const getIconComponent = (iconName: string) => {
-    const iconMap: Record<string, JSX.Element> = {
-      'award': <Award className="h-10 w-10 text-blue-300 mb-2" />,
-      'users': <Users className="h-10 w-10 text-blue-300 mb-2" />,
-      'star': <Star className="h-10 w-10 text-blue-300 mb-2" />
+  const features = [
+    {
+      title: "Expert Instruction",
+      description: "Learn from South Africa's finest educators with proven teaching methodologies",
+      icon: <Award className="h-10 w-10 text-blue-300 mb-2" />
+    },
+    {
+      title: "Personalized Learning",
+      description: "Adaptive curriculum tailored to your unique learning style and pace",
+      icon: <Users className="h-10 w-10 text-blue-300 mb-2" />
+    },
+    {
+      title: "Success Guarantee",
+      description: "Join thousands of students who improved their grades by 25% or more",
+      icon: <Star className="h-10 w-10 text-blue-300 mb-2" />
     }
-    return iconMap[iconName] || <Award className="h-10 w-10 text-blue-300 mb-2" />
-  }
+  ]
 
-  // Better particle system with proper typing
-  const particles = Array(30).fill(null).map((_, i) => ({
+  // Better particle system
+  const particles = Array(30).fill().map((_, i) => ({
     id: i,
     size: Math.random() * 3 + 1,
     x: Math.random() * 100,
@@ -141,18 +71,6 @@ const Hero = () => {
     duration: 15 + Math.random() * 25,
     delay: Math.random() * 5
   }))
-
-  if (loading) {
-    return (
-      <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199] opacity-90" />
-        <div className="text-center text-white">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Loading...</p>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <motion.div
@@ -162,7 +80,7 @@ const Hero = () => {
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
     >
       {/* Enhanced Dynamic Background */}
-      <div className={`absolute inset-0 ${heroContent.backgroundGradient} opacity-90`} />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199] opacity-90" />
       
       {/* Improved Floating Particles */}
       <div className="absolute inset-0 pointer-events-none">
@@ -207,10 +125,10 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.2 }}
           >
             <h1 className="text-5xl md:text-7xl font-extrabold text-white mb-3 tracking-tight">
-              {heroContent.title}
+              Welcome to <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-purple-300">Excellence Akademie</span>
             </h1>
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-6 tracking-tight">
-              {heroContent.subtitle}
+              <span className="text-blue-300">25</span> Years of Academic Excellence
             </h2>
           </motion.div>
 
@@ -221,7 +139,7 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="text-xl md:text-2xl text-gray-200 mb-12 max-w-3xl mx-auto"
           >
-            {heroContent.description}
+            Empowering South African students to reach their full potential through world-class education and personalized guidance
           </motion.p>
 
           {/* Feature Cards */}
@@ -231,7 +149,7 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.6 }}
             className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12"
           >
-            {heroContent.features?.map((feature, index) => (
+            {features.map((feature, index) => (
               <motion.div
                 key={index}
                 whileHover={{ 
@@ -241,7 +159,7 @@ const Hero = () => {
                 transition={{ duration: 0.3 }}
                 className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/10 flex flex-col items-center"
               >
-                {getIconComponent(feature.icon)}
+                {feature.icon}
                 <h3 className="text-2xl font-bold text-blue-200 mb-3">{feature.title}</h3>
                 <p className="text-gray-300">{feature.description}</p>
               </motion.div>
@@ -264,7 +182,7 @@ const Hero = () => {
                 className="bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 transition-all duration-300 ease-in-out shadow-lg font-semibold px-10 py-7 rounded-xl text-lg"
                 onClick={handlePlanClick}
               >
-                {heroContent.buttonText}
+                Choose a Plan
               </Button>
             </motion.div>
             
@@ -277,7 +195,7 @@ const Hero = () => {
                   variant="outline"
                   className="bg-transparent backdrop-blur-sm border-2 border-white/50 text-white hover:border-white hover:bg-white/10 transition-all duration-300 ease-in-out shadow-lg font-semibold px-10 py-7 rounded-xl text-lg"
                 >
-                  {heroContent.secondaryButtonText}
+                  Become a Tutor
                 </Button>
               </Link>
             </motion.div>
@@ -290,9 +208,9 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 1.2 }}
             className="mt-16"
           >
-            <p className="text-blue-200 mb-4 font-medium">{heroContent.trustIndicatorText}</p>
+            <p className="text-blue-200 mb-4 font-medium">Trusted by over 10,000+ students across South Africa</p>
             <div className="flex justify-center space-x-8 opacity-70">
-              {heroContent.universities?.map((uni, index) => (
+              {["UCT", "Wits", "UP", "UKZN", "Stellenbosch"].map((uni, index) => (
                 <div key={index} className="text-white font-bold text-xl">
                   {uni}
                 </div>

@@ -271,9 +271,11 @@ const Features = () => {
           <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
             <TabsTrigger value="features">Features</TabsTrigger>
             <TabsTrigger value="announcements" className="relative">
-              Announcements
+              <span>Announcements</span>
               {announcements.length > 0 && (
-                <Badge className="ml-2 bg-blue-600 hover:bg-blue-600">{announcements.length}</Badge>
+                <span className="ml-2">
+                  <Badge className="bg-blue-600 hover:bg-blue-600">{announcements.length}</Badge>
+                </span>
               )}
             </TabsTrigger>
           </TabsList>

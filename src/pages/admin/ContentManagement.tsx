@@ -56,6 +56,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useToast } from "@/hooks/use-toast"
+import { apiFetch } from "@/lib/api"
 
 // Types for content management
 interface HeroContent {
@@ -242,18 +243,7 @@ interface UniversityApplicationContent {
 
 const ContentManagement = () => {
   const { toast } = useToast()
-  const baseUrl = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || ''
-  
-  // Helper: fetch wrapper that unwraps { success, data }
-  const apiFetch = async <T = any>(path: string, init?: RequestInit): Promise<T> => {
-    const res = await fetch(path, {
-      credentials: 'include',
-      ...(init || {}),
-    })
-    if (!res.ok) throw new Error(`Request failed: ${res.status}`)
-    const json = await res.json().catch(() => null)
-    return (json && (json.data !== undefined ? json.data : json)) as T
-  }
+ 
   
   // Helper: convert file to base64 data URL
   const fileToBase64 = (file: File): Promise<string> => {
@@ -267,13 +257,25 @@ const ContentManagement = () => {
   
   // Helper: upload image via API, returns URL string
   const uploadImage = async (file: File): Promise<string> => {
-    const dataUrl = await fileToBase64(file)
-    const res = await apiFetch<{ url: string }>(`${baseUrl}/api/admin/upload`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: dataUrl, fileName: file.name }),
-    })
-    return (res as any).url || (res as any)
+    try {
+      const dataUrl = await fileToBase64(file)
+      const res = await apiFetch<{ url: string }>('/api/admin/upload', {
+        method: 'POST',
+        body: JSON.stringify({ file: dataUrl, fileName: file.name }),
+      })
+      if (!res || (!res.url && typeof res !== 'string')) {
+        throw new Error('Invalid response from upload API')
+      }
+      return res.url || res
+    } catch (error) {
+      console.error('Error uploading image:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to upload image',
+        variant: 'destructive',
+      })
+      throw error
+    }
   }
   
   // State for different content types
@@ -352,7 +354,7 @@ const ContentManagement = () => {
   // API functions
   const fetchHeroContent = async () => {
     try {
-      const data = await apiFetch<HeroContent | null>(`${baseUrl}/api/admin/content/hero`)
+      const data = await apiFetch<HeroContent | null>(`/api/admin/content/hero`)
       if (data) setHeroContent(data)
     } catch (error) {
       console.error('Error fetching hero content:', error)
@@ -361,7 +363,7 @@ const ContentManagement = () => {
 
   const fetchFeatures = async () => {
     try {
-      const data = await apiFetch<Feature[]>(`${baseUrl}/api/admin/content/features`)
+      const data = await apiFetch<Feature[]>(`/api/admin/content/features`)
       setFeatures(data || [])
     } catch (error) {
       console.error('Error fetching features:', error)
@@ -370,7 +372,7 @@ const ContentManagement = () => {
 
   const fetchAnnouncements = async () => {
     try {
-      const data = await apiFetch<Announcement[]>(`${baseUrl}/api/admin/content/announcements`)
+      const data = await apiFetch<Announcement[]>(`/api/admin/content/announcements`)
       setAnnouncements(data || [])
     } catch (error) {
       console.error('Error fetching announcements:', error)
@@ -379,7 +381,7 @@ const ContentManagement = () => {
 
   const fetchPricingPlans = async () => {
     try {
-      const data = await apiFetch<PricingPlan[]>(`${baseUrl}/api/admin/content/pricing`)
+      const data = await apiFetch<PricingPlan[]>(`/api/admin/content/pricing`)
       setPricingPlans(data || [])
     } catch (error) {
       console.error('Error fetching pricing plans:', error)
@@ -388,7 +390,7 @@ const ContentManagement = () => {
 
   const fetchTestimonials = async () => {
     try {
-      const data = await apiFetch<Testimonial[]>(`${baseUrl}/api/admin/content/testimonials`)
+      const data = await apiFetch<Testimonial[]>(`/api/admin/content/testimonials`)
       setTestimonials(data || [])
     } catch (error) {
       console.error('Error fetching testimonials:', error)
@@ -397,7 +399,7 @@ const ContentManagement = () => {
 
   const fetchTeamMembers = async () => {
     try {
-      const data = await apiFetch<TeamMember[]>(`${baseUrl}/api/admin/content/team-members`)
+      const data = await apiFetch<TeamMember[]>(`/api/admin/content/team-members`)
       setTeamMembers(data || [])
     } catch (error) {
       console.error('Error fetching team members:', error)
@@ -406,7 +408,7 @@ const ContentManagement = () => {
 
   const fetchAboutUsContent = async () => {
     try {
-      const data = await apiFetch<AboutUsContent | null>(`${baseUrl}/api/admin/content/about-us`)
+      const data = await apiFetch<AboutUsContent | null>('/api/admin/content/about-us')
       if (data) setAboutUsContent(data)
     } catch (error) {
       console.error('Error fetching about us content:', error)
@@ -415,7 +417,7 @@ const ContentManagement = () => {
 
   const fetchTutors = async () => {
     try {
-      const data = await apiFetch<Tutor[]>(`${baseUrl}/api/admin/content/tutors`)
+      const data = await apiFetch<Tutor[]>('/api/admin/content/tutors')
       setTutors(data || [])
     } catch (error) {
       console.error('Error fetching tutors:', error)
@@ -424,7 +426,7 @@ const ContentManagement = () => {
 
   const fetchSubjects = async () => {
     try {
-      const data = await apiFetch<Subject[]>(`${baseUrl}/api/admin/content/subjects`)
+      const data = await apiFetch<Subject[]>('/api/admin/content/subjects')
       setSubjects(data || [])
     } catch (error) {
       console.error('Error fetching subjects:', error)
@@ -433,7 +435,7 @@ const ContentManagement = () => {
 
   const fetchFooterContent = async () => {
     try {
-      const data = await apiFetch<FooterContent | null>(`${baseUrl}/api/admin/content/footer`)
+      const data = await apiFetch<FooterContent | null>('/api/admin/content/footer')
       if (data) setFooterContent(data)
     } catch (error) {
       console.error('Error fetching footer content:', error)
@@ -442,7 +444,7 @@ const ContentManagement = () => {
 
   const fetchNavigationItems = async () => {
     try {
-      const data = await apiFetch<NavigationItem[]>(`${baseUrl}/api/admin/content/navigation`)
+      const data = await apiFetch<NavigationItem[]>('/api/admin/content/navigation')
       setNavigationItems(data || [])
     } catch (error) {
       console.error('Error fetching navigation items:', error)
@@ -451,7 +453,7 @@ const ContentManagement = () => {
 
   const fetchContactUsContent = async () => {
     try {
-      const data = await apiFetch<ContactUsContent | null>(`${baseUrl}/api/admin/content/contact-us`)
+      const data = await apiFetch<ContactUsContent | null>('/api/admin/content/contact-us')
       if (data) setContactUsContent(data)
     } catch (error) {
       console.error('Error fetching contact us content:', error)
@@ -460,7 +462,7 @@ const ContentManagement = () => {
 
   const fetchBecomeTutorContent = async () => {
     try {
-      const data = await apiFetch<BecomeTutorContent | null>(`${baseUrl}/api/admin/content/become-tutor`)
+      const data = await apiFetch<BecomeTutorContent | null>('/api/admin/content/become-tutor')
       if (data) setBecomeTutorContent(data)
     } catch (error) {
       console.error('Error fetching become tutor content:', error)
@@ -469,7 +471,7 @@ const ContentManagement = () => {
 
   const fetchExamRewriteContent = async () => {
     try {
-      const data = await apiFetch<ExamRewriteContent | null>(`${baseUrl}/api/admin/content/exam-rewrite`)
+      const data = await apiFetch<ExamRewriteContent | null>('/api/admin/content/exam-rewrite')
       if (data) setExamRewriteContent(data)
     } catch (error) {
       console.error('Error fetching exam rewrite content:', error)
@@ -478,7 +480,7 @@ const ContentManagement = () => {
 
   const fetchUniversityApplicationContent = async () => {
     try {
-      const data = await apiFetch<UniversityApplicationContent | null>(`${baseUrl}/api/admin/content/university-application`)
+      const data = await apiFetch<UniversityApplicationContent | null>('/api/admin/content/university-application')
       if (data) setUniversityApplicationContent(data)
     } catch (error) {
       console.error('Error fetching university application content:', error)
@@ -489,9 +491,8 @@ const ContentManagement = () => {
   const saveHeroContent = async (content: HeroContent) => {
     try {
       const method = content.id ? 'PUT' : 'POST'
-      const data = await apiFetch<HeroContent>(`${baseUrl}/api/admin/content/hero`, {
+      const data = await apiFetch<HeroContent>('/api/admin/content/hero', {
         method,
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(content)
       })
       setHeroContent(data)
@@ -510,9 +511,8 @@ const ContentManagement = () => {
   const saveFeature = async (feature: Feature) => {
     try {
       const method = feature.id ? 'PUT' : 'POST'
-      const data = await apiFetch<Feature>(`${baseUrl}/api/admin/content/features`, {
+      const data = await apiFetch<Feature>('/api/admin/content/features', {
         method,
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(feature)
       })
       if (feature.id) {
@@ -534,7 +534,7 @@ const ContentManagement = () => {
 
   const deleteFeature = async (id: string) => {
     try {
-      await apiFetch(`${baseUrl}/api/admin/content/features?id=${id}`, { method: 'DELETE' })
+      await apiFetch(`/api/admin/content/features?id=${id}`, { method: 'DELETE' })
       setFeatures(features.filter(f => f.id !== id))
       toast({ title: "Success", description: "Feature deleted successfully" })
     } catch (error) {
@@ -550,38 +550,121 @@ const ContentManagement = () => {
   // Testimonial save
   const saveTestimonial = async (testimonial: Testimonial) => {
     const method = testimonial.id ? 'PUT' : 'POST'
-    const data = await apiFetch<Testimonial>(`${baseUrl}/api/admin/content/testimonials`, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testimonial)
-    })
-    if (testimonial.id) {
-      setTestimonials(testimonials.map(t => t.id === testimonial.id ? data : t))
-    } else {
-      setTestimonials([...testimonials, data])
+    try {
+      const data = await apiFetch<Testimonial>('/api/admin/content/testimonials', {
+        method,
+        body: JSON.stringify(testimonial)
+      })
+      if (testimonial.id) {
+        setTestimonials(testimonials.map(t => t.id === testimonial.id ? data : t))
+      } else {
+        setTestimonials([...testimonials, data])
+      }
+      setEditingTestimonial(null)
+      toast({ title: 'Success', description: 'Testimonial saved successfully' })
+    } catch (error) {
+      console.error('Error saving testimonial:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save testimonial',
+        variant: 'destructive',
+      })
     }
-    setEditingTestimonial(null)
-    toast({ title: 'Success', description: 'Testimonial saved' })
   }
 
   // Team member save
   const saveTeamMember = async (member: TeamMember) => {
     const method = member.id ? 'PUT' : 'POST'
-    const data = await apiFetch<TeamMember>(`${baseUrl}/api/admin/content/team-members`, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(member)
-    })
-    if (member.id) {
-      setTeamMembers(teamMembers.map(m => m.id === member.id ? data : m))
-    } else {
-      setTeamMembers([...teamMembers, data])
+    try {
+      const data = await apiFetch<TeamMember>('/api/admin/content/team-members', {
+        method,
+        body: JSON.stringify(member)
+      })
+      if (member.id) {
+        setTeamMembers(teamMembers.map(m => m.id === member.id ? data : m))
+      } else {
+        setTeamMembers([...teamMembers, data])
+      }
+      setEditingTeamMember(null)
+      toast({ title: 'Success', description: 'Team member saved successfully' })
+    } catch (error) {
+      console.error('Error saving team member:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save team member',
+        variant: 'destructive',
+      })
     }
-    setEditingTeamMember(null)
-    toast({ title: 'Success', description: 'Team member saved' })
   }
 
-  // Similar functions for other content types...
+  const deletePricingPlan = async (id: string) => {
+    try {
+      await apiFetch(`/api/admin/content/pricing?id=${id}`, { method: 'DELETE' })
+      setPricingPlans(pricingPlans.filter(p => p.id !== id))
+      toast({ title: "Success", description: "Pricing plan deleted successfully" })
+    } catch (error) {
+      console.error('Error deleting pricing plan:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete pricing plan",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const deleteTestimonial = async (id: string) => {
+    try {
+      await apiFetch(`/api/admin/content/testimonials?id=${id}`, { method: 'DELETE' })
+      setTestimonials(testimonials.filter(t => t.id !== id))
+      toast({ title: "Success", description: "Testimonial deleted successfully" })
+    } catch (error) {
+      console.error('Error deleting testimonial:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete testimonial",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const saveAnnouncement = async (announcement: Announcement) => {
+    try {
+      const method = announcement.id ? 'PUT' : 'POST'
+      const data = await apiFetch<Announcement>('/api/admin/content/announcements', {
+        method,
+        body: JSON.stringify(announcement)
+      })
+      if (announcement.id) {
+        setAnnouncements(announcements.map(a => a.id === announcement.id ? data : a))
+      } else {
+        setAnnouncements([...announcements, data])
+      }
+      setEditingAnnouncement(null)
+      toast({ title: 'Success', description: 'Announcement saved successfully' })
+    } catch (error) {
+      console.error('Error saving announcement:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save announcement',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const deleteAnnouncement = async (id: string) => {
+    try {
+      await apiFetch(`/api/admin/content/announcements?id=${id}`, { method: 'DELETE' })
+      setAnnouncements(announcements.filter(a => a.id !== id))
+      toast({ title: 'Success', description: 'Announcement deleted successfully' })
+    } catch (error) {
+      console.error('Error deleting announcement:', error)
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to delete announcement',
+        variant: 'destructive',
+      })
+    }
+  }
 
   const renderHeroContentTab = () => (
     <Card>
@@ -1170,7 +1253,7 @@ const ContentManagement = () => {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {/* Add delete function */}}
+                                  onClick={() => announcement.id && deleteAnnouncement(announcement.id)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -1241,7 +1324,7 @@ const ContentManagement = () => {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {/* Add delete function */}}
+                                  onClick={() => plan.id && deletePricingPlan(plan.id)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -1315,7 +1398,7 @@ const ContentManagement = () => {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {/* Add delete function */}}
+                                  onClick={() => testimonial.id && deleteTestimonial(testimonial.id)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>

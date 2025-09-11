@@ -1,4 +1,4 @@
-export const API_BASE: string = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || '';
+export const API_BASE: string = '/api';
 
 export function withBase(path: string): string {
   if (!path) return API_BASE || '';
