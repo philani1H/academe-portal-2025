@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { motion, useInView } from "framer-motion"
 import { Button } from "./ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
@@ -62,9 +63,7 @@ const ExamRewrite = () => {
   useEffect(() => {
     const fetchContent = async () => {
       try {
-        const res = await fetch('/api/admin/content/exam-rewrite')
-        if (!res.ok) throw new Error('Failed to load exam rewrite content')
-        const data = await res.json()
+        const data = await apiFetch<any>('/api/admin/content/exam-rewrite')
         setRequirements(JSON.parse(data.benefits || '[]'))
         const subjectsArr = JSON.parse(data.subjects || '[]')
         const grouped = {
@@ -77,8 +76,8 @@ const ExamRewrite = () => {
         const benefitsArr = JSON.parse(data.process || '[]')
         setProgramBenefits(benefitsArr.map((b: any) => ({ title: b.title, description: b.description, icon: <Users className="h-5 w-5 text-blue-300" /> })))
         // Use general testimonials API for stories
-        const tRes = await fetch('/api/admin/content/testimonials')
-        if (tRes.ok) setTestimonials(await tRes.json())
+        const tData = await apiFetch<any[]>('/api/admin/content/testimonials')
+        setTestimonials(Array.isArray(tData) ? tData : [])
       } catch (e) {
         setRequirements([])
         setAvailableSubjects({})

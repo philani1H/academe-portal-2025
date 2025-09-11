@@ -14,7 +14,9 @@
     "preview": "vite preview",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "seed:content": "tsx src/scripts/migrate-content.ts",
+    "seed:all": "tsx src/scripts/migrate-all-content.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
@@ -61,9 +63,10 @@
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.3.0",
     "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "resend": "^4.0.0",
     "framer-motion": "^12.0.6",
     "input-otp": "^1.2.4",
-    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.462.0",
     "mysql2": "^3.14.1",
     "next-themes": "^0.3.0",

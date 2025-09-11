@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion"
 import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 
 const Subject = () => {
   const [subjects, setSubjects] = useState<string[]>([])
@@ -9,9 +10,7 @@ const Subject = () => {
   useEffect(() => {
     const fetchSubjects = async () => {
       try {
-        const res = await fetch('/api/admin/content/subjects')
-        if (!res.ok) throw new Error('Failed to load subjects')
-        const data = await res.json()
+        const data = await apiFetch<any[]>('/api/admin/content/subjects')
         const names = Array.isArray(data) ? data.map((s) => s.name) : []
         setSubjects(names)
       } catch (e) {

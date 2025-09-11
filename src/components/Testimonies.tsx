@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiFetch } from '@/lib/api'
 
 export default function Testimonies() {
   const [testimonies, setTestimonies] = useState<any[]>([])
@@ -6,9 +7,7 @@ export default function Testimonies() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('/api/admin/content/testimonials')
-        if (!res.ok) throw new Error('Failed to load testimonials')
-        const data = await res.json()
+        const data = await apiFetch<any[]>('/api/admin/content/testimonials')
         setTestimonies(data)
       } catch (e) {
         setTestimonies([])

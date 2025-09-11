@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { motion } from "framer-motion"
 import { Check, X, Star, Shield, Calendar, ChevronRight, Award } from "lucide-react"
 
@@ -58,9 +59,7 @@ export default function Pricing() {
   useEffect(() => {
     const fetchPricingPlans = async () => {
       try {
-        const response = await fetch('/api/admin/content/pricing')
-        if (!response.ok) throw new Error('Failed to load pricing')
-        const data = await response.json()
+        const data = await apiFetch<any[]>('/api/admin/content/pricing')
 
         // Process the data to parse JSON strings and sort by order
         const processedPlans = Array.isArray(data)

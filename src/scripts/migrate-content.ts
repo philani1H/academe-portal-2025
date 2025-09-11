@@ -412,17 +412,30 @@ async function migrateContent() {
   console.log('Starting content migration...')
 
   try {
+    // Reset relevant tables for idempotent seeding
+    console.log('Clearing existing content tables...')
+    await prisma.$transaction([
+      prisma.siteSettings.deleteMany(),
+      prisma.testimonial.deleteMany(),
+      prisma.aboutUsContent.deleteMany(),
+      prisma.teamMember.deleteMany(),
+      prisma.pricingPlan.deleteMany(),
+      prisma.announcement.deleteMany(),
+      prisma.feature.deleteMany(),
+      prisma.heroContent.deleteMany(),
+    ])
+
     // Migrate Hero Content
     console.log('Migrating hero content...')
     await prisma.heroContent.create({
-      data: heroContentData
+      data: { ...heroContentData, isActive: true }
     })
 
     // Migrate Features
     console.log('Migrating features...')
     for (const feature of featuresData) {
       await prisma.feature.create({
-        data: feature
+        data: { ...feature, isActive: true }
       })
     }
 
@@ -430,7 +443,7 @@ async function migrateContent() {
     console.log('Migrating announcements...')
     for (const announcement of announcementsData) {
       await prisma.announcement.create({
-        data: announcement
+        data: { ...announcement, isActive: true }
       })
     }
 
@@ -438,7 +451,7 @@ async function migrateContent() {
     console.log('Migrating pricing plans...')
     for (const plan of pricingPlansData) {
       await prisma.pricingPlan.create({
-        data: plan
+        data: { ...plan, isActive: true }
       })
     }
 
@@ -446,21 +459,21 @@ async function migrateContent() {
     console.log('Migrating team members...')
     for (const member of teamMembersData) {
       await prisma.teamMember.create({
-        data: member
+        data: { ...member, isActive: true }
       })
     }
 
     // Migrate About Us Content
     console.log('Migrating about us content...')
     await prisma.aboutUsContent.create({
-      data: aboutUsContentData
+      data: { ...aboutUsContentData, isActive: true }
     })
 
     // Migrate Testimonials
     console.log('Migrating testimonials...')
     for (const testimonial of testimonialsData) {
       await prisma.testimonial.create({
-        data: testimonial
+        data: { ...testimonial, isActive: true }
       })
     }
 

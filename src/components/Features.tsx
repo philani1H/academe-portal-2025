@@ -2,6 +2,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { apiFetch } from "@/lib/api"
 import { motion, AnimatePresence } from "framer-motion"
 import { CheckCircle, AlertCircle, Info, MessageSquare, Plus, X, Edit, Trash2 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -55,9 +56,7 @@ const Features = () => {
 
   const fetchFeatures = async () => {
     try {
-      const response = await fetch('/api/admin/content/features')
-      if (!response.ok) throw new Error('Failed to load features')
-      const data = await response.json()
+      const data = await apiFetch<any[]>('/api/admin/content/features')
       // Normalize incoming data: ensure benefits is always an array
       const normalizedFeatures = Array.isArray(data)
         ? data.map((f) => ({ ...f, benefits: Array.isArray(f?.benefits) ? f.benefits : [] }))
@@ -73,9 +72,7 @@ const Features = () => {
 
   const fetchAnnouncements = async () => {
     try {
-      const response = await fetch('/api/admin/content/announcements')
-      if (!response.ok) throw new Error('Failed to load announcements')
-      const data = await response.json()
+      const data = await apiFetch<any[]>('/api/admin/content/announcements')
       setAnnouncements(data)
     } catch (error) {
       console.error('Error fetching announcements:', error)
