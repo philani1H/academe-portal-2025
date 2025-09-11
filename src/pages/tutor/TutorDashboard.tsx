@@ -542,8 +542,13 @@ export default function TutorDashboard() {
         throw new Error("No valid emails found")
       }
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Call API to send invites via email
+      const res = await fetch(`${apiBase}/api/tutor/students/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tutorId: 'tutor-1', emails }),
+      })
+      if (!res.ok) throw new Error('Failed to send student invites')
 
       // Create new pending students
       const newStudents = emails.map((email) => ({

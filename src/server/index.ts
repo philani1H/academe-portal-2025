@@ -810,6 +810,118 @@ app.post('/api/contact', async (req, res) => {
   }
 });
 
+// Admin: send notification email(s) to tutors/students or specific emails
+app.post('/api/admin/email/notify', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { subject, message, recipients } = req.body || {};
+    if (!subject || !message) return res.status(400).json({ success: false, error: 'subject and message are required' });
+
+    let emails: string[] = [];
+    if (recipients?.specific && Array.isArray(recipients.specific)) {
+      emails.push(...recipients.specific.filter((e: string) => typeof e === 'string'));
+    }
+    if (recipients?.tutors) {
+      const tutors = await prisma.tutor.findMany({ select: { contactEmail: true }, where: { isActive: true } });
+      emails.push(...tutors.map(t => t.contactEmail).filter(Boolean));
+    }
+    if (recipients?.students) {
+      const students = await prisma.user.findMany({ where: { role: 'student' }, select: { email: true } });
+      emails.push(...students.map(s => s.email).filter(Boolean));
+    }
+    emails = Array.from(new Set(emails));
+
+    if (emails.length === 0) return res.status(400).json({ success: false, error: 'No recipient emails resolved' });
+
+    const content = `<div><p>${message.replace(/\n/g, '<br/>')}</p></div>`;
+    const results = [] as any[];
+    for (const to of emails) {
+      const r = await sendEmail({ to, subject, content });
+      results.push({ to, ok: !!r.success });
+    }
+    return res.status(200).json({ success: true, sent: results.length, results });
+  } catch (error) {
+    console.error('Admin notify email error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send notifications' });
+  }
+});
+
+// Admin: create tutor account and send invite email
+app.post('/api/admin/tutors/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { name, email, department, specialization } = req.body || {};
+    if (!name || !email) return res.status(400).json({ success: false, error: 'name and email are required' });
+
+    // Create tutor record (or upsert by email)
+    const existing = await prisma.tutor.findFirst({ where: { contactEmail: email } });
+    let tutor = existing;
+    if (!existing) {
+      tutor = await prisma.tutor.create({
+        data: {
+          name,
+          contactEmail: email,
+          contactName: name,
+          subjects: JSON.stringify([]),
+          image: '',
+          contactPhone: '',
+          description: specialization || '',
+          ratings: JSON.stringify([]),
+          isActive: true,
+          order: 0
+        }
+      });
+    }
+
+    const subject = 'You have been invited as a Tutor';
+    const content = `<div>
+      <p>Hi ${name},</p>
+      <p>You have been added as a tutor on Excellence Academia.</p>
+      <p>Please complete your profile and set your password.</p>
+      <p>Login URL: ${process.env.FRONTEND_URL || ''}/auth/tutor</p>
+    </div>`;
+    const sent = await sendEmail({ to: email, subject, content });
+    if (!sent.success) return res.status(500).json({ success: false, error: 'Failed to send invite email' });
+    return res.status(201).json({ success: true, data: { tutorId: tutor.id } });
+  } catch (error) {
+    console.error('Tutor invite error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to invite tutor' });
+  }
+});
+
+// Tutor: bulk invite students by emails
+app.post('/api/tutor/students/invite', async (req, res) => {
+  try {
+    const { tutorId, emails } = req.body || {};
+    if (!tutorId || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ success: false, error: 'tutorId and emails[] are required' });
+    }
+    const tutor = await prisma.tutor.findUnique({ where: { id: tutorId } });
+    if (!tutor) return res.status(404).json({ success: false, error: 'Tutor not found' });
+
+    const results = [] as any[];
+    for (const email of emails) {
+      if (!email || typeof email !== 'string' || !email.includes('@')) continue;
+      // Ensure/create student record
+      let user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        user = await prisma.user.create({ data: { email, name: email.split('@')[0], role: 'student' } });
+      }
+      const subject = 'Invitation to join Excellence Academia';
+      const content = `<div>
+        <p>Hi ${user.name},</p>
+        <p>You have been invited by ${tutor.name} to join Excellence Academia.</p>
+        <p>Create your account and enroll in courses:</p>
+        <p><a href="${process.env.FRONTEND_URL || ''}/auth/student" target="_blank">Get started</a></p>
+      </div>`;
+      const sent = await sendEmail({ to: email, subject, content });
+      results.push({ to: email, ok: !!sent.success });
+    }
+    return res.status(200).json({ success: true, sent: results.length, results });
+  } catch (error) {
+    console.error('Tutor invite students error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to invite students' });
+  }
+});
+
 // Student Dashboard
 app.get('/api/student/dashboard', async (req, res) => {
   try {

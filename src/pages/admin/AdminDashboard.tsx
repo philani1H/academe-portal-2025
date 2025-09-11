@@ -300,8 +300,19 @@ export default function AdminDashboard() {
     setIsCreatingTutor(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Call API to create/invite tutor and send email
+      const res = await fetch(`${apiBase}/api/admin/tutors/invite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: newTutor.name,
+          email: newTutor.email,
+          department: newTutor.department,
+          specialization: newTutor.specialization,
+        })
+      })
+      if (!res.ok) throw new Error('Failed to invite tutor')
 
       const newTutorData: Tutor = {
         id: `t-${Date.now()}`,
@@ -351,9 +362,9 @@ export default function AdminDashboard() {
 
       setNotifications((prev) => [notificationData, ...prev])
 
-      console.log("Tutor created successfully")
+      console.log("Tutor invited successfully")
     } catch (error) {
-      console.error("Failed to create tutor", error)
+      console.error("Failed to invite tutor", error)
     } finally {
       setIsCreatingTutor(false)
     }
@@ -470,8 +481,18 @@ export default function AdminDashboard() {
     setIsSendingNotification(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Call API to send notifications via email
+      const res = await fetch(`${apiBase}/api/admin/email/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          subject: newNotification.title || 'Notification',
+          message: newNotification.message,
+          recipients: newNotification.recipients,
+        })
+      })
+      if (!res.ok) throw new Error('Failed to send notifications')
 
       const notificationData: Notification = {
         id: `n-${Date.now()}`,
