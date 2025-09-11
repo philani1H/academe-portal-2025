@@ -205,7 +205,6 @@ const tutorsData = [
       }
     ]),
     order: 10
-  },
   {
     name: "Simon",
     subjects: JSON.stringify(["Mathematics", "Physical Science"]),
@@ -224,6 +223,7 @@ const tutorsData = [
       }
     ]),
     order: 11
+
   }
 ]
 
