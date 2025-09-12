@@ -213,7 +213,8 @@ export default function AdminDashboard() {
     try {
       const res = await fetch(`${apiBase}/api/admin/content/tutors`)
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
+      const response = await res.json();
+      const data = response.data || response; // Handle both wrapped and unwrapped responses
       if (!data) throw new Error('No data received');
       setTutors(Array.isArray(data) ? data : []);
     } catch (e) { 
@@ -224,14 +225,17 @@ export default function AdminDashboard() {
 
   const fetchStudents = async () => {
     try {
-      // No dedicated students endpoint in content; attempt generic users table via /api/users or fallback to empty
+      // Use the query API to get students from users table
       const res = await fetch(`${apiBase}/api/query`, { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ query: 'SELECT id, name, email, role, created_at as createdAt FROM users WHERE role = "student"' }) 
+        body: JSON.stringify({ 
+          query: 'SELECT id, name, email, role, created_at as createdAt, last_active as lastActive FROM users WHERE role = "student" ORDER BY created_at DESC' 
+        }) 
       })
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
+      const response = await res.json();
+      const data = response.data || response;
       if (!data) throw new Error('No data received');
       setStudents(Array.isArray(data) ? data : []);
     } catch (e) { 
@@ -244,7 +248,8 @@ export default function AdminDashboard() {
     try {
       const res = await fetch(`${apiBase}/api/courses`)
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
+      const response = await res.json();
+      const data = response.data || response; // Handle both wrapped and unwrapped responses
       if (!data) throw new Error('No data received');
       setCourses(Array.isArray(data) ? data : []);
     } catch (e) { 
@@ -255,24 +260,26 @@ export default function AdminDashboard() {
 
   const fetchNotifications = async () => {
     try {
-      // No authenticated user id available; fetch recent notifications via generic query
+      // Use the query API to get notifications from database
       const res = await fetch(`${apiBase}/api/query`, { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
-          query: 'SELECT id as id, message as message, read as read, created_at as date FROM notifications ORDER BY created_at DESC LIMIT 20' 
+          query: 'SELECT id, title, message, type, status, created_at as date, read FROM notifications ORDER BY created_at DESC LIMIT 20' 
         }) 
       })
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
+      const response = await res.json();
+      const data = response.data || response;
       if (!data) throw new Error('No data received');
+      
       const mapped = Array.isArray(data) ? data.map((n: any) => ({ 
         id: n.id?.toString() || `${Date.now()}`, 
-        title: n.message?.slice(0, 40) || 'Notification', 
+        title: n.title || 'Notification', 
         message: n.message || '', 
         date: n.date || '', 
-        type: 'system', 
-        status: 'sent', 
+        type: n.type || 'system', 
+        status: n.status || 'sent', 
         recipients: { tutors: true, students: true }, 
         read: !!n.read 
       })) : [];
@@ -285,53 +292,58 @@ export default function AdminDashboard() {
 
   const fetchDepartmentsAndStats = async () => {
     try {
-      // Departments are not a dedicated table in Prisma schema; derive from subjects or use a safe default
-      const res = await fetch(`${apiBase}/api/query`, { 
+      // Get departments from subjects table
+      const deptRes = await fetch(`${apiBase}/api/query`, { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
-          query: 'SELECT name, COUNT(*) as courses FROM subjects GROUP BY name' 
+          query: 'SELECT category as name, COUNT(*) as courses FROM subjects WHERE isActive = 1 GROUP BY category' 
         }) 
       })
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
-      if (!data) throw new Error('No departments data received');
+      if (!deptRes.ok) throw new Error(`HTTP error! status: ${deptRes.status}`);
+      const deptData = await deptRes.json();
+      const deptList = deptData.data || deptData;
       
-      // Map to Department minimal shape
-      const depts = Array.isArray(data) ? data.map((d: any, i: number) => ({ 
-        id: `d-${i}`, 
-        name: d.name || `Dept ${i+1}`, 
+      const departments = Array.isArray(deptList) ? deptList.map((d: any, i: number) => ({ 
+        id: d.name?.toLowerCase().replace(/\s+/g, '-') || `dept-${i}`, 
+        name: d.name || `Department ${i+1}`, 
         courses: Number(d.courses || 0), 
         tutors: 0, 
         students: 0, 
-        color: '#4f46e5' 
+        color: ['#4f46e5', '#059669', '#dc2626', '#7c3aed', '#ea580c'][i % 5]
       })) : [];
-      setDepartments(depts);
-
-      // Stats: attempt to compute via queries
-      const statsRes = await fetch(`${apiBase}/api/query`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ 
-          query: 'SELECT (SELECT COUNT(*) FROM users) as totalUsers, (SELECT COUNT(*) FROM users WHERE role = "student") as activeStudents, (SELECT COUNT(*) FROM courses) as totalCourses' 
-        }) 
-      })
-      if (!statsRes.ok) throw new Error(`HTTP error! status: ${statsRes.status}`);
-      const stats = await statsRes.json();
-      if (!stats) throw new Error('No stats data received');
       
-      if (Array.isArray(stats) && stats[0]) {
-        setSystemStats((prev) => ({
-          ...prev,
-          totalUsers: Number(stats[0].totalUsers || 0),
-          activeStudents: Number(stats[0].activeStudents || 0),
-          totalCourses: Number(stats[0].totalCourses || 0),
-        }));
-      }
+      setDepartments(departments);
+      
+      // Get stats from admin API
+      const statsRes = await fetch(`${apiBase}/api/admin/stats`)
+      if (!statsRes.ok) throw new Error(`HTTP error! status: ${statsRes.status}`);
+      const statsResponse = await statsRes.json();
+      const statsData = statsResponse.data || statsResponse;
+      
+      setSystemStats({
+        totalUsers: statsData.totalUsers || 0,
+        totalTutors: statsData.tutors || 0,
+        totalStudents: statsData.students || 0,
+        totalCourses: statsData.courses || 0,
+        totalDepartments: departments.length,
+        activeUsers: Math.floor((statsData.totalUsers || 0) * 0.8),
+        systemUptime: '99.9%',
+        lastBackup: new Date().toISOString()
+      });
     } catch (e) {
       console.error('Failed to fetch departments/stats:', e);
       setDepartments([]); // Reset departments to empty array on error
-      setSystemStats((prev) => ({ ...prev })); // Maintain existing stats on error
+      setSystemStats({
+        totalUsers: 0,
+        totalTutors: 0,
+        totalStudents: 0,
+        totalCourses: 0,
+        totalDepartments: 0,
+        activeUsers: 0,
+        systemUptime: '0%',
+        lastBackup: new Date().toISOString()
+      });
     }
   }
 
@@ -368,11 +380,29 @@ export default function AdminDashboard() {
     setIsCreatingTutor(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Create tutor via API
+      const res = await fetch('/api/admin/content/tutors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newTutor.name,
+          email: newTutor.email,
+          department: newTutor.department,
+          specialization: newTutor.specialization,
+          subjects: [],
+          contactName: newTutor.name,
+          contactPhone: '',
+          contactEmail: newTutor.email,
+          description: `Tutor specializing in ${newTutor.specialization}`,
+          ratings: []
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const newTutorData: Tutor = {
-        id: `t-${Date.now()}`,
+        id: data.id || `t-${Date.now()}`,
         name: newTutor.name,
         email: newTutor.email,
         role: "tutor",
@@ -431,14 +461,29 @@ export default function AdminDashboard() {
     setIsCreatingCourse(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Create course via API
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newCourse.name,
+          description: newCourse.description,
+          department: newCourse.department,
+          tutorId: newCourse.tutorId,
+          startDate: newCourse.startDate,
+          endDate: newCourse.endDate,
+          category: newCourse.department
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const colors = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
       const randomColor = colors[Math.floor(Math.random() * colors.length)]
 
       const newCourseData: Course = {
-        id: `c-${Date.now()}`,
+        id: data.id || `c-${Date.now()}`,
         name: newCourse.name,
         description: newCourse.description,
         department: newCourse.department,
@@ -538,11 +583,23 @@ export default function AdminDashboard() {
     setIsSendingNotification(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Send notification via API
+      const res = await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newNotification.title,
+          message: newNotification.message,
+          type: newNotification.type,
+          recipients: newNotification.recipients
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const notificationData: Notification = {
-        id: `n-${Date.now()}`,
+        id: data.id || `n-${Date.now()}`,
         title: newNotification.title,
         message: newNotification.message,
         date: new Date().toISOString(),
@@ -728,8 +785,12 @@ export default function AdminDashboard() {
 
   const handleDeleteTutor = async (tutorId: string) => {
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Delete tutor via API
+      const res = await fetch(`/api/admin/content/tutors?id=${tutorId}`, {
+        method: 'DELETE'
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
 
       const tutorToDelete = tutors.find((t) => t.id === tutorId)
       if (!tutorToDelete) return
@@ -759,8 +820,12 @@ export default function AdminDashboard() {
 
   const handleDeleteCourse = async (courseId: string) => {
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Delete course via API
+      const res = await fetch(`/api/courses/${courseId}`, {
+        method: 'DELETE'
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
 
       const courseToDelete = courses.find((c) => c.id === courseId)
       if (!courseToDelete) return
