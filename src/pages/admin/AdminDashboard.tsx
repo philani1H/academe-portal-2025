@@ -1286,7 +1286,22 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Dashboard Tab */}
           {activeTab === "dashboard" && (
-            <div className="space-y-6">
+            <div className="space-y-8">
+              {/* Welcome Section */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-2">Welcome back, {user.name}!</h2>
+                    <p className="text-blue-100">Here's what's happening with your platform today.</p>
+                  </div>
+                  <div className="hidden md:block">
+                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                      <BarChart4 className="h-8 w-8 text-white" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Stats Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <motion.div
@@ -1294,16 +1309,26 @@ export default function AdminDashboard() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <Card className="border-l-4 border-indigo-500">
+                  <Card className="border-l-4 border-indigo-500 shadow-lg hover:shadow-xl transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-                      <Users className="h-4 w-4 text-indigo-500" />
+                      <CardTitle className="text-sm font-medium text-gray-600">Total Users</CardTitle>
+                      <div className="p-2 bg-indigo-100 rounded-full">
+                        <Users className="h-5 w-5 text-indigo-600" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{systemStats.totalUsers}</div>
-                      <p className="text-xs text-muted-foreground">
-                        {systemStats.activeUsers} active ({Math.round((systemStats.activeUsers / systemStats.totalUsers) * 100)}%)
+                      <div className="text-3xl font-bold text-gray-900">{systemStats.totalUsers}</div>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {systemStats.activeUsers} active ({Math.round((systemStats.activeUsers / Math.max(systemStats.totalUsers, 1)) * 100)}%)
                       </p>
+                      <div className="mt-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-indigo-500 h-2 rounded-full transition-all duration-300" 
+                            style={{ width: `${Math.round((systemStats.activeUsers / Math.max(systemStats.totalUsers, 1)) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1313,16 +1338,26 @@ export default function AdminDashboard() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
                 >
-                  <Card className="border-l-4 border-blue-500">
+                  <Card className="border-l-4 border-blue-500 shadow-lg hover:shadow-xl transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Active Courses</CardTitle>
-                      <BookOpen className="h-4 w-4 text-blue-500" />
+                      <CardTitle className="text-sm font-medium text-gray-600">Active Courses</CardTitle>
+                      <div className="p-2 bg-blue-100 rounded-full">
+                        <BookOpen className="h-5 w-5 text-blue-600" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{systemStats.activeCourses}</div>
-                      <p className="text-xs text-muted-foreground">
-                        {departments.length} departments
+                      <div className="text-3xl font-bold text-gray-900">{systemStats.activeCourses}</div>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {systemStats.totalCourses} total courses
                       </p>
+                      <div className="mt-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                            style={{ width: `${Math.round((systemStats.activeCourses / Math.max(systemStats.totalCourses, 1)) * 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1351,45 +1386,55 @@ export default function AdminDashboard() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.3 }}
                 >
-                  <Card className="border-l-4 border-amber-500">
+                  <Card className="border-l-4 border-amber-500 shadow-lg hover:shadow-xl transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
-                      <AlertCircle className="h-4 w-4 text-amber-500" />
+                      <CardTitle className="text-sm font-medium text-gray-600">Pending Approvals</CardTitle>
+                      <div className="p-2 bg-amber-100 rounded-full">
+                        <AlertCircle className="h-5 w-5 text-amber-600" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{systemStats.pendingApprovals}</div>
-                      <p className="text-xs text-muted-foreground">
+                      <div className="text-3xl font-bold text-gray-900">{systemStats.pendingApprovals}</div>
+                      <p className="text-sm text-gray-600 mt-1">
                         Tutors, students, and courses
                       </p>
+                      {systemStats.pendingApprovals > 0 && (
+                        <div className="mt-2">
+                          <Badge variant="destructive" className="text-xs">
+                            Action Required
+                          </Badge>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>
               </div>
 
               {/* Department Overview */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
+              <Card className="shadow-lg">
+                <CardHeader className="flex flex-row items-center justify-between bg-gradient-to-r from-gray-50 to-gray-100 border-b">
                   <div>
-                    <CardTitle>Department Overview</CardTitle>
-                    <CardDescription>Statistics across all departments</CardDescription>
+                    <CardTitle className="text-xl text-gray-800">Department Overview</CardTitle>
+                    <CardDescription className="text-gray-600">Statistics across all departments</CardDescription>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => setActiveTab("departments")}>
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab("departments")} className="hover:bg-blue-50">
+                    <Eye className="h-4 w-4 mr-2" />
                     View All
                   </Button>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-6">
                   <div className="space-y-4">
                     {departments.map((department) => (
-                      <div key={department.id} className="flex items-center">
-                        <div className="h-3 w-3 rounded-full mr-3" style={{ backgroundColor: department.color }} />
+                      <div key={department.id} className="flex items-center p-4 border rounded-lg hover:shadow-md transition-shadow bg-white">
+                        <div className="h-4 w-4 rounded-full mr-4" style={{ backgroundColor: department.color }} />
                         <div className="min-w-0 flex-1">
-                          <div className="flex justify-between items-center mb-1">
-                            <p className="text-sm font-medium truncate">{department.name}</p>
-                            <p className="text-sm text-muted-foreground">{department.students} students</p>
+                          <div className="flex justify-between items-center mb-2">
+                            <p className="text-lg font-semibold text-gray-800 truncate">{department.name}</p>
+                            <Badge variant="secondary" className="bg-blue-100 text-blue-800">{department.students} students</Badge>
                           </div>
-                          <div className="flex justify-between items-center text-xs text-muted-foreground">
-                            <span>{department.courses} courses</span>
-                            <span>{department.tutors} tutors</span>
+                          <div className="flex justify-between items-center">
+                            <Badge variant="outline" className="text-xs">{department.courses} courses</Badge>
+                            <Badge variant="outline" className="text-xs">{department.tutors} tutors</Badge>
                           </div>
                         </div>
                       </div>
@@ -1401,10 +1446,10 @@ export default function AdminDashboard() {
               {/* Pending Approvals and Quick Actions */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Pending Approvals */}
-                <Card className="md:col-span-2">
-                  <CardHeader>
-                    <CardTitle>Pending Approvals</CardTitle>
-                    <CardDescription>Items waiting for your approval</CardDescription>
+                <Card className="md:col-span-2 shadow-lg">
+                  <CardHeader className="bg-gradient-to-r from-amber-50 to-orange-50 border-b">
+                    <CardTitle className="text-xl text-gray-800">Pending Approvals</CardTitle>
+                    <CardDescription className="text-gray-600">Items waiting for your approval</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {pendingTutors.length === 0 && pendingStudents.length === 0 && pendingCourses.length === 0 ? (
@@ -1510,10 +1555,10 @@ export default function AdminDashboard() {
                 </Card>
 
                 {/* Quick Actions */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Quick Actions</CardTitle>
-                    <CardDescription>Common administrative tasks</CardDescription>
+                <Card className="shadow-lg">
+                  <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b">
+                    <CardTitle className="text-xl text-gray-800">Quick Actions</CardTitle>
+                    <CardDescription className="text-gray-600">Common administrative tasks</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <Dialog>
