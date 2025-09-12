@@ -341,6 +341,80 @@ app.get('/api/courses/:id', async (req, res) => {
   }
 });
 
+// Create course
+app.post('/api/courses', async (req, res) => {
+  try {
+    const { title, description, department, tutorId, startDate, endDate, category } = req.body;
+    
+    if (!title || !description || !department || !tutorId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'title, description, department, and tutorId are required' 
+      });
+    }
+
+    const db = await getConnection();
+    const result = await db.run(
+      'INSERT INTO courses (title, description, department, tutor_id, start_date, end_date, category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, description, department, tutorId, startDate, endDate, category || department, new Date().toISOString()]
+    );
+    await db.close();
+
+    const newCourse = {
+      id: result.lastID.toString(),
+      title,
+      description,
+      department,
+      tutorId,
+      startDate,
+      endDate,
+      category: category || department,
+      createdAt: new Date().toISOString()
+    };
+
+    res.status(201).json({ success: true, data: newCourse });
+  } catch (error) {
+    console.error('Error creating course:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to create course' 
+    });
+  }
+});
+
+// Delete course
+app.delete('/api/courses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!id?.trim()) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Course ID is required' 
+      });
+    }
+
+    const db = await getConnection();
+    const result = await db.run('DELETE FROM courses WHERE id = ?', [id]);
+    await db.close();
+    
+    if (result.changes === 0) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Course not found' 
+      });
+    }
+
+    res.json({ success: true, message: 'Course deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting course:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to delete course' 
+    });
+  }
+});
+
 // High-performance Tutors API with advanced filtering
 app.get('/api/tutors', async (req, res) => {
   try {
@@ -784,6 +858,147 @@ app.post('/api/contact', async (req, res) => {
   } catch (error) {
     console.error('Contact email error:', error);
     return res.status(500).json({ success: false, error: 'Failed to send message' });
+  }
+});
+
+// Tests API endpoints
+app.post('/api/tests', async (req, res) => {
+  try {
+    const { title, description, dueDate, courseId, questions, totalPoints } = req.body;
+    
+    if (!title || !courseId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'title and courseId are required' 
+      });
+    }
+
+    const db = await getConnection();
+    const result = await db.run(
+      'INSERT INTO tests (title, description, due_date, course_id, questions, total_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [title, description, dueDate, courseId, JSON.stringify(questions || []), totalPoints || 0, new Date().toISOString()]
+    );
+    await db.close();
+
+    const newTest = {
+      id: result.lastID.toString(),
+      title,
+      description,
+      dueDate,
+      courseId,
+      questions: questions || [],
+      totalPoints: totalPoints || 0,
+      createdAt: new Date().toISOString()
+    };
+
+    res.status(201).json({ success: true, data: newTest });
+  } catch (error) {
+    console.error('Error creating test:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to create test' 
+    });
+  }
+});
+
+// Bulk students creation endpoint
+app.post('/api/students/bulk', async (req, res) => {
+  try {
+    const { emails } = req.body;
+    
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'emails array is required' 
+      });
+    }
+
+    const db = await getConnection();
+    const ids = [];
+    
+    for (const email of emails) {
+      if (email && email.includes('@')) {
+        const name = email
+          .split("@")[0]
+          .replace(/[.]/g, " ")
+          .replace(/\b\w/g, (l) => l.toUpperCase());
+        
+        const result = await db.run(
+          'INSERT INTO users (name, email, role, created_at) VALUES (?, ?, ?, ?)',
+          [name, email, 'student', new Date().toISOString()]
+        );
+        ids.push(result.lastID.toString());
+      }
+    }
+    
+    await db.close();
+
+    res.status(201).json({ success: true, ids, count: ids.length });
+  } catch (error) {
+    console.error('Error creating bulk students:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to create students' 
+    });
+  }
+});
+
+// Notifications endpoint
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const { title, message, type, recipients } = req.body || {};
+    if (!title || !message) {
+      return res.status(400).json({ success: false, error: 'title and message are required' });
+    }
+
+    // Save notification to database
+    const db = await getConnection();
+    const result = await db.run(
+      'INSERT INTO notifications (title, message, type, recipients, created_at) VALUES (?, ?, ?, ?, ?)',
+      [title, message, type || 'system', JSON.stringify(recipients || {}), new Date().toISOString()]
+    );
+    await db.close();
+
+    // Send emails to recipients
+    if (recipients) {
+      const emails = [];
+      
+      if (recipients.tutors) {
+        const tutors = await prisma.tutor.findMany({ where: { isActive: true }, select: { contactEmail: true } });
+        emails.push(...tutors.map(t => t.contactEmail).filter(Boolean));
+      }
+      
+      if (recipients.students) {
+        const students = await prisma.user.findMany({ where: { role: 'student' }, select: { email: true } });
+        emails.push(...students.map(s => s.email).filter(Boolean));
+      }
+      
+      if (recipients.specific && Array.isArray(recipients.specific)) {
+        emails.push(...recipients.specific);
+      }
+
+      // Send emails
+      const emailPromises = emails.map(email => 
+        sendEmail({
+          to: email,
+          subject: title,
+          content: `
+            <div>
+              <h2>${title}</h2>
+              <p>${message}</p>
+              <p>Best regards,<br/>Excellence Academia</p>
+            </div>
+          `
+        })
+      );
+
+      await Promise.allSettled(emailPromises);
+    }
+
+    return res.status(201).json({ success: true, id: result.lastID });
+  } catch (error) {
+    console.error('Notification error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send notification' });
   }
 });
 

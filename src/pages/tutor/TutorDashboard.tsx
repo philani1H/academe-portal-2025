@@ -306,9 +306,10 @@ const mockNotifications: Notification[] = [
 export default function TutorDashboard() {
   // State
   const [user, setUser] = useState({ name: "Dr. Smith", email: "dr.smith@university.edu", role: "tutor" })
-  const [courses, setCourses] = useState<Course[]>(mockCourses)
+  const [courses, setCourses] = useState<Course[]>([])
   const [students, setStudents] = useState<Student[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loading, setLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
@@ -350,8 +351,33 @@ export default function TutorDashboard() {
     setUnreadCount(notifications.filter((n) => !n.read).length)
   }, [notifications])
 
-  // Load live data from API (safe fallbacks if endpoints unavailable)
-  const apiBase = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || ''
+  // Load live data from API
+  const apiBase = ''
+
+  const fetchTutorData = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch(`${apiBase}/api/tutor/dashboard`)
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
+      
+      if (data.tutor) setUser(data.tutor)
+      if (data.students) setStudents(data.students)
+      if (data.courses) setCourses(data.courses)
+      if (data.notifications) setNotifications(data.notifications)
+    } catch (e) {
+      console.error('Failed to fetch tutor data:', e)
+      // Fallback to mock data on error
+      setCourses(mockCourses)
+      setNotifications(mockNotifications)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTutorData()
+  }, [])
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -403,14 +429,29 @@ export default function TutorDashboard() {
     setIsCreatingCourse(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Create course via API
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newCourse.name,
+          description: newCourse.description,
+          department: 'General',
+          tutorId: user.id || 'tutor-1',
+          startDate: new Date().toISOString(),
+          endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+          category: 'General'
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const colors = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
       const randomColor = colors[Math.floor(Math.random() * colors.length)]
 
       const newCourseData: Course = {
-        id: `course-${Date.now()}`,
+        id: data.id || `course-${Date.now()}`,
         name: newCourse.name,
         description: newCourse.description,
         students: 0,
@@ -424,7 +465,6 @@ export default function TutorDashboard() {
       setCourses((prev) => [...prev, newCourseData])
       setNewCourse({ name: "", description: "" })
 
-      // Toast notification would go here in a real app
       console.log("Course created successfully")
     } catch (error) {
       console.error("Failed to create course", error)
@@ -437,11 +477,25 @@ export default function TutorDashboard() {
     setIsCreatingTest(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Create test via API
+      const res = await fetch('/api/tests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTest.title,
+          description: newTest.description,
+          dueDate: newTest.dueDate,
+          courseId: newTest.courseId,
+          questions: newTest.questions,
+          totalPoints: newTest.questions.reduce((sum, q) => sum + q.points, 0)
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const newTestData: Test = {
-        id: `test-${Date.now()}`,
+        id: data.id || `test-${Date.now()}`,
         title: newTest.title,
         description: newTest.description,
         dueDate: newTest.dueDate,
@@ -501,11 +555,27 @@ export default function TutorDashboard() {
     setIsSendingNotification(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Send notification via API
+      const res = await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Course Notification',
+          message: newNotification.message,
+          type: 'course',
+          recipients: {
+            tutors: false,
+            students: true,
+            specific: newNotification.studentIds
+          }
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const newNotificationData: Notification = {
-        id: `notif-${Date.now()}`,
+        id: data.id || `notif-${Date.now()}`,
         message: newNotification.message,
         date: new Date().toISOString(),
         type: "course",
@@ -542,12 +612,19 @@ export default function TutorDashboard() {
         throw new Error("No valid emails found")
       }
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Create students via API
+      const res = await fetch('/api/students/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       // Create new pending students
-      const newStudents = emails.map((email) => ({
-        id: `student-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      const newStudents = emails.map((email, index) => ({
+        id: data.ids?.[index] || `student-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         name: email
           .split("@")[0]
           .replace(/[.]/g, " ")
@@ -637,6 +714,17 @@ export default function TutorDashboard() {
   const activeStudents = students.filter((student) => student.status === "active")
 
   // Render
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
