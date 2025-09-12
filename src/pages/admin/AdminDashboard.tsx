@@ -130,11 +130,11 @@ interface SystemStats {
 export default function AdminDashboard() {
   // State
   const [user, setUser] = useState({ name: "Admin User", email: "admin@university.edu", role: "admin" })
-  const [tutors, setTutors] = useState<Tutor[]>([])
-  const [students, setStudents] = useState<Student[]>([])
-  const [courses, setCourses] = useState<Course[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
+  const [tutors, setTutors] = useState<Tutor[]>([])  // Initialize with empty array to prevent null
+  const [students, setStudents] = useState<Student[]>([])  // Initialize with empty array to prevent null
+  const [courses, setCourses] = useState<Course[]>([])  // Initialize with empty array to prevent null
+  const [notifications, setNotifications] = useState<Notification[]>([])  // Initialize with empty array to prevent null
+  const [departments, setDepartments] = useState<Department[]>([])  // Initialize with empty array to prevent null
   const [systemStats, setSystemStats] = useState<SystemStats>({
     totalUsers: 0,
     activeUsers: 0,
@@ -212,59 +212,126 @@ export default function AdminDashboard() {
   const fetchTutors = async () => {
     try {
       const res = await fetch(`${apiBase}/api/admin/content/tutors`)
-      if (res.ok) { const data = await res.json(); setTutors(Array.isArray(data) ? data : []); }
-    } catch (e) { console.error('Failed to fetch tutors', e); }
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data) throw new Error('No data received');
+      setTutors(Array.isArray(data) ? data : []);
+    } catch (e) { 
+      console.error('Failed to fetch tutors:', e); 
+      setTutors([]); // Reset to empty array on error
+    }
   }
 
   const fetchStudents = async () => {
     try {
       // No dedicated students endpoint in content; attempt generic users table via /api/users or fallback to empty
-      const res = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT id, name, email, role, created_at as createdAt FROM users WHERE role = "student"' }) })
-      if (res.ok) { const data = await res.json(); setStudents(Array.isArray(data) ? data : []); }
-    } catch (e) { console.error('Failed to fetch students', e); }
+      const res = await fetch(`${apiBase}/api/query`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ query: 'SELECT id, name, email, role, created_at as createdAt FROM users WHERE role = "student"' }) 
+      })
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data) throw new Error('No data received');
+      setStudents(Array.isArray(data) ? data : []);
+    } catch (e) { 
+      console.error('Failed to fetch students:', e); 
+      setStudents([]); // Reset to empty array on error
+    }
   }
 
   const fetchCourses = async () => {
     try {
       const res = await fetch(`${apiBase}/api/courses`)
-      if (res.ok) { const data = await res.json(); setCourses(Array.isArray(data) ? data : []); }
-    } catch (e) { console.error('Failed to fetch courses', e); }
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data) throw new Error('No data received');
+      setCourses(Array.isArray(data) ? data : []);
+    } catch (e) { 
+      console.error('Failed to fetch courses:', e); 
+      setCourses([]); // Reset to empty array on error
+    }
   }
 
   const fetchNotifications = async () => {
     try {
       // No authenticated user id available; fetch recent notifications via generic query
-      const res = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT id as id, message as message, read as read, created_at as date FROM notifications ORDER BY created_at DESC LIMIT 20' }) })
-      if (res.ok) { const data = await res.json(); const mapped = Array.isArray(data) ? data.map((n: any) => ({ id: n.id?.toString() || `${Date.now()}`, title: n.message?.slice(0, 40) || 'Notification', message: n.message || '', date: n.date || '', type: 'system', status: 'sent', recipients: { tutors: true, students: true }, read: !!n.read })) : []; setNotifications(mapped); }
-    } catch (e) { console.error('Failed to fetch notifications', e); }
+      const res = await fetch(`${apiBase}/api/query`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          query: 'SELECT id as id, message as message, read as read, created_at as date FROM notifications ORDER BY created_at DESC LIMIT 20' 
+        }) 
+      })
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data) throw new Error('No data received');
+      const mapped = Array.isArray(data) ? data.map((n: any) => ({ 
+        id: n.id?.toString() || `${Date.now()}`, 
+        title: n.message?.slice(0, 40) || 'Notification', 
+        message: n.message || '', 
+        date: n.date || '', 
+        type: 'system', 
+        status: 'sent', 
+        recipients: { tutors: true, students: true }, 
+        read: !!n.read 
+      })) : [];
+      setNotifications(mapped);
+    } catch (e) { 
+      console.error('Failed to fetch notifications:', e); 
+      setNotifications([]); // Reset to empty array on error
+    }
   }
 
   const fetchDepartmentsAndStats = async () => {
     try {
       // Departments are not a dedicated table in Prisma schema; derive from subjects or use a safe default
-      const res = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT name, COUNT(*) as courses FROM subjects GROUP BY name' }) })
-      if (res.ok) {
-        const data = await res.json()
-        // Map to Department minimal shape
-        const depts = Array.isArray(data) ? data.map((d: any, i: number) => ({ id: `d-${i}`, name: d.name || `Dept ${i+1}`, courses: Number(d.courses || 0), tutors: 0, students: 0, color: '#4f46e5' })) : []
-        setDepartments(depts)
-      }
+      const res = await fetch(`${apiBase}/api/query`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          query: 'SELECT name, COUNT(*) as courses FROM subjects GROUP BY name' 
+        }) 
+      })
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (!data) throw new Error('No departments data received');
+      
+      // Map to Department minimal shape
+      const depts = Array.isArray(data) ? data.map((d: any, i: number) => ({ 
+        id: `d-${i}`, 
+        name: d.name || `Dept ${i+1}`, 
+        courses: Number(d.courses || 0), 
+        tutors: 0, 
+        students: 0, 
+        color: '#4f46e5' 
+      })) : [];
+      setDepartments(depts);
 
       // Stats: attempt to compute via queries
-      const statsRes = await fetch(`${apiBase}/api/query`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'SELECT (SELECT COUNT(*) FROM users) as totalUsers, (SELECT COUNT(*) FROM users WHERE role = "student") as activeStudents, (SELECT COUNT(*) FROM courses) as totalCourses' }) })
-      if (statsRes.ok) {
-        const stats = await statsRes.json()
-        if (Array.isArray(stats) && stats[0]) {
-          setSystemStats((prev) => ({
-            ...prev,
-            totalUsers: Number(stats[0].totalUsers || 0),
-            activeStudents: Number(stats[0].activeStudents || 0),
-            totalCourses: Number(stats[0].totalCourses || 0),
-          }))
-        }
+      const statsRes = await fetch(`${apiBase}/api/query`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          query: 'SELECT (SELECT COUNT(*) FROM users) as totalUsers, (SELECT COUNT(*) FROM users WHERE role = "student") as activeStudents, (SELECT COUNT(*) FROM courses) as totalCourses' 
+        }) 
+      })
+      if (!statsRes.ok) throw new Error(`HTTP error! status: ${statsRes.status}`);
+      const stats = await statsRes.json();
+      if (!stats) throw new Error('No stats data received');
+      
+      if (Array.isArray(stats) && stats[0]) {
+        setSystemStats((prev) => ({
+          ...prev,
+          totalUsers: Number(stats[0].totalUsers || 0),
+          activeStudents: Number(stats[0].activeStudents || 0),
+          totalCourses: Number(stats[0].totalCourses || 0),
+        }));
       }
     } catch (e) {
-      console.error('Failed to fetch departments/stats', e)
+      console.error('Failed to fetch departments/stats:', e);
+      setDepartments([]); // Reset departments to empty array on error
+      setSystemStats((prev) => ({ ...prev })); // Maintain existing stats on error
     }
   }
 

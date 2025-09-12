@@ -13,16 +13,7 @@ export default defineConfig(({ mode }) => ({
         target: process.env.VITE_API_URL || 'https://academe-portal-2025.onrender.com',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^/api/, ''),
-        configure: (proxy, options) => {
-          proxy.on('proxyReq', (proxyReq, req, res) => {
-            proxyReq.setHeader('origin', options.target as string);
-          });
-          proxy.on('proxyRes', (proxyRes, req, res) => {
-            proxyRes.headers['access-control-allow-origin'] = '*';
-            proxyRes.headers['access-control-allow-credentials'] = 'true';
-          });
-        }
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
     },
     hmr: {
