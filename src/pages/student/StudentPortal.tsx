@@ -475,9 +475,10 @@ const mockAssignments: Assignment[] = [
 export default function StudentPortal() {
   // State
   const [user, setUser] = useState<UserType>(mockUser)
-  const [courses, setCourses] = useState<Course[]>(mockCourses)
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
-  const [assignments, setAssignments] = useState<Assignment[]>(mockAssignments)
+  const [courses, setCourses] = useState<Course[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [loading, setLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
@@ -501,7 +502,34 @@ export default function StudentPortal() {
   )
   const pendingAssignments = assignments.filter((assignment) => assignment.status === "pending")
 
+  // API fetching functions
+  const fetchStudentData = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch('/api/student/dashboard')
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
+      
+      if (data.student) setUser(data.student)
+      if (data.courses) setCourses(data.courses)
+      if (data.notifications) setNotifications(data.notifications)
+      if (data.assignments) setAssignments(data.assignments)
+    } catch (e) {
+      console.error('Failed to fetch student data:', e)
+      // Fallback to mock data on error
+      setCourses(mockCourses)
+      setNotifications(mockNotifications)
+      setAssignments(mockAssignments)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Effects
+  useEffect(() => {
+    fetchStudentData()
+  }, [])
+
   useEffect(() => {
     // Calculate unread notifications
     setUnreadCount(notifications.filter((n) => !n.read).length)
@@ -649,6 +677,17 @@ export default function StudentPortal() {
   })
 
   // Render
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}

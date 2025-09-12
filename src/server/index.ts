@@ -787,6 +787,65 @@ app.post('/api/contact', async (req, res) => {
   }
 });
 
+// Notifications endpoint
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const { title, message, type, recipients } = req.body || {};
+    if (!title || !message) {
+      return res.status(400).json({ success: false, error: 'title and message are required' });
+    }
+
+    // Save notification to database
+    const db = await getConnection();
+    const result = await db.run(
+      'INSERT INTO notifications (title, message, type, recipients, created_at) VALUES (?, ?, ?, ?, ?)',
+      [title, message, type || 'system', JSON.stringify(recipients || {}), new Date().toISOString()]
+    );
+    await db.close();
+
+    // Send emails to recipients
+    if (recipients) {
+      const emails = [];
+      
+      if (recipients.tutors) {
+        const tutors = await prisma.tutor.findMany({ where: { isActive: true }, select: { contactEmail: true } });
+        emails.push(...tutors.map(t => t.contactEmail).filter(Boolean));
+      }
+      
+      if (recipients.students) {
+        const students = await prisma.user.findMany({ where: { role: 'student' }, select: { email: true } });
+        emails.push(...students.map(s => s.email).filter(Boolean));
+      }
+      
+      if (recipients.specific && Array.isArray(recipients.specific)) {
+        emails.push(...recipients.specific);
+      }
+
+      // Send emails
+      const emailPromises = emails.map(email => 
+        sendEmail({
+          to: email,
+          subject: title,
+          content: `
+            <div>
+              <h2>${title}</h2>
+              <p>${message}</p>
+              <p>Best regards,<br/>Excellence Academia</p>
+            </div>
+          `
+        })
+      );
+
+      await Promise.allSettled(emailPromises);
+    }
+
+    return res.status(201).json({ success: true, id: result.lastID });
+  } catch (error) {
+    console.error('Notification error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send notification' });
+  }
+});
+
 // Student Dashboard
 app.get('/api/student/dashboard', async (req, res) => {
   try {

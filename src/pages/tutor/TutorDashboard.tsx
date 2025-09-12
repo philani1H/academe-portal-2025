@@ -306,9 +306,10 @@ const mockNotifications: Notification[] = [
 export default function TutorDashboard() {
   // State
   const [user, setUser] = useState({ name: "Dr. Smith", email: "dr.smith@university.edu", role: "tutor" })
-  const [courses, setCourses] = useState<Course[]>(mockCourses)
+  const [courses, setCourses] = useState<Course[]>([])
   const [students, setStudents] = useState<Student[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loading, setLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
@@ -350,8 +351,33 @@ export default function TutorDashboard() {
     setUnreadCount(notifications.filter((n) => !n.read).length)
   }, [notifications])
 
-  // Load live data from API (safe fallbacks if endpoints unavailable)
-  const apiBase = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || ''
+  // Load live data from API
+  const apiBase = ''
+
+  const fetchTutorData = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch(`${apiBase}/api/tutor/dashboard`)
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
+      
+      if (data.tutor) setUser(data.tutor)
+      if (data.students) setStudents(data.students)
+      if (data.courses) setCourses(data.courses)
+      if (data.notifications) setNotifications(data.notifications)
+    } catch (e) {
+      console.error('Failed to fetch tutor data:', e)
+      // Fallback to mock data on error
+      setCourses(mockCourses)
+      setNotifications(mockNotifications)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTutorData()
+  }, [])
 
   useEffect(() => {
     const fetchStudents = async () => {
@@ -637,6 +663,17 @@ export default function TutorDashboard() {
   const activeStudents = students.filter((student) => student.status === "active")
 
   // Render
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}

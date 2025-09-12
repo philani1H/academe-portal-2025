@@ -225,11 +225,17 @@ export default function AdminDashboard() {
 
   const fetchStudents = async () => {
     try {
-      // Use the student dashboard API endpoint
-      const res = await fetch(`${apiBase}/api/student/dashboard`)
+      // Use the query API to get students from users table
+      const res = await fetch(`${apiBase}/api/query`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          query: 'SELECT id, name, email, role, created_at as createdAt, last_active as lastActive FROM users WHERE role = "student" ORDER BY created_at DESC' 
+        }) 
+      })
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const response = await res.json();
-      const data = response.students || [];
+      const data = response.data || response;
       if (!data) throw new Error('No data received');
       setStudents(Array.isArray(data) ? data : []);
     } catch (e) { 
@@ -254,30 +260,30 @@ export default function AdminDashboard() {
 
   const fetchNotifications = async () => {
     try {
-      // Use mock notifications for now since we don't have a dedicated endpoint
-      const mockNotifications = [
-        {
-          id: '1',
-          title: 'New Student Registration',
-          message: 'John Doe has registered for Mathematics Grade 12',
-          date: new Date().toISOString(),
-          type: 'system' as const,
-          status: 'sent' as const,
-          recipients: { tutors: true, students: true },
-          read: false
-        },
-        {
-          id: '2',
-          title: 'Course Update',
-          message: 'Physics Grade 11 course materials have been updated',
-          date: new Date(Date.now() - 3600000).toISOString(),
-          type: 'course' as const,
-          status: 'sent' as const,
-          recipients: { tutors: true, students: true },
-          read: true
-        }
-      ];
-      setNotifications(mockNotifications);
+      // Use the query API to get notifications from database
+      const res = await fetch(`${apiBase}/api/query`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          query: 'SELECT id, title, message, type, status, created_at as date, read FROM notifications ORDER BY created_at DESC LIMIT 20' 
+        }) 
+      })
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const response = await res.json();
+      const data = response.data || response;
+      if (!data) throw new Error('No data received');
+      
+      const mapped = Array.isArray(data) ? data.map((n: any) => ({ 
+        id: n.id?.toString() || `${Date.now()}`, 
+        title: n.title || 'Notification', 
+        message: n.message || '', 
+        date: n.date || '', 
+        type: n.type || 'system', 
+        status: n.status || 'sent', 
+        recipients: { tutors: true, students: true }, 
+        read: !!n.read 
+      })) : [];
+      setNotifications(mapped);
     } catch (e) { 
       console.error('Failed to fetch notifications:', e); 
       setNotifications([]); // Reset to empty array on error
@@ -286,43 +292,58 @@ export default function AdminDashboard() {
 
   const fetchDepartmentsAndStats = async () => {
     try {
-      // Use admin stats API endpoint
-      const res = await fetch(`${apiBase}/api/admin/stats`)
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const response = await res.json();
-      const data = response.data || response;
+      // Get departments from subjects table
+      const deptRes = await fetch(`${apiBase}/api/query`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          query: 'SELECT category as name, COUNT(*) as courses FROM subjects WHERE isActive = 1 GROUP BY category' 
+        }) 
+      })
+      if (!deptRes.ok) throw new Error(`HTTP error! status: ${deptRes.status}`);
+      const deptData = await deptRes.json();
+      const deptList = deptData.data || deptData;
       
-      // Mock departments based on common subjects
-      const departments = [
-        { id: 'mathematics', name: 'Mathematics', courses: 5, tutors: 3, students: 25, color: '#4f46e5' },
-        { id: 'physics', name: 'Physics', courses: 4, tutors: 2, students: 18, color: '#059669' },
-        { id: 'chemistry', name: 'Chemistry', courses: 3, tutors: 2, students: 15, color: '#dc2626' },
-        { id: 'biology', name: 'Biology', courses: 3, tutors: 2, students: 12, color: '#7c3aed' },
-        { id: 'english', name: 'English', courses: 2, tutors: 1, students: 8, color: '#ea580c' }
-      ];
+      const departments = Array.isArray(deptList) ? deptList.map((d: any, i: number) => ({ 
+        id: d.name?.toLowerCase().replace(/\s+/g, '-') || `dept-${i}`, 
+        name: d.name || `Department ${i+1}`, 
+        courses: Number(d.courses || 0), 
+        tutors: 0, 
+        students: 0, 
+        color: ['#4f46e5', '#059669', '#dc2626', '#7c3aed', '#ea580c'][i % 5]
+      })) : [];
       
       setDepartments(departments);
       
-      // Calculate system stats
-      const totalTutors = tutors.length;
-      const totalStudents = students.length;
-      const totalCourses = courses.length;
-      const totalDepartments = departments.length;
+      // Get stats from admin API
+      const statsRes = await fetch(`${apiBase}/api/admin/stats`)
+      if (!statsRes.ok) throw new Error(`HTTP error! status: ${statsRes.status}`);
+      const statsResponse = await statsRes.json();
+      const statsData = statsResponse.data || statsResponse;
       
       setSystemStats({
-        totalUsers: totalTutors + totalStudents,
-        totalTutors,
-        totalStudents,
-        totalCourses,
-        totalDepartments,
-        activeUsers: Math.floor((totalTutors + totalStudents) * 0.8),
+        totalUsers: statsData.totalUsers || 0,
+        totalTutors: statsData.tutors || 0,
+        totalStudents: statsData.students || 0,
+        totalCourses: statsData.courses || 0,
+        totalDepartments: departments.length,
+        activeUsers: Math.floor((statsData.totalUsers || 0) * 0.8),
         systemUptime: '99.9%',
         lastBackup: new Date().toISOString()
       });
     } catch (e) {
       console.error('Failed to fetch departments/stats:', e);
       setDepartments([]); // Reset departments to empty array on error
-      setSystemStats((prev) => ({ ...prev })); // Maintain existing stats on error
+      setSystemStats({
+        totalUsers: 0,
+        totalTutors: 0,
+        totalStudents: 0,
+        totalCourses: 0,
+        totalDepartments: 0,
+        activeUsers: 0,
+        systemUptime: '0%',
+        lastBackup: new Date().toISOString()
+      });
     }
   }
 
@@ -529,11 +550,23 @@ export default function AdminDashboard() {
     setIsSendingNotification(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Send notification via API
+      const res = await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newNotification.title,
+          message: newNotification.message,
+          type: newNotification.type,
+          recipients: newNotification.recipients
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const notificationData: Notification = {
-        id: `n-${Date.now()}`,
+        id: data.id || `n-${Date.now()}`,
         title: newNotification.title,
         message: newNotification.message,
         date: new Date().toISOString(),
