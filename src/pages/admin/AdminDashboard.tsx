@@ -380,11 +380,29 @@ export default function AdminDashboard() {
     setIsCreatingTutor(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Create tutor via API
+      const res = await fetch('/api/admin/content/tutors', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newTutor.name,
+          email: newTutor.email,
+          department: newTutor.department,
+          specialization: newTutor.specialization,
+          subjects: [],
+          contactName: newTutor.name,
+          contactPhone: '',
+          contactEmail: newTutor.email,
+          description: `Tutor specializing in ${newTutor.specialization}`,
+          ratings: []
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const newTutorData: Tutor = {
-        id: `t-${Date.now()}`,
+        id: data.id || `t-${Date.now()}`,
         name: newTutor.name,
         email: newTutor.email,
         role: "tutor",
@@ -443,14 +461,29 @@ export default function AdminDashboard() {
     setIsCreatingCourse(true)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Create course via API
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newCourse.name,
+          description: newCourse.description,
+          department: newCourse.department,
+          tutorId: newCourse.tutorId,
+          startDate: newCourse.startDate,
+          endDate: newCourse.endDate,
+          category: newCourse.department
+        })
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+      const data = await res.json()
 
       const colors = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
       const randomColor = colors[Math.floor(Math.random() * colors.length)]
 
       const newCourseData: Course = {
-        id: `c-${Date.now()}`,
+        id: data.id || `c-${Date.now()}`,
         name: newCourse.name,
         description: newCourse.description,
         department: newCourse.department,
@@ -752,8 +785,12 @@ export default function AdminDashboard() {
 
   const handleDeleteTutor = async (tutorId: string) => {
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Delete tutor via API
+      const res = await fetch(`/api/admin/content/tutors?id=${tutorId}`, {
+        method: 'DELETE'
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
 
       const tutorToDelete = tutors.find((t) => t.id === tutorId)
       if (!tutorToDelete) return
@@ -783,8 +820,12 @@ export default function AdminDashboard() {
 
   const handleDeleteCourse = async (courseId: string) => {
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Delete course via API
+      const res = await fetch(`/api/courses/${courseId}`, {
+        method: 'DELETE'
+      })
+
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
 
       const courseToDelete = courses.find((c) => c.id === courseId)
       if (!courseToDelete) return
