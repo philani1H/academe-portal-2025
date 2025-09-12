@@ -627,6 +627,66 @@ const ContentManagement = () => {
     }
   }
 
+  const deleteTeamMember = async (id: string) => {
+    try {
+      await apiFetch(`/api/admin/content/team-members?id=${id}`, { method: 'DELETE' })
+      setTeamMembers(teamMembers.filter(m => m.id !== id))
+      toast({ title: "Success", description: "Team member deleted successfully" })
+    } catch (error) {
+      console.error('Error deleting team member:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete team member",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const deleteTutor = async (id: string) => {
+    try {
+      await apiFetch(`/api/admin/content/tutors?id=${id}`, { method: 'DELETE' })
+      setTutors(tutors.filter(t => t.id !== id))
+      toast({ title: "Success", description: "Tutor deleted successfully" })
+    } catch (error) {
+      console.error('Error deleting tutor:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete tutor",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const deleteSubject = async (id: string) => {
+    try {
+      await apiFetch(`/api/admin/content/subjects?id=${id}`, { method: 'DELETE' })
+      setSubjects(subjects.filter(s => s.id !== id))
+      toast({ title: "Success", description: "Subject deleted successfully" })
+    } catch (error) {
+      console.error('Error deleting subject:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete subject",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const deleteNavigationItem = async (id: string) => {
+    try {
+      await apiFetch(`/api/admin/content/navigation?id=${id}`, { method: 'DELETE' })
+      setNavigationItems(navigationItems.filter(n => n.id !== id))
+      toast({ title: "Success", description: "Navigation item deleted successfully" })
+    } catch (error) {
+      console.error('Error deleting navigation item:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete navigation item",
+        variant: "destructive",
+      })
+    }
+  }
+
   const saveAnnouncement = async (announcement: Announcement) => {
     try {
       const method = announcement.id ? 'PUT' : 'POST'
@@ -1462,7 +1522,7 @@ const ContentManagement = () => {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {/* Add delete function */}}
+                                  onClick={() => member.id && deleteTeamMember(member.id)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -1537,7 +1597,7 @@ const ContentManagement = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {/* Add delete function */}}
+                            onClick={() => tutor.id && deleteTutor(tutor.id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -1608,7 +1668,7 @@ const ContentManagement = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {/* Add delete function */}}
+                            onClick={() => subject.id && deleteSubject(subject.id)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -1955,7 +2015,7 @@ const ContentManagement = () => {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {/* Add delete function */}}
+                                  onClick={() => item.id && deleteNavigationItem(item.id)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
