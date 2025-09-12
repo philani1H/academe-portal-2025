@@ -206,7 +206,8 @@ export default function AdminDashboard() {
   }, [notifications])
 
   // Fetch data from API
-  const apiBase = (import.meta.env as { VITE_API_URL?: string }).VITE_API_URL || ''
+  // Use local API proxy instead of direct URL
+  const apiBase = ''
 
   const fetchTutors = async () => {
     try {

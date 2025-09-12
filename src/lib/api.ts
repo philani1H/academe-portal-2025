@@ -10,8 +10,10 @@ export async function apiFetch<T = any>(path: string, init?: RequestInit): Promi
   const url = withBase(path);
   const response = await fetch(url, {
     ...(init || {}),
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       ...(init?.headers || {}),
     },
   } as RequestInit);
