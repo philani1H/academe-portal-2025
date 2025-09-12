@@ -14,9 +14,7 @@ import TutorLogin from "./pages/auth/TutorLogin";
 import AdminLogin from "./pages/auth/AdminLogin";
 
 import StudentPortal from "./pages/student/StudentPortal";
-import StudentDashboardEnhanced from "./pages/student/StudentDashboardEnhanced";
 import TutorDashboard from "./pages/tutor/TutorDashboard";
-import TutorDashboardEnhanced from "./pages/tutor/TutorDashboardEnhanced";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import ContentManagement from "./pages/admin/ContentManagement";
 
@@ -42,6 +40,11 @@ const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode;
   if (!user) return <Navigate to="/" replace />;
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
   return children;
+};
+
+const AdminWrapper = ({ children }: { children: React.ReactNode }) => {
+  // No maintenance mode or agreement blocking for admin routes
+  return <>{children}</>;
 };
 
 const queryClient = new QueryClient();
@@ -83,15 +86,11 @@ const App = () => {
             {/* Dashboard Routes */}
             <Route path="/students" element={<StudentPortal />} />
             <Route path="/students/*" element={<StudentPortal />} />
-            <Route path="/student-dashboard" element={<StudentDashboardEnhanced />} />
-            <Route path="/student-dashboard/*" element={<StudentDashboardEnhanced />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="/admin/content" element={<ContentManagement />} />
-            <Route path="/admin/*" element={<AdminDashboard />} />
+            <Route path="/admin" element={<AdminWrapper><AdminDashboard /></AdminWrapper>} />
+            <Route path="/admin/content" element={<AdminWrapper><ContentManagement /></AdminWrapper>} />
+            <Route path="/admin/*" element={<AdminWrapper><AdminDashboard /></AdminWrapper>} />
             <Route path="/tutors-dashboard" element={<TutorDashboard />} />
             <Route path="/tutors-dashboard/*" element={<TutorDashboard />} />
-            <Route path="/tutor-dashboard" element={<TutorDashboardEnhanced />} />
-            <Route path="/tutor-dashboard/*" element={<TutorDashboardEnhanced />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Analytics />

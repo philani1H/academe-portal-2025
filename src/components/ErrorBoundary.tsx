@@ -25,7 +25,27 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    // Log the error details
+    console.error('Uncaught error:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack
+    });
+
+    // Set error details in state
+    this.setState({
+      hasError: true,
+      error: error
+    });
+
+    // Reset error state after 5 seconds and try to recover
+    setTimeout(() => {
+      this.setState({
+        hasError: false,
+        error: null
+      });
+    }, 5000);
   }
 
   public render() {
@@ -40,9 +60,20 @@ class ErrorBoundary extends React.Component<Props, State> {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600 mb-4">
-                We apologize for the inconvenience. Please try refreshing the page or contact support if the problem persists.
-              </p>
+              <div className="space-y-4">
+                <p className="text-gray-600">
+                  We apologize for the inconvenience. An error occurred while loading this page.
+                </p>
+                {this.state.error && (
+                  <div className="text-sm bg-red-50 p-3 rounded border border-red-100">
+                    <p className="font-medium text-red-800">{this.state.error.name}</p>
+                    <p className="text-red-600">{this.state.error.message}</p>
+                  </div>
+                )}
+                <p className="text-gray-500 text-sm">
+                  The page will automatically refresh in 5 seconds, or you can try refreshing manually.
+                </p>
+              </div>
               <Button
                 onClick={() => {
                   window.location.reload();
