@@ -638,22 +638,24 @@ export default function TutorDashboard() {
 
   // Render
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 flex">
       {/* Sidebar */}
       <aside
-        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out ${
+        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out shadow-lg ${
           sidebarOpen ? "left-0 w-64" : "-left-64 w-64 md:left-0 md:w-20"
         }`}
       >
         <div className="flex flex-col h-full">
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-purple-600 to-indigo-600">
             <div className="flex items-center space-x-2">
-              <BookOpen className={`h-6 w-6 text-indigo-600 ${!sidebarOpen && "mx-auto"}`} />
-              {sidebarOpen && <span className="font-bold text-xl">EduPlatform</span>}
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                <BookOpen className={`h-5 w-5 text-white ${!sidebarOpen && "mx-auto"}`} />
+              </div>
+              {sidebarOpen && <span className="font-bold text-xl text-white">Tutor Portal</span>}
             </div>
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="text-gray-500 hover:text-gray-700 md:block hidden"
+              className="text-white/80 hover:text-white md:block hidden"
             >
               <ChevronDown className={`h-5 w-5 transition-transform ${!sidebarOpen ? "rotate-90" : "rotate-270"}`} />
             </button>

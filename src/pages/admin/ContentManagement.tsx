@@ -727,53 +727,70 @@ const ContentManagement = () => {
   }
 
   const renderHeroContentTab = () => (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Home className="h-5 w-5" />
+    <Card className="shadow-lg">
+      <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+        <CardTitle className="flex items-center gap-2 text-xl">
+          <Home className="h-6 w-6 text-blue-600" />
           Hero Section Content
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-gray-600">
           Manage the main hero section content on the homepage
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-6">
         {heroContent ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>Title</Label>
-                <p className="text-sm text-gray-600">{heroContent.title}</p>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Title</Label>
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  <p className="text-sm text-gray-800 font-medium">{heroContent.title}</p>
+                </div>
               </div>
-              <div>
-                <Label>Subtitle</Label>
-                <p className="text-sm text-gray-600">{heroContent.subtitle}</p>
-              </div>
-            </div>
-            <div>
-              <Label>Description</Label>
-              <p className="text-sm text-gray-600">{heroContent.description}</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>Primary Button Text</Label>
-                <p className="text-sm text-gray-600">{heroContent.buttonText}</p>
-              </div>
-              <div>
-                <Label>Secondary Button Text</Label>
-                <p className="text-sm text-gray-600">{heroContent.secondaryButtonText}</p>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Subtitle</Label>
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  <p className="text-sm text-gray-800">{heroContent.subtitle}</p>
+                </div>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button onClick={() => setEditingHero(heroContent)}>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700">Description</Label>
+              <div className="p-3 bg-gray-50 rounded-lg border">
+                <p className="text-sm text-gray-800">{heroContent.description}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Primary Button Text</Label>
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  <p className="text-sm text-gray-800">{heroContent.buttonText}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700">Secondary Button Text</Label>
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  <p className="text-sm text-gray-800">{heroContent.secondaryButtonText}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-4">
+              <Button onClick={() => setEditingHero(heroContent)} className="bg-blue-600 hover:bg-blue-700">
                 <Edit className="h-4 w-4 mr-2" />
                 Edit Hero Content
+              </Button>
+              <Button variant="outline" onClick={() => window.open('/', '_blank')}>
+                <Eye className="h-4 w-4 mr-2" />
+                Preview
               </Button>
             </div>
           </div>
         ) : (
-          <div className="text-center py-8">
-            <p className="text-gray-500 mb-4">No hero content found</p>
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Home className="h-8 w-8 text-gray-400" />
+            </div>
+            <p className="text-gray-500 mb-6 text-lg">No hero content found</p>
             <Button onClick={() => setEditingHero({
               title: '',
               subtitle: '',
@@ -784,7 +801,7 @@ const ContentManagement = () => {
               universities: [],
               features: [],
               backgroundGradient: ''
-            })}>
+            })} className="bg-blue-600 hover:bg-blue-700">
               <Plus className="h-4 w-4 mr-2" />
               Create Hero Content
             </Button>
@@ -795,69 +812,117 @@ const ContentManagement = () => {
   )
 
   const renderFeaturesTab = () => (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Star className="h-5 w-5" />
-          Features Management
-        </CardTitle>
-        <CardDescription>
-          Manage website features and benefits
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Features ({features.length})</h3>
-          <Button onClick={() => setEditingFeature({
-            title: '',
-            description: '',
-            icon: '',
-            benefits: ['']
-          })}>
+    <Card className="shadow-lg">
+      <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Star className="h-6 w-6 text-green-600" />
+              Features Management
+            </CardTitle>
+            <CardDescription className="text-gray-600">
+              Manage website features and benefits
+            </CardDescription>
+          </div>
+          <Button 
+            onClick={() => setEditingFeature({
+              title: '',
+              description: '',
+              icon: '',
+              benefits: ['']
+            })}
+            className="bg-green-600 hover:bg-green-700"
+          >
             <Plus className="h-4 w-4 mr-2" />
             Add Feature
           </Button>
         </div>
+      </CardHeader>
+      <CardContent className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-semibold text-gray-800">Features ({features.length})</h3>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm">
+              <Filter className="h-4 w-4 mr-2" />
+              Filter
+            </Button>
+            <Button variant="outline" size="sm">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+        </div>
         
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature) => (
-            <Card key={feature.id} className="p-4">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <h4 className="font-semibold">{feature.title}</h4>
-                  <p className="text-sm text-gray-600 mt-1">{feature.description}</p>
-                  <div className="mt-2">
-                    <Label className="text-xs">Benefits:</Label>
-                    <ul className="text-xs text-gray-500 list-disc list-inside">
-                      {feature.benefits.map((benefit, index) => (
-                        <li key={index}>{benefit}</li>
-                      ))}
-                    </ul>
+            <Card key={feature.id} className="p-6 hover:shadow-md transition-shadow border-l-4 border-l-green-500">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-gray-800 text-lg">{feature.title}</h4>
+                    <p className="text-sm text-gray-600 mt-2">{feature.description}</p>
+                  </div>
+                  <div className="flex gap-1 ml-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditingFeature(feature)}
+                      className="hover:bg-blue-50"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => deleteFeature(feature.id!)}
+                      className="hover:bg-red-50 text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex gap-2 ml-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEditingFeature(feature)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => deleteFeature(feature.id!)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium text-gray-700">Benefits:</Label>
+                  <ul className="space-y-1">
+                    {feature.benefits.map((benefit, index) => (
+                      <li key={index} className="text-xs text-gray-600 flex items-center gap-2">
+                        <div className="w-1 h-1 bg-green-500 rounded-full"></div>
+                        {benefit}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex items-center gap-2 pt-2">
+                  <Badge variant="secondary" className="text-xs">
+                    {feature.icon || 'No Icon'}
+                  </Badge>
+                  <Badge variant={feature.isActive !== false ? "default" : "secondary"} className="text-xs">
+                    {feature.isActive !== false ? 'Active' : 'Inactive'}
+                  </Badge>
                 </div>
               </div>
             </Card>
           ))}
           
           {features.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              No features found. Add your first feature to get started.
+            <div className="col-span-full text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Star className="h-8 w-8 text-gray-400" />
+              </div>
+              <p className="text-gray-500 mb-6 text-lg">No features found</p>
+              <p className="text-gray-400 text-sm mb-6">Add your first feature to get started with content management</p>
+              <Button 
+                onClick={() => setEditingFeature({
+                  title: '',
+                  description: '',
+                  icon: '',
+                  benefits: ['']
+                })}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Feature
+              </Button>
             </div>
           )}
         </div>
@@ -1223,36 +1288,136 @@ const ContentManagement = () => {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="min-h-screen bg-gray-50">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
+        className="p-6"
       >
+        {/* Header Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Content Management</h1>
-          <p className="text-gray-600 mt-2">Manage all website content from one place</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Content Management</h1>
+              <p className="text-gray-600 mt-2">Manage all website content from one centralized dashboard</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <span>System Online</span>
+              </div>
+              <Button variant="outline" size="sm">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh Data
+              </Button>
+            </div>
+          </div>
         </div>
 
-        <Tabs defaultValue="hero" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="content">Content</TabsTrigger>
-            <TabsTrigger value="tutors">Tutors</TabsTrigger>
-            <TabsTrigger value="subjects">Subjects</TabsTrigger>
-            <TabsTrigger value="pages">Pages</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-blue-100 text-sm">Total Content Items</p>
+                  <p className="text-2xl font-bold">{features.length + pricingPlans.length + testimonials.length + teamMembers.length + tutors.length + subjects.length}</p>
+                </div>
+                <FileText className="h-8 w-8 text-blue-200" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-green-100 text-sm">Active Features</p>
+                  <p className="text-2xl font-bold">{features.filter(f => f.isActive !== false).length}</p>
+                </div>
+                <Star className="h-8 w-8 text-green-200" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-purple-100 text-sm">Tutors Available</p>
+                  <p className="text-2xl font-bold">{tutors.length}</p>
+                </div>
+                <Users className="h-8 w-8 text-purple-200" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-orange-100 text-sm">Subjects Covered</p>
+                  <p className="text-2xl font-bold">{subjects.length}</p>
+                </div>
+                <BookOpen className="h-8 w-8 text-orange-200" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Tabs defaultValue="content" className="w-full">
+          <TabsList className="grid w-full grid-cols-5 bg-white shadow-sm border">
+            <TabsTrigger value="content" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Content
+            </TabsTrigger>
+            <TabsTrigger value="tutors" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Tutors
+            </TabsTrigger>
+            <TabsTrigger value="subjects" className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4" />
+              Subjects
+            </TabsTrigger>
+            <TabsTrigger value="pages" className="flex items-center gap-2">
+              <Layout className="h-4 w-4" />
+              Pages
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Settings
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="content" className="mt-6">
             <div className="space-y-6">
               <Tabs defaultValue="hero" className="w-full">
-                <TabsList className="grid w-full grid-cols-6">
-                  <TabsTrigger value="hero">Hero</TabsTrigger>
-                  <TabsTrigger value="features">Features</TabsTrigger>
-                  <TabsTrigger value="announcements">News</TabsTrigger>
-                  <TabsTrigger value="pricing">Pricing</TabsTrigger>
-                  <TabsTrigger value="testimonials">Reviews</TabsTrigger>
-                  <TabsTrigger value="team">Team</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-6 bg-white shadow-sm border">
+                  <TabsTrigger value="hero" className="flex items-center gap-2">
+                    <Home className="h-4 w-4" />
+                    Hero
+                  </TabsTrigger>
+                  <TabsTrigger value="features" className="flex items-center gap-2">
+                    <Star className="h-4 w-4" />
+                    Features
+                  </TabsTrigger>
+                  <TabsTrigger value="announcements" className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    News
+                  </TabsTrigger>
+                  <TabsTrigger value="pricing" className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4" />
+                    Pricing
+                  </TabsTrigger>
+                  <TabsTrigger value="testimonials" className="flex items-center gap-2">
+                    <Star className="h-4 w-4" />
+                    Reviews
+                  </TabsTrigger>
+                  <TabsTrigger value="team" className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Team
+                  </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="hero" className="mt-6">
@@ -1545,70 +1710,146 @@ const ContentManagement = () => {
           </TabsContent>
 
           <TabsContent value="tutors" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Tutors Management
-                </CardTitle>
-                <CardDescription>
-                  Manage all tutors, their subjects, contact info, and ratings
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Tutors ({tutors.length})</h3>
-                  <Button onClick={() => setEditingTutor({
-                    name: '',
-                    subjects: [],
-                    image: '',
-                    contactName: '',
-                    contactPhone: '',
-                    contactEmail: '',
-                    description: '',
-                    ratings: []
-                  })}>
+            <Card className="shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-purple-50 to-violet-50 border-b">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <Users className="h-6 w-6 text-purple-600" />
+                      Tutors Management
+                    </CardTitle>
+                    <CardDescription className="text-gray-600">
+                      Manage all tutors, their subjects, contact info, and ratings
+                    </CardDescription>
+                  </div>
+                  <Button 
+                    onClick={() => setEditingTutor({
+                      name: '',
+                      subjects: [],
+                      image: '',
+                      contactName: '',
+                      contactPhone: '',
+                      contactEmail: '',
+                      description: '',
+                      ratings: []
+                    })}
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Add Tutor
                   </Button>
                 </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-semibold text-gray-800">Tutors ({tutors.length})</h3>
+                  <div className="flex items-center gap-2">
+                    <Input placeholder="Search tutors..." className="w-64" />
+                    <Button variant="outline" size="sm">
+                      <Filter className="h-4 w-4 mr-2" />
+                      Filter
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
                 
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {tutors.map((tutor) => (
-                    <Card key={tutor.id} className="p-4">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h4 className="font-semibold">{tutor.name}</h4>
-                          <p className="text-sm text-gray-600 mt-1">{tutor.description}</p>
-                          <div className="mt-2 flex gap-4 text-xs text-gray-500">
-                            <span>Subjects: {tutor.subjects.join(', ')}</span>
-                            <span>Contact: {tutor.contactEmail}</span>
-                            <span>Phone: {tutor.contactPhone}</span>
+                    <Card key={tutor.id} className="p-6 hover:shadow-md transition-shadow border-l-4 border-l-purple-500">
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                              <User className="h-6 w-6 text-purple-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-800 text-lg">{tutor.name}</h4>
+                              <p className="text-sm text-gray-600">{tutor.description}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditingTutor(tutor)}
+                              className="hover:bg-blue-50"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => tutor.id && deleteTutor(tutor.id)}
+                              className="hover:bg-red-50 text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex gap-2 ml-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setEditingTutor(tutor)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => tutor.id && deleteTutor(tutor.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                        
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-xs font-medium text-gray-700">Subjects:</Label>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {tutor.subjects.map((subject, index) => (
+                                <Badge key={index} variant="secondary" className="text-xs">
+                                  {subject}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 gap-2 text-xs text-gray-600">
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-3 w-3" />
+                              <span className="truncate">{tutor.contactEmail}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-3 w-3" />
+                              <span>{tutor.contactPhone}</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between pt-2">
+                          <Badge variant={tutor.isActive !== false ? "default" : "secondary"} className="text-xs">
+                            {tutor.isActive !== false ? 'Active' : 'Inactive'}
+                          </Badge>
+                          <div className="flex items-center gap-1">
+                            <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                            <span className="text-sm text-gray-600">4.8</span>
+                          </div>
                         </div>
                       </div>
                     </Card>
                   ))}
                   
                   {tutors.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      No tutors found. Add your first tutor to get started.
+                    <div className="col-span-full text-center py-12">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Users className="h-8 w-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-500 mb-6 text-lg">No tutors found</p>
+                      <p className="text-gray-400 text-sm mb-6">Add your first tutor to start building your team</p>
+                      <Button 
+                        onClick={() => setEditingTutor({
+                          name: '',
+                          subjects: [],
+                          image: '',
+                          contactName: '',
+                          contactPhone: '',
+                          contactEmail: '',
+                          description: '',
+                          ratings: []
+                        })}
+                        className="bg-purple-600 hover:bg-purple-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Tutor
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -1617,69 +1858,157 @@ const ContentManagement = () => {
           </TabsContent>
 
           <TabsContent value="subjects" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="h-5 w-5" />
-                  Subjects Management
-                </CardTitle>
-                <CardDescription>
-                  Manage all subjects, categories, topics, and difficulty levels
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Subjects ({subjects.length})</h3>
-                  <Button onClick={() => setEditingSubject({
-                    name: '',
-                    description: '',
-                    image: '',
-                    category: '',
-                    tutorsCount: 0,
-                    popularTopics: [],
-                    difficulty: []
-                  })}>
+            <Card className="shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-orange-50 to-amber-50 border-b">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <BookOpen className="h-6 w-6 text-orange-600" />
+                      Subjects Management
+                    </CardTitle>
+                    <CardDescription className="text-gray-600">
+                      Manage all subjects, categories, topics, and difficulty levels
+                    </CardDescription>
+                  </div>
+                  <Button 
+                    onClick={() => setEditingSubject({
+                      name: '',
+                      description: '',
+                      image: '',
+                      category: '',
+                      tutorsCount: 0,
+                      popularTopics: [],
+                      difficulty: []
+                    })}
+                    className="bg-orange-600 hover:bg-orange-700"
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Add Subject
                   </Button>
                 </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-semibold text-gray-800">Subjects ({subjects.length})</h3>
+                  <div className="flex items-center gap-2">
+                    <Input placeholder="Search subjects..." className="w-64" />
+                    <Button variant="outline" size="sm">
+                      <Filter className="h-4 w-4 mr-2" />
+                      Filter
+                    </Button>
+                    <Button variant="outline" size="sm">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
                 
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {subjects.map((subject) => (
-                    <Card key={subject.id} className="p-4">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h4 className="font-semibold">{subject.name}</h4>
-                          <p className="text-sm text-gray-600 mt-1">{subject.description}</p>
-                          <div className="mt-2 flex gap-4 text-xs text-gray-500">
-                            <span>Category: {subject.category}</span>
-                            <span>Tutors: {subject.tutorsCount}</span>
-                            <span>Topics: {subject.popularTopics.length}</span>
+                    <Card key={subject.id} className="p-6 hover:shadow-md transition-shadow border-l-4 border-l-orange-500">
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                              <BookOpen className="h-6 w-6 text-orange-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-800 text-lg">{subject.name}</h4>
+                              <p className="text-sm text-gray-600">{subject.description}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setEditingSubject(subject)}
+                              className="hover:bg-blue-50"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => subject.id && deleteSubject(subject.id)}
+                              className="hover:bg-red-50 text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex gap-2 ml-4">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setEditingSubject(subject)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => subject.id && deleteSubject(subject.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                        
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-xs">
+                              {subject.category}
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {subject.tutorsCount} tutors
+                            </Badge>
+                          </div>
+                          
+                          <div>
+                            <Label className="text-xs font-medium text-gray-700">Popular Topics:</Label>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {subject.popularTopics.slice(0, 3).map((topic, index) => (
+                                <Badge key={index} variant="secondary" className="text-xs">
+                                  {topic}
+                                </Badge>
+                              ))}
+                              {subject.popularTopics.length > 3 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{subject.popularTopics.length - 3} more
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <Label className="text-xs font-medium text-gray-700">Difficulty Levels:</Label>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {subject.difficulty.map((level, index) => (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {level}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between pt-2">
+                          <Badge variant={subject.isActive !== false ? "default" : "secondary"} className="text-xs">
+                            {subject.isActive !== false ? 'Active' : 'Inactive'}
+                          </Badge>
+                          <div className="text-xs text-gray-500">
+                            {subject.popularTopics.length} topics
+                          </div>
                         </div>
                       </div>
                     </Card>
                   ))}
                   
                   {subjects.length === 0 && (
-                    <div className="text-center py-8 text-gray-500">
-                      No subjects found. Add your first subject to get started.
+                    <div className="col-span-full text-center py-12">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <BookOpen className="h-8 w-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-500 mb-6 text-lg">No subjects found</p>
+                      <p className="text-gray-400 text-sm mb-6">Add your first subject to start building your curriculum</p>
+                      <Button 
+                        onClick={() => setEditingSubject({
+                          name: '',
+                          description: '',
+                          image: '',
+                          category: '',
+                          tutorsCount: 0,
+                          popularTopics: [],
+                          difficulty: []
+                        })}
+                        className="bg-orange-600 hover:bg-orange-700"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Subject
+                      </Button>
                     </div>
                   )}
                 </div>

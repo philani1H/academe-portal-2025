@@ -1,56 +1,65 @@
-'use client';
+"use client"
 
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { AlertTriangle } from 'lucide-react';
-import { Button } from './ui/button';
+import React from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
+import { Loader2 } from 'lucide-react'
 
 interface ProtectedRouteProps {
-  children: React.ReactNode;
-  allowedRoles: ('student' | 'tutor' | 'admin')[];
-  redirectPath?: string;
+  children: React.ReactNode
+  requiredRole?: 'admin' | 'tutor' | 'student'
+  fallbackPath?: string
 }
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
-  children,
-  allowedRoles,
-  redirectPath = '/login'
-}) => {
-  const navigate = useNavigate();
-  const { user } = useAuth();
+export default function ProtectedRoute({ 
+  children, 
+  requiredRole, 
+  fallbackPath = '/auth/login' 
+}: ProtectedRouteProps) {
+  const { user, loading, isAuthenticated } = useAuth()
+  const router = useRouter()
 
   React.useEffect(() => {
-    if (!user) {
-      navigate(redirectPath);
+    if (!loading) {
+      if (!isAuthenticated) {
+        router.push(fallbackPath)
+        return
+      }
+
+      if (requiredRole && user?.role !== requiredRole) {
+        // Redirect to appropriate dashboard based on user role
+        if (user?.role === 'admin') {
+          router.push('/admin/dashboard')
+        } else if (user?.role === 'tutor') {
+          router.push('/tutor/dashboard')
+        } else if (user?.role === 'student') {
+          router.push('/student/dashboard')
+        } else {
+          router.push(fallbackPath)
+        }
+        return
+      }
     }
-  }, [user, navigate, redirectPath]);
+  }, [loading, isAuthenticated, user, requiredRole, router, fallbackPath])
 
-  if (!user) return null;
-
-  if (!allowedRoles.includes(user.role)) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-600">
-              <AlertTriangle className="h-6 w-6" />
-              Access Denied
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600 mb-4">
-              You do not have permission to access this page. Please contact your administrator if you believe this is a mistake.
-            </p>
-            <Button onClick={() => navigate('/')} className="w-full">
-              Return to Home
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
       </div>
-    );
+    )
   }
 
-  return <>{children}</>;
-};
+  if (!isAuthenticated) {
+    return null
+  }
+
+  if (requiredRole && user?.role !== requiredRole) {
+    return null
+  }
+
+  return <>{children}</>
+}

@@ -1,321 +1,270 @@
-// This is your Prisma schema file
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:../APP-Database.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
-  name            String
-  role            String    // "student", "teacher", "admin"
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  enrollments     CourseEnrollment[]
-  testSubmissions TestSubmission[]
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  role          Role      @default(STUDENT)
+  status        UserStatus @default(PENDING)
+  department    String?
+  specialization String?
+  avatar        String?
+  lastActive    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  courses       Course[]
+  assignments   Assignment[]
+  submissions   Submission[]
+  notifications Notification[]
+  enrollments   Enrollment[]
+  grades        Grade[]
+
+  @@map("users")
 }
 
 model Course {
-  id          String    @id @default(uuid())
-  title       String
-  description String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  enrollments CourseEnrollment[]
+  id          String        @id @default(cuid())
+  name        String
+  description String
+  tutorId     String
+  status      CourseStatus  @default(DRAFT)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  tutor       User          @relation(fields: [tutorId], references: [id])
+  enrollments Enrollment[]
+  assignments Assignment[]
+  materials   Material[]
   tests       Test[]
+
+  @@map("courses")
 }
 
-model CourseEnrollment {
-  id        String   @id @default(uuid())
-  userId    String
-  courseId  String
-  status    String   // "enrolled", "completed", "dropped"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id])
-  course    Course   @relation(fields: [courseId], references: [id])
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  headId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  head        User     @relation(fields: [headId], references: [id])
+  courses     Course[]
+
+  @@map("departments")
+}
+
+model Assignment {
+  id          String            @id @default(cuid())
+  title       String
+  description String
+  courseId    String
+  dueDate     DateTime
+  status      AssignmentStatus  @default(DRAFT)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  // Relations
+  course      Course            @relation(fields: [courseId], references: [id])
+  submissions Submission[]
+
+  @@map("assignments")
+}
+
+model Submission {
+  id           String           @id @default(cuid())
+  assignmentId String
+  studentId    String
+  content      String
+  fileUrl      String?
+  status       SubmissionStatus @default(SUBMITTED)
+  grade        Float?
+  feedback     String?
+  submittedAt  DateTime         @default(now())
+  gradedAt     DateTime?
+
+  // Relations
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id])
+  student      User             @relation(fields: [studentId], references: [id])
+
+  @@map("submissions")
 }
 
 model Test {
-  id          String           @id @default(uuid())
-  title       String
-  courseId    String
-  course      Course           @relation(fields: [courseId], references: [id])
-  questions   TestQuestion[]
-  submissions TestSubmission[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id        String     @id @default(cuid())
+  title     String
+  courseId  String
+  date      DateTime
+  duration  Int        // in minutes
+  status    TestStatus @default(DRAFT)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+  course    Course     @relation(fields: [courseId], references: [id])
+  questions Question[]
+
+  @@map("tests")
 }
 
-model TestQuestion {
-  id       String   @id @default(uuid())
+model Question {
+  id       String     @id @default(cuid())
   testId   String
   question String
-  options  String   // JSON string of array of possible answers
-  answer   String   // Correct answer
-  test     Test     @relation(fields: [testId], references: [id])
+  type     QuestionType
+  options  String[]   // JSON array of options
+  answer   String
+  points   Int        @default(1)
+  order    Int
+
+  // Relations
+  test     Test       @relation(fields: [testId], references: [id])
+
+  @@map("questions")
 }
 
-model TestSubmission {
-  id        String   @id @default(uuid())
-  userId    String
-  testId    String
-  answers   String   // JSON string of answers
-  score     Float
+model Material {
+  id        String       @id @default(cuid())
+  title     String
+  content   String
+  type      MaterialType
+  fileUrl   String?
+  courseId  String
+  createdAt DateTime     @default(now())
+
+  // Relations
+  course    Course       @relation(fields: [courseId], references: [id])
+
+  @@map("materials")
+}
+
+model Enrollment {
+  id        String   @id @default(cuid())
+  studentId String
+  courseId  String
+  enrolledAt DateTime @default(now())
+
+  // Relations
+  student   User     @relation(fields: [studentId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id])
+
+  @@unique([studentId, courseId])
+  @@map("enrollments")
+}
+
+model Grade {
+  id        String   @id @default(cuid())
+  studentId String
+  courseId  String
+  grade     Float
+  type      GradeType
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
-  test      Test     @relation(fields: [testId], references: [id])
+
+  // Relations
+  student   User     @relation(fields: [studentId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id])
+
+  @@map("grades")
 }
 
 model Notification {
-  id        String   @id @default(uuid())
-  userId    String
-  message   String
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String           @id @default(cuid())
+  title        String
+  message      String
+  type         NotificationType @default(INFO)
+  userId       String?
+  courseId     String?
+  assignmentId String?
+  testId       String?
+  read         Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+
+  // Relations
+  user         User?            @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
 }
 
-// Content Management Models
-model HeroContent {
-  id                 String   @id @default(uuid())
-  title              String
-  subtitle           String
-  description        String
-  buttonText         String
-  secondaryButtonText String
-  trustIndicatorText String
-  universities       String   // JSON string of array of university names
-  features           String   // JSON string of array of feature objects
-  backgroundGradient String
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+// Enums
+enum Role {
+  ADMIN
+  TUTOR
+  STUDENT
 }
 
-model Feature {
-  id          String   @id @default(uuid())
-  title       String
-  description String
-  icon        String
-  benefits    String   // JSON string of array of benefit strings
-  isActive    Boolean  @default(true)
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum UserStatus {
+  ACTIVE
+  PENDING
+  INACTIVE
+  REJECTED
 }
 
-model Announcement {
-  id        String   @id @default(uuid())
-  content   String
-  type      String   // "info", "warning", "success"
-  pinned    Boolean  @default(false)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum CourseStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  COMPLETED
 }
 
-model PricingPlan {
-  id          String   @id @default(uuid())
-  name        String
-  price       String
-  period      String
-  features    String   // JSON string of array of included features
-  notIncluded String   // JSON string of array of not included features
-  color       String
-  icon        String
-  popular     Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum AssignmentStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
 }
 
-model Testimonial {
-  id          String   @id @default(uuid())
-  content     String
-  author      String
-  role        String
-  subject     String
-  improvement String
-  image       String
-  rating      Int      @default(5)
-  isActive    Boolean  @default(true)
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum SubmissionStatus {
+  SUBMITTED
+  GRADED
+  LATE
 }
 
-model TeamMember {
-  id        String   @id @default(uuid())
-  name      String
-  role      String
-  bio       String
-  image     String
-  isActive  Boolean  @default(true)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum TestStatus {
+  DRAFT
+  PUBLISHED
+  COMPLETED
 }
 
-model AboutUsContent {
-  id                 String   @id @default(uuid())
-  goal               String
-  mission            String
-  rolesResponsibilities String // JSON string of complex structure for roles and responsibilities
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  ESSAY
 }
 
-model ContactInfo {
-  id          String   @id @default(uuid())
-  type        String   // "email", "phone", "address", "social"
-  label       String
-  value       String
-  icon        String?
-  isActive    Boolean  @default(true)
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum MaterialType {
+  PDF
+  VIDEO
+  DOCUMENT
+  LINK
+  PRESENTATION
 }
 
-model SiteSettings {
-  id        String   @id @default(uuid())
-  key       String   @unique
-  value     String   // JSON string for complex values
-  type      String   // "string", "number", "boolean", "json", "image"
-  label     String
-  category  String   // "general", "appearance", "seo", "integrations"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum GradeType {
+  ASSIGNMENT
+  TEST
+  QUIZ
+  PROJECT
+  FINAL
 }
 
-// Tutors Management
-model Tutor {
-  id           String   @id @default(uuid())
-  name         String
-  subjects     String   // JSON array of subjects
-  image        String
-  contactName  String
-  contactPhone String
-  contactEmail String
-  description  String
-  ratings      String   // JSON array of ratings
-  isActive     Boolean  @default(true)
-  order        Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-}
-
-// Subjects Management
-model Subject {
-  id            String   @id @default(uuid())
-  name          String
-  description   String
-  image         String
-  category      String
-  tutorsCount   Int      @default(0)
-  popularTopics String   // JSON array of topics
-  difficulty    String   // JSON array of difficulty levels
-  isActive      Boolean  @default(true)
-  order         Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
-// Footer Content Management
-model FooterContent {
-  id               String   @id @default(uuid())
-  companyName      String
-  tagline          String
-  contactPhone     String
-  contactEmail     String
-  contactPerson    String
-  whatsappLink     String
-  socialLinks      String   // JSON object with social media links
-  quickLinks       String   // JSON array of quick links
-  resourceLinks    String   // JSON array of resource links
-  copyrightText    String
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-}
-
-// Navigation Management
-model NavigationItem {
-  id        String   @id @default(uuid())
-  path      String
-  label     String
-  type      String   // "main", "mobile", "footer"
-  isActive  Boolean  @default(true)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// Become Tutor Page Content
-model BecomeTutorContent {
-  id             String   @id @default(uuid())
-  title          String
-  description    String
-  requirements   String   // JSON array of requirements
-  benefits       String   // JSON array of benefits
-  applicationUrl String
-  formEmbedCode  String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-}
-
-// Exam Rewrite Content
-model ExamRewriteContent {
-  id                    String   @id @default(uuid())
-  title                 String
-  description           String
-  heroTitle             String
-  heroDescription       String
-  benefits              String   // JSON array of benefits
-  process               String   // JSON array of process steps
-  subjects              String   // JSON array of subjects
-  applicationFormUrl    String
-  grade11FormUrl        String?
-  grade12FormUrl        String?
-  pricingInfo           String   // JSON object with pricing
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-}
-
-// Contact Us Content
-model ContactUsContent {
-  id            String   @id @default(uuid())
-  title         String
-  description   String
-  logo          String
-  formEndpoint  String
-  contactInfo   String   // JSON object with contact details
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
-// University Application Content
-model UniversityApplicationContent {
-  id            String   @id @default(uuid())
-  title         String
-  description   String
-  services      String   // JSON array of services
-  process       String   // JSON array of process steps
-  requirements  String   // JSON array of requirements
-  pricing       String   // JSON object with pricing
-  formUrl       String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
 }

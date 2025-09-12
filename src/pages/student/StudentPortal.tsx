@@ -650,22 +650,24 @@ export default function StudentPortal() {
 
   // Render
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex">
       {/* Sidebar */}
       <aside
-        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out ${
+        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out shadow-lg ${
           sidebarOpen ? "left-0 w-64" : "-left-64 w-64 md:left-0 md:w-20"
         }`}
       >
         <div className="flex flex-col h-full">
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600">
             <div className="flex items-center space-x-2">
-              <GraduationCap className={`h-6 w-6 text-indigo-600 ${!sidebarOpen && "mx-auto"}`} />
-              {sidebarOpen && <span className="font-bold text-xl">Student Portal</span>}
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                <GraduationCap className={`h-5 w-5 text-white ${!sidebarOpen && "mx-auto"}`} />
+              </div>
+              {sidebarOpen && <span className="font-bold text-xl text-white">Student Portal</span>}
             </div>
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="text-gray-500 hover:text-gray-700 md:block hidden"
+              className="text-white/80 hover:text-white md:block hidden"
             >
               <ChevronDown className={`h-5 w-5 transition-transform ${!sidebarOpen ? "rotate-90" : "rotate-270"}`} />
             </button>
@@ -1047,16 +1049,26 @@ export default function StudentPortal() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <Card className="border-l-4 border-indigo-500">
+                  <Card className="border-l-4 border-indigo-500 shadow-lg hover:shadow-xl transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Enrolled Courses</CardTitle>
-                      <BookOpen className="h-4 w-4 text-indigo-500" />
+                      <CardTitle className="text-sm font-medium text-gray-600">Enrolled Courses</CardTitle>
+                      <div className="p-2 bg-indigo-100 rounded-full">
+                        <BookOpen className="h-5 w-5 text-indigo-600" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{enrolledCourses.length}</div>
-                      <p className="text-xs text-muted-foreground">
+                      <div className="text-3xl font-bold text-gray-900">{enrolledCourses.length}</div>
+                      <p className="text-sm text-gray-600 mt-1">
                         {enrolledCourses.reduce((sum, course) => sum + course.materials.length, 0)} learning materials
                       </p>
+                      <div className="mt-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-indigo-500 h-2 rounded-full transition-all duration-300" 
+                            style={{ width: `${Math.min((enrolledCourses.length / 10) * 100, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1066,14 +1078,23 @@ export default function StudentPortal() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
                 >
-                  <Card className="border-l-4 border-blue-500">
+                  <Card className="border-l-4 border-blue-500 shadow-lg hover:shadow-xl transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Upcoming Tests</CardTitle>
-                      <FileText className="h-4 w-4 text-blue-500" />
+                      <CardTitle className="text-sm font-medium text-gray-600">Upcoming Tests</CardTitle>
+                      <div className="p-2 bg-blue-100 rounded-full">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">{upcomingTests.length}</div>
-                      <p className="text-xs text-muted-foreground">Next: {upcomingTests[0]?.title || "None"}</p>
+                      <div className="text-3xl font-bold text-gray-900">{upcomingTests.length}</div>
+                      <p className="text-sm text-gray-600 mt-1">Next: {upcomingTests[0]?.title || "None"}</p>
+                      {upcomingTests.length > 0 && (
+                        <div className="mt-2">
+                          <Badge variant="outline" className="text-xs">
+                            {upcomingTests[0]?.dueDate ? new Date(upcomingTests[0].dueDate).toLocaleDateString() : 'No date'}
+                          </Badge>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1083,13 +1104,15 @@ export default function StudentPortal() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.2 }}
                 >
-                  <Card className="border-l-4 border-green-500">
+                  <Card className="border-l-4 border-green-500 shadow-lg hover:shadow-xl transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Next Session</CardTitle>
-                      <Calendar className="h-4 w-4 text-green-500" />
+                      <CardTitle className="text-sm font-medium text-gray-600">Next Session</CardTitle>
+                      <div className="p-2 bg-green-100 rounded-full">
+                        <Calendar className="h-5 w-5 text-green-600" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-3xl font-bold text-gray-900">
                         {enrolledCourses.length > 0
                           ? new Date(enrolledCourses[0]?.nextSession).toLocaleTimeString([], {
                               hour: "2-digit",
@@ -1097,13 +1120,20 @@ export default function StudentPortal() {
                             })
                           : "N/A"}
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm text-gray-600 mt-1">
                         {enrolledCourses.length > 0
                           ? `${enrolledCourses[0]?.name} - ${new Date(
                               enrolledCourses[0]?.nextSession,
                             ).toLocaleDateString()}`
                           : "No upcoming sessions"}
                       </p>
+                      {enrolledCourses.length > 0 && (
+                        <div className="mt-2">
+                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                            Scheduled
+                          </Badge>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1113,13 +1143,15 @@ export default function StudentPortal() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.3 }}
                 >
-                  <Card className="border-l-4 border-amber-500">
+                  <Card className="border-l-4 border-amber-500 shadow-lg hover:shadow-xl transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Average Grade</CardTitle>
-                      <BarChart className="h-4 w-4 text-amber-500" />
+                      <CardTitle className="text-sm font-medium text-gray-600">Average Grade</CardTitle>
+                      <div className="p-2 bg-amber-100 rounded-full">
+                        <BarChart className="h-5 w-5 text-amber-600" />
+                      </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-3xl font-bold text-gray-900">
                         {enrolledCourses.length > 0
                           ? Math.round(
                               enrolledCourses.reduce((sum, course) => sum + (course.grade || 0), 0) /
@@ -1128,7 +1160,23 @@ export default function StudentPortal() {
                           : "N/A"}
                         %
                       </div>
-                      <p className="text-xs text-muted-foreground">Across all courses</p>
+                      <p className="text-sm text-gray-600 mt-1">Across all courses</p>
+                      {enrolledCourses.length > 0 && (
+                        <div className="mt-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-amber-500 h-2 rounded-full transition-all duration-300" 
+                              style={{ 
+                                width: `${Math.min(
+                                  (enrolledCourses.reduce((sum, course) => sum + (course.grade || 0), 0) /
+                                    enrolledCourses.filter((c) => c.grade).length), 
+                                  100
+                                )}%` 
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </motion.div>
