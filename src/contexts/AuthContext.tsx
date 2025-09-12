@@ -1,81 +1,121 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User } from '../types/user';
+"use client"
+
+import React, { createContext, useContext, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import authService, { User } from '@/services/authService'
 
 interface AuthContextType {
-  user: User | null;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string, role: 'student' | 'tutor' | 'admin') => Promise<void>;
-  logout: () => void;
-  isAuthenticated: boolean;
+  user: User | null
+  loading: boolean
+  login: (email: string, password: string) => Promise<void>
+  register: (data: any) => Promise<void>
+  logout: () => Promise<void>
+  updateProfile: (data: Partial<User>) => Promise<void>
+  isAuthenticated: boolean
+  isAdmin: boolean
+  isTutor: boolean
+  isStudent: boolean
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
 
   useEffect(() => {
-    // Check for existing session
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-      setIsAuthenticated(true);
+    // Check if user is already logged in
+    const checkAuth = async () => {
+      try {
+        const currentUser = authService.getCurrentUser()
+        if (currentUser) {
+          // Verify token is still valid
+          const verifiedUser = await authService.verifyToken()
+          if (verifiedUser) {
+            setUser(verifiedUser)
+          } else {
+            // Token is invalid, clear auth
+            await authService.logout()
+            setUser(null)
+          }
+        }
+      } catch (error) {
+        console.error('Auth check error:', error)
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
     }
-  }, []);
+
+    checkAuth()
+  }, [])
 
   const login = async (email: string, password: string) => {
+    setLoading(true)
     try {
-      // Using mock authentication for testing
-      const { mockLogin } = await import('../mocks/auth');
-      const userData = await mockLogin(email, password);
-      setUser(userData);
-      setIsAuthenticated(true);
-      localStorage.setItem('user', JSON.stringify(userData));
-    } catch (error) {
-      console.error('Login error:', error);
-      throw error;
+      const response = await authService.login({ email, password })
+      setUser(response.user)
+    } finally {
+      setLoading(false)
     }
-  };
+  }
 
-  const signup = async (email: string, password: string, name: string, role: 'student' | 'tutor' | 'admin') => {
+  const register = async (data: any) => {
+    setLoading(true)
     try {
-      // TODO: Implement actual API call
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, name, role }),
-      });
-
-      if (!response.ok) throw new Error('Signup failed');
-
-      const userData = await response.json();
-      setUser(userData);
-      setIsAuthenticated(true);
-      localStorage.setItem('user', JSON.stringify(userData));
-    } catch (error) {
-      console.error('Signup error:', error);
-      throw error;
+      const response = await authService.register(data)
+      setUser(response.user)
+    } finally {
+      setLoading(false)
     }
-  };
+  }
 
-  const logout = () => {
-    setUser(null);
-    setIsAuthenticated(false);
-    localStorage.removeItem('user');
-  };
+  const logout = async () => {
+    setLoading(true)
+    try {
+      await authService.logout()
+      setUser(null)
+      router.push('/auth/login')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const updateProfile = async (data: Partial<User>) => {
+    try {
+      const updatedUser = await authService.updateProfile(data)
+      setUser(updatedUser)
+    } catch (error) {
+      console.error('Profile update error:', error)
+      throw error
+    }
+  }
+
+  const value: AuthContextType = {
+    user,
+    loading,
+    login,
+    register,
+    logout,
+    updateProfile,
+    isAuthenticated: !!user,
+    isAdmin: user?.role === 'admin',
+    isTutor: user?.role === 'tutor',
+    isStudent: user?.role === 'student'
+  }
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, isAuthenticated }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
-  );
+  )
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
+  const context = useContext(AuthContext)
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth must be used within an AuthProvider')
   }
-  return context;
+  return context
 }
