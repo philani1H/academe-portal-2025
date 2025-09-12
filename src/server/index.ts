@@ -559,10 +559,9 @@ app.get('/api/admin/content/:type', async (req, res) => {
     
     const contentQueries = {
       'tutors': async () => {
-        const tutors = await prisma.tutor.findMany({ 
-          where: { isActive: true }, 
-          orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
-        });
+        const db = await getConnection();
+        const tutors = await db.all('SELECT * FROM tutors ORDER BY created_at DESC');
+        await db.close();
         
         return tutors.map(tutor => {
           let ratings = [];
@@ -583,63 +582,96 @@ app.get('/api/admin/content/:type', async (req, res) => {
           };
         });
       },
-      'team-members': () => prisma.teamMember.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
-      }),
-      'about-us': () => prisma.aboutUsContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
-      }),
-      'hero': () => prisma.heroContent.findFirst({ 
-        orderBy: { updatedAt: 'desc' } 
-      }),
-      'features': () => prisma.feature.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
-      }),
-      'announcements': () => prisma.announcement.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }] 
-      }),
-      'testimonials': () => prisma.testimonial.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
-      }),
-      'pricing': () => prisma.pricingPlan.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
-      }),
-      'events': () => prisma.$queryRawUnsafe('SELECT * FROM events ORDER BY date ASC'),
-      'footer': () => prisma.footerContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
-      }),
-      'subjects': () => prisma.subject.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
-      }),
-      'navigation': () => prisma.navigationItem.findMany({ 
-        where: { isActive: true }, 
-        select: { path: true, label: true, type: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
-      }),
-      'exam-rewrite': () => prisma.examRewriteContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
-      }),
-      'university-application': () => prisma.universityApplicationContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
-      }),
-      'contact-us': () => prisma.contactUsContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
-      }),
-      'become-tutor': () => prisma.becomeTutorContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
-      })
+      'team-members': async () => {
+        const db = await getConnection();
+        const members = await db.all('SELECT * FROM team_members WHERE is_active = 1 ORDER BY [order] ASC, created_at DESC');
+        await db.close();
+        return members;
+      },
+      'about-us': async () => {
+        const db = await getConnection();
+        const content = await db.get('SELECT * FROM about_us_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        await db.close();
+        return content;
+      },
+      'hero': async () => {
+        const db = await getConnection();
+        const content = await db.get('SELECT * FROM hero_content ORDER BY updated_at DESC LIMIT 1');
+        await db.close();
+        return content;
+      },
+      'features': async () => {
+        const db = await getConnection();
+        const features = await db.all('SELECT * FROM features ORDER BY created_at ASC');
+        await db.close();
+        return features;
+      },
+      'announcements': async () => {
+        const db = await getConnection();
+        const announcements = await db.all('SELECT * FROM announcements ORDER BY pinned DESC, created_at DESC');
+        await db.close();
+        return announcements;
+      },
+      'testimonials': async () => {
+        const db = await getConnection();
+        const testimonials = await db.all('SELECT * FROM testimonials ORDER BY created_at DESC');
+        await db.close();
+        return testimonials;
+      },
+      'pricing': async () => {
+        const db = await getConnection();
+        const pricing = await db.all('SELECT * FROM pricing_plans ORDER BY created_at ASC');
+        await db.close();
+        return pricing;
+      },
+      'events': async () => {
+        const db = await getConnection();
+        const events = await db.all('SELECT * FROM events ORDER BY date ASC');
+        await db.close();
+        return events;
+      },
+      'footer': async () => {
+        const db = await getConnection();
+        const content = await db.get('SELECT * FROM footer_content ORDER BY updated_at DESC LIMIT 1');
+        await db.close();
+        return content;
+      },
+      'subjects': async () => {
+        const db = await getConnection();
+        const subjects = await db.all('SELECT * FROM subjects ORDER BY created_at ASC');
+        await db.close();
+        return subjects;
+      },
+      'navigation': async () => {
+        const db = await getConnection();
+        const nav = await db.all('SELECT path, label, type FROM navigation_items WHERE is_active = 1 ORDER BY [order] ASC, created_at ASC');
+        await db.close();
+        return nav;
+      },
+      'exam-rewrite': async () => {
+        const db = await getConnection();
+        const content = await db.get('SELECT * FROM exam_rewrite_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        await db.close();
+        return content;
+      },
+      'university-application': async () => {
+        const db = await getConnection();
+        const content = await db.get('SELECT * FROM university_application_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        await db.close();
+        return content;
+      },
+      'contact-us': async () => {
+        const db = await getConnection();
+        const content = await db.get('SELECT * FROM contact_us_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        await db.close();
+        return content;
+      },
+      'become-tutor': async () => {
+        const db = await getConnection();
+        const content = await db.get('SELECT * FROM become_tutor_content WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 1');
+        await db.close();
+        return content;
+      }
     };
 
     const queryFn = contentQueries[contentType];
@@ -654,27 +686,33 @@ app.get('/api/admin/content/:type', async (req, res) => {
 
     content = await queryFn();
 
-    if (content !== null && content !== undefined) {
-      const listTypes = [
-        'tutors', 'team-members', 'features', 'testimonials', 
-        'pricing', 'subjects', 'announcements', 'events', 'navigation'
-      ];
-      
-      res.set('Cache-Control', `public, max-age=${cacheTime}`);
-      res.json({ 
-        success: true,
-        data: content,
-        type: contentType,
-        isArray: listTypes.includes(contentType),
-        count: Array.isArray(content) ? content.length : 1,
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      res.status(404).json({ 
-        success: false,
-        error: `${contentType} content not found` 
-      });
+    // Ensure we always return proper data structures
+    const listTypes = [
+      'tutors', 'team-members', 'features', 'testimonials', 
+      'pricing', 'subjects', 'announcements', 'events', 'navigation'
+    ];
+    
+    const isArrayType = listTypes.includes(contentType);
+    
+    // If it's an array type but we got null/undefined, return empty array
+    if (isArrayType && (content === null || content === undefined)) {
+      content = [];
     }
+    
+    // If it's a single item type but we got null/undefined, return empty object
+    if (!isArrayType && (content === null || content === undefined)) {
+      content = {};
+    }
+
+    res.set('Cache-Control', `public, max-age=${cacheTime}`);
+    res.json({ 
+      success: true,
+      data: content,
+      type: contentType,
+      isArray: isArrayType,
+      count: Array.isArray(content) ? content.length : 1,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
     console.error(`Error fetching ${req.params.type} content:`, error);
     // In production, avoid leaking error details

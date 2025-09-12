@@ -171,3 +171,65 @@ CREATE TABLE IF NOT EXISTS university_application_content (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Contact Us content (singleton style)
+CREATE TABLE IF NOT EXISTS contact_us_content (
+    id VARCHAR(36) PRIMARY KEY,
+    title TEXT,
+    description TEXT,
+    contactInfo TEXT,
+    formFields TEXT,
+    is_active BOOLEAN DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Become Tutor content (singleton style)
+CREATE TABLE IF NOT EXISTS become_tutor_content (
+    id VARCHAR(36) PRIMARY KEY,
+    title TEXT,
+    description TEXT,
+    requirements TEXT,
+    benefits TEXT,
+    applicationProcess TEXT,
+    is_active BOOLEAN DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Announcements
+CREATE TABLE IF NOT EXISTS announcements (
+    id VARCHAR(36) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    content TEXT,
+    pinned BOOLEAN DEFAULT 0,
+    is_active BOOLEAN DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert sample data
+INSERT OR IGNORE INTO features (id, title, description, icon, order_index) VALUES 
+    ('f1', 'Expert Tutors', 'Learn from experienced professionals', 'graduation-cap', 1),
+    ('f2', 'Flexible Schedule', 'Study at your own pace', 'clock', 2),
+    ('f3', 'Interactive Learning', 'Engaging multimedia content', 'play', 3);
+
+INSERT OR IGNORE INTO subjects (id, name, description, icon) VALUES 
+    ('s1', 'Mathematics', 'Advanced mathematics courses', 'calculator'),
+    ('s2', 'Physics', 'Physics fundamentals and advanced topics', 'atom'),
+    ('s3', 'Chemistry', 'Organic and inorganic chemistry', 'flask'),
+    ('s4', 'English', 'Language and literature', 'book'),
+    ('s5', 'History', 'World and local history', 'globe');
+
+INSERT OR IGNORE INTO announcements (id, title, content, pinned) VALUES 
+    ('a1', 'Welcome to Our Platform', 'We are excited to have you join our learning community!', 1),
+    ('a2', 'New Course Available', 'Check out our latest mathematics course', 0);
+
+INSERT OR IGNORE INTO testimonials (id, name, content, rating) VALUES 
+    ('t1', 'John Doe', 'Amazing platform! The tutors are excellent.', 5),
+    ('t2', 'Jane Smith', 'Great learning experience, highly recommended!', 5);
+
+INSERT OR IGNORE INTO pricing_plans (id, name, price, interval, features, isPopular) VALUES 
+    ('p1', 'Basic', 29.99, 'month', '["1-on-1 sessions", "Basic support"]', 0),
+    ('p2', 'Premium', 59.99, 'month', '["Unlimited sessions", "Priority support", "Advanced materials"]', 1),
+    ('p3', 'Pro', 99.99, 'month', '["All features", "Personal mentor", "Certification"]', 0);
