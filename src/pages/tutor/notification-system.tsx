@@ -64,9 +64,10 @@ export default function NotificationSystemPage() {
         api.getCourses(),
         api.getStudents(),
       ])
-      setNotifications(notificationsData)
-      setCourses(coursesData)
-      setStudents(studentsData)
+      // Ensure we never set null/undefined into state to keep list renders safe
+      setNotifications(Array.isArray(notificationsData) ? notificationsData : [])
+      setCourses(Array.isArray(coursesData) ? coursesData : [])
+      setStudents(Array.isArray(studentsData) ? studentsData : [])
     } catch (error) {
       toast({
         title: "Error",
@@ -161,18 +162,27 @@ export default function NotificationSystemPage() {
     }
   }
 
-  const filteredNotifications = notifications.filter((notification) => {
-    const matchesSearch = notification.message.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = filterType === "all" || notification.type === filterType
+  // Always operate on a safe, filtered list to avoid null entries from API
+  const baseNotifications: Notification[] = Array.isArray(notifications)
+    ? notifications.filter(Boolean)
+    : []
+
+  const filteredNotifications = baseNotifications.filter((notification) => {
+    const msg = (notification?.message || "").toString()
+    const type = (notification?.type || "info") as Notification["type"]
+    const read = Boolean(notification?.read)
+
+    const matchesSearch = msg.toLowerCase().includes((searchTerm || "").toLowerCase())
+    const matchesType = filterType === "all" || type === filterType
     const matchesRead =
       filterRead === "all" ||
-      (filterRead === "read" && notification.read) ||
-      (filterRead === "unread" && !notification.read)
+      (filterRead === "read" && read) ||
+      (filterRead === "unread" && !read)
 
     return matchesSearch && matchesType && matchesRead
   })
 
-  const unreadCount = notifications.filter((n) => !n.read).length
+  const unreadCount = baseNotifications.filter((n) => n && !n.read).length
 
   if (loading) {
     return (

@@ -364,7 +364,14 @@ const ContentManagement = () => {
   const fetchFeatures = async () => {
     try {
       const data = await apiFetch<Feature[]>(`/api/admin/content/features`)
-      setFeatures(data || [])
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      const normalized = list.map((f: any) => ({
+        ...f,
+        benefits: Array.isArray(f?.benefits) ? f.benefits : [],
+        isActive: Boolean(f?.isActive),
+        order: Number(f?.order ?? 0),
+      }))
+      setFeatures(normalized)
     } catch (error) {
       console.error('Error fetching features:', error)
     }
@@ -373,7 +380,8 @@ const ContentManagement = () => {
   const fetchAnnouncements = async () => {
     try {
       const data = await apiFetch<Announcement[]>(`/api/admin/content/announcements`)
-      setAnnouncements(data || [])
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      setAnnouncements(list)
     } catch (error) {
       console.error('Error fetching announcements:', error)
     }
@@ -382,7 +390,15 @@ const ContentManagement = () => {
   const fetchPricingPlans = async () => {
     try {
       const data = await apiFetch<PricingPlan[]>(`/api/admin/content/pricing`)
-      setPricingPlans(data || [])
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      const normalized = list.map((p: any) => ({
+        ...p,
+        features: Array.isArray(p?.features) ? p.features : (() => { try { const v = typeof p?.features === 'string' ? JSON.parse(p.features) : []; return Array.isArray(v) ? v : [] } catch { return [] } })(),
+        notIncluded: Array.isArray(p?.notIncluded) ? p.notIncluded : (() => { try { const v = typeof p?.notIncluded === 'string' ? JSON.parse(p.notIncluded) : []; return Array.isArray(v) ? v : [] } catch { return [] } })(),
+        isActive: Boolean(p?.isActive),
+        order: Number(p?.order ?? 0),
+      }))
+      setPricingPlans(normalized)
     } catch (error) {
       console.error('Error fetching pricing plans:', error)
     }
@@ -391,7 +407,14 @@ const ContentManagement = () => {
   const fetchTestimonials = async () => {
     try {
       const data = await apiFetch<Testimonial[]>(`/api/admin/content/testimonials`)
-      setTestimonials(data || [])
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      const normalized = list.map((t: any) => ({
+        ...t,
+        rating: Number(t?.rating ?? 0),
+        isActive: Boolean(t?.isActive),
+        order: Number(t?.order ?? 0),
+      }))
+      setTestimonials(normalized)
     } catch (error) {
       console.error('Error fetching testimonials:', error)
     }
@@ -400,7 +423,13 @@ const ContentManagement = () => {
   const fetchTeamMembers = async () => {
     try {
       const data = await apiFetch<TeamMember[]>(`/api/admin/content/team-members`)
-      setTeamMembers(data || [])
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      const normalized = list.map((m: any) => ({
+        ...m,
+        isActive: Boolean(m?.isActive),
+        order: Number(m?.order ?? 0),
+      }))
+      setTeamMembers(normalized)
     } catch (error) {
       console.error('Error fetching team members:', error)
     }
@@ -418,7 +447,15 @@ const ContentManagement = () => {
   const fetchTutors = async () => {
     try {
       const data = await apiFetch<Tutor[]>('/api/admin/content/tutors')
-      setTutors(data || [])
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      const normalized = list.map((t: any) => ({
+        ...t,
+        subjects: Array.isArray(t?.subjects) ? t.subjects : [],
+        ratings: Array.isArray(t?.ratings) ? t.ratings : [],
+        isActive: Boolean(t?.isActive),
+        order: Number(t?.order ?? 0),
+      }))
+      setTutors(normalized)
     } catch (error) {
       console.error('Error fetching tutors:', error)
     }
@@ -427,7 +464,15 @@ const ContentManagement = () => {
   const fetchSubjects = async () => {
     try {
       const data = await apiFetch<Subject[]>('/api/admin/content/subjects')
-      setSubjects(data || [])
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      const normalized = list.map((s: any) => ({
+        ...s,
+        popularTopics: Array.isArray(s?.popularTopics) ? s.popularTopics : [],
+        difficulty: Array.isArray(s?.difficulty) ? s.difficulty : [],
+        isActive: Boolean(s?.isActive),
+        order: Number(s?.order ?? 0),
+      }))
+      setSubjects(normalized)
     } catch (error) {
       console.error('Error fetching subjects:', error)
     }
@@ -445,7 +490,8 @@ const ContentManagement = () => {
   const fetchNavigationItems = async () => {
     try {
       const data = await apiFetch<NavigationItem[]>('/api/admin/content/navigation')
-      setNavigationItems(data || [])
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      setNavigationItems(list)
     } catch (error) {
       console.error('Error fetching navigation items:', error)
     }

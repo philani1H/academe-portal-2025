@@ -9,6 +9,9 @@ import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckC
 import ContentManagement from './ContentManagement'
 
 import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
+import { apiFetch } from "@/lib/api"
+
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -188,6 +191,15 @@ export default function AdminDashboard() {
   const [showContentManager, setShowContentManager] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  // Invite dialog state
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteTarget, setInviteTarget] = useState<'students' | 'tutors'>('students')
+  const [inviteEmails, setInviteEmails] = useState('')
+  const [inviteCourseName, setInviteCourseName] = useState('')
+  const [inviteTutorName, setInviteTutorName] = useState('')
+  const [inviteDepartment, setInviteDepartment] = useState('')
+  const [inviteSubmitting, setInviteSubmitting] = useState(false)
+  const { toast } = useToast()
   
   const [filterRole, setFilterRole] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
@@ -205,135 +217,103 @@ export default function AdminDashboard() {
     setUnreadCount(notifications.filter((n) => !n.read).length)
   }, [notifications])
 
-  // Fetch data from API
-  // Use local API proxy instead of direct URL
-  const apiBase = ''
-
+  // Fetch data from API via centralized helper (respects VITE_API_URL)
   const fetchTutors = async () => {
     try {
-      const res = await fetch(`${apiBase}/api/admin/content/tutors`)
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const response = await res.json();
-      const data = response.data || response; // Handle both wrapped and unwrapped responses
-      if (!data) throw new Error('No data received');
-      setTutors(Array.isArray(data) ? data : []);
-    } catch (e) { 
-      console.error('Failed to fetch tutors:', e); 
-      setTutors([]); // Reset to empty array on error
+      const data = await apiFetch<any[]>(`/api/admin/content/tutors`)
+      setTutors(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error('Failed to fetch tutors:', e)
+      setTutors([])
     }
   }
 
   const fetchStudents = async () => {
     try {
-      // Use the query API to get students from users table
-      const res = await fetch(`${apiBase}/api/query`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ 
-          query: 'SELECT id, name, email, role, created_at as createdAt, last_active as lastActive FROM users WHERE role = "student" ORDER BY created_at DESC' 
-        }) 
+      const data = await apiFetch<any>(`/api/query`, {
+        method: 'POST',
+        body: JSON.stringify({
+          query: 'SELECT id, name, email, role, created_at as createdAt, last_active as lastActive FROM users WHERE role = "student" ORDER BY created_at DESC'
+        })
       })
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const response = await res.json();
-      const data = response.data || response;
-      if (!data) throw new Error('No data received');
-      setStudents(Array.isArray(data) ? data : []);
-    } catch (e) { 
-      console.error('Failed to fetch students:', e); 
-      setStudents([]); // Reset to empty array on error
+      const rows = (data && (data as any).data) ? (data as any).data : data
+      setStudents(Array.isArray(rows) ? rows : [])
+    } catch (e) {
+      console.error('Failed to fetch students:', e)
+      setStudents([])
     }
   }
 
   const fetchCourses = async () => {
     try {
-      const res = await fetch(`${apiBase}/api/courses`)
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const response = await res.json();
-      const data = response.data || response; // Handle both wrapped and unwrapped responses
-      if (!data) throw new Error('No data received');
-      setCourses(Array.isArray(data) ? data : []);
-    } catch (e) { 
-      console.error('Failed to fetch courses:', e); 
-      setCourses([]); // Reset to empty array on error
+      const data = await apiFetch<any[]>(`/api/courses`)
+      setCourses(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error('Failed to fetch courses:', e)
+      setCourses([])
     }
   }
 
   const fetchNotifications = async () => {
     try {
-      // Use the query API to get notifications from database
-      const res = await fetch(`${apiBase}/api/query`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ 
-          query: 'SELECT id, title, message, type, status, created_at as date, read FROM notifications ORDER BY created_at DESC LIMIT 20' 
-        }) 
+      const data = await apiFetch<any>(`/api/query`, {
+        method: 'POST',
+        body: JSON.stringify({
+          query: 'SELECT id, title, message, type, status, created_at as date, read FROM notifications ORDER BY created_at DESC LIMIT 20'
+        })
       })
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const response = await res.json();
-      const data = response.data || response;
-      if (!data) throw new Error('No data received');
-      
-      const mapped = Array.isArray(data) ? data.map((n: any) => ({ 
-        id: n.id?.toString() || `${Date.now()}`, 
-        title: n.title || 'Notification', 
-        message: n.message || '', 
-        date: n.date || '', 
-        type: n.type || 'system', 
-        status: n.status || 'sent', 
-        recipients: { tutors: true, students: true }, 
-        read: !!n.read 
-      })) : [];
-      setNotifications(mapped);
-    } catch (e) { 
-      console.error('Failed to fetch notifications:', e); 
-      setNotifications([]); // Reset to empty array on error
+      const rows = (data && (data as any).data) ? (data as any).data : data
+      const mapped = Array.isArray(rows) ? rows.map((n: any) => ({
+        id: n.id?.toString() || `${Date.now()}`,
+        title: n.title || 'Notification',
+        message: n.message || '',
+        date: n.date || '',
+        type: n.type || 'system',
+        status: n.status || 'sent',
+        recipients: { tutors: true, students: true },
+        read: !!n.read
+      })) : []
+      setNotifications(mapped)
+    } catch (e) {
+      console.error('Failed to fetch notifications:', e)
+      setNotifications([])
     }
   }
 
   const fetchDepartmentsAndStats = async () => {
     try {
-      // Get departments from subjects table
-      const deptRes = await fetch(`${apiBase}/api/query`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ 
-          query: 'SELECT category as name, COUNT(*) as courses FROM subjects WHERE isActive = 1 GROUP BY category' 
-        }) 
+      const deptResp = await apiFetch<any>(`/api/query`, {
+        method: 'POST',
+        body: JSON.stringify({
+          query: 'SELECT category as name, COUNT(*) as courses FROM subjects WHERE isActive = 1 GROUP BY category'
+        })
       })
-      if (!deptRes.ok) throw new Error(`HTTP error! status: ${deptRes.status}`);
-      const deptData = await deptRes.json();
-      const deptList = deptData.data || deptData;
-      
-      const departments = Array.isArray(deptList) ? deptList.map((d: any, i: number) => ({ 
-        id: d.name?.toLowerCase().replace(/\s+/g, '-') || `dept-${i}`, 
-        name: d.name || `Department ${i+1}`, 
-        courses: Number(d.courses || 0), 
-        tutors: 0, 
-        students: 0, 
+      const deptList = (deptResp && (deptResp as any).data) ? (deptResp as any).data : deptResp
+      const departments = Array.isArray(deptList) ? deptList.map((d: any, i: number) => ({
+        id: d.name?.toLowerCase().replace(/\s+/g, '-') || `dept-${i}`,
+        name: d.name || `Department ${i+1}`,
+        courses: Number(d.courses || 0),
+        tutors: 0,
+        students: 0,
         color: ['#4f46e5', '#059669', '#dc2626', '#7c3aed', '#ea580c'][i % 5]
-      })) : [];
-      
-      setDepartments(departments);
-      
-      // Get stats from admin API
-      const statsRes = await fetch(`${apiBase}/api/admin/stats`)
-      if (!statsRes.ok) throw new Error(`HTTP error! status: ${statsRes.status}`);
-      const statsResponse = await statsRes.json();
-      const statsData = statsResponse.data || statsResponse;
-      
+      })) : []
+      setDepartments(departments)
+
+      const stats = await apiFetch<any>(`/api/admin/stats`)
+      const s = (stats && (stats as any).data) ? (stats as any).data : stats
       setSystemStats({
-        totalUsers: statsData.totalUsers || 0,
-        totalTutors: statsData.tutors || 0,
-        totalStudents: statsData.students || 0,
-        totalCourses: statsData.courses || 0,
+        totalUsers: s?.totalUsers || 0,
+        totalTutors: s?.tutors || 0,
+        totalStudents: s?.students || 0,
+        totalCourses: s?.courses || 0,
         totalDepartments: departments.length,
-        activeUsers: Math.floor((statsData.totalUsers || 0) * 0.8),
+        activeUsers: Math.floor((s?.totalUsers || 0) * 0.8),
         systemUptime: '99.9%',
         lastBackup: new Date().toISOString()
-      });
+      })
     } catch (e) {
-      console.error('Failed to fetch departments/stats:', e);
-      setDepartments([]); // Reset departments to empty array on error
+      console.error('Failed to fetch departments/stats:', e)
+      setDepartments([])
       setSystemStats({
         totalUsers: 0,
         totalTutors: 0,
@@ -343,7 +323,7 @@ export default function AdminDashboard() {
         activeUsers: 0,
         systemUptime: '0%',
         lastBackup: new Date().toISOString()
-      });
+      })
     }
   }
 
@@ -381,9 +361,8 @@ export default function AdminDashboard() {
 
     try {
       // Create tutor via API
-      const res = await fetch('/api/admin/content/tutors', {
+      const data: any = await apiFetch('/api/admin/content/tutors', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newTutor.name,
           email: newTutor.email,
@@ -397,9 +376,6 @@ export default function AdminDashboard() {
           ratings: []
         })
       })
-
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
-      const data = await res.json()
 
       const newTutorData: Tutor = {
         id: data.id || `t-${Date.now()}`,
@@ -426,9 +402,8 @@ export default function AdminDashboard() {
       
       // Notify tutor via email (invite/added)
       try {
-        await fetch('/api/notifications', {
+        await apiFetch('/api/notifications', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: 'Welcome to Excellence Academia',
             message: `${newTutor.name}, your tutor profile has been created in the ${newTutor.department} department. You can now log in and start setting up your courses.`,
@@ -474,9 +449,8 @@ export default function AdminDashboard() {
 
     try {
       // Create course via API
-      const res = await fetch('/api/courses', {
+      const data: any = await apiFetch('/api/courses', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: newCourse.name,
           description: newCourse.description,
@@ -487,9 +461,6 @@ export default function AdminDashboard() {
           category: newCourse.department
         })
       })
-
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
-      const data = await res.json()
 
       const colors = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
       const randomColor = colors[Math.floor(Math.random() * colors.length)]
@@ -596,9 +567,8 @@ export default function AdminDashboard() {
 
     try {
       // Send notification via API
-      const res = await fetch('/api/notifications', {
+      const data: any = await apiFetch('/api/notifications', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: newNotification.title,
           message: newNotification.message,
@@ -606,9 +576,6 @@ export default function AdminDashboard() {
           recipients: newNotification.recipients
         })
       })
-
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
-      const data = await res.json()
 
       const notificationData: Notification = {
         id: data.id || `n-${Date.now()}`,
@@ -658,9 +625,8 @@ export default function AdminDashboard() {
       const tutor = tutors.find((t) => t.id === tutorId)
       if (tutor) {
         try {
-          await fetch('/api/notifications', {
+          await apiFetch('/api/notifications', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               title: 'Tutor Application Approved',
               message: `Hi ${tutor.name}, your application has been approved. Welcome aboard!`,
@@ -706,9 +672,8 @@ export default function AdminDashboard() {
       const tutor = tutors.find((t) => t.id === tutorId)
       if (tutor) {
         try {
-          await fetch('/api/notifications', {
+          await apiFetch('/api/notifications', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               title: 'Tutor Application Update',
               message: `Hi ${tutor.name}, we appreciate your interest. Unfortunately, your application was not approved at this time.`,
@@ -1307,43 +1272,47 @@ export default function AdminDashboard() {
       <main className={`flex-1 transition-all duration-300 ease-in-out ${sidebarOpen ? "md:ml-64" : "md:ml-20"}`}>
         {/* Header */}
         <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center md:hidden">
-                <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(true)}>
-                  <Menu className="h-6 w-6" />
-                </Button>
-              </div>
-              <div className="flex items-center">
-                <h1 className="text-xl font-bold text-gray-900 hidden md:block">
-                  {activeTab === "dashboard" && "Dashboard"}
-                  {activeTab === "tutors" && "Tutors Management"}
-                  {activeTab === "students" && "Students Management"}
-                  {activeTab === "courses" && "Courses Management"}
-                  {activeTab === "departments" && "Departments"}
-                  {activeTab === "notifications" && "Notifications"}
-                  {activeTab === "settings" && "System Settings"}
-                </h1>
-              </div>
+          <header className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
+            <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-4">
-                <div className="relative">
-                  <Input
-                    placeholder="Search..."
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    className="w-full md:w-64 pl-10"
-                  />
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Button variant="ghost" size="sm" onClick={() => setMobileMenuOpen(true)} className="lg:hidden">
+                  <Menu className="h-4 w-4" />
+                </Button>
+                <div>
+                  <h2 className="text-lg font-semibold capitalize">{activeTab}</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {activeTab === "dashboard" && "Overview of your teaching activities"}
+                    {activeTab === "courses" && "Manage your courses and content"}
+                    {activeTab === "students" && "Track student progress and enrollment"}
+                    {activeTab === "tests" && "Create and manage assessments"}
+                    {activeTab === "notifications" && "Communication and alerts"}
+                    {activeTab === "analytics" && "Performance insights and metrics"}
+                    {activeTab === "materials" && "Upload and organize course materials"}
+                    {activeTab === "settings" && "Configure your preferences"}
+                  </p>
                 </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => setInviteOpen(true)}>
+                  <UserPlus className="h-4 w-4 mr-2" /> Invite
+                </Button>
+                <Button variant="ghost" size="sm" className="relative">
+                  <Bell className="h-4 w-4" />
+                  {unreadCount > 0 && (
+                    <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
+                      {unreadCount}
+                    </Badge>
+                  )}
+                </Button>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="relative">
-                        <Bell className="h-5 w-5" />
+                      <Button variant="ghost" size="sm" className="relative">
+                        <Bell className="h-4 w-4" />
                         {unreadCount > 0 && (
-                          <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                          <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
                             {unreadCount}
-                          </span>
+                          </Badge>
                         )}
                       </Button>
                     </TooltipTrigger>
@@ -1381,8 +1350,85 @@ export default function AdminDashboard() {
                 </DropdownMenu>
               </div>
             </div>
-          </div>
+          </header>
         </header>
+
+          {/* Invite Dialog */}
+          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Send Invitations</DialogTitle>
+                <DialogDescription>
+                  Invite students or tutors by email. Separate multiple emails with commas or new lines.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <Button variant={inviteTarget === 'students' ? 'default' : 'outline'} onClick={() => setInviteTarget('students')}>Students</Button>
+                  <Button variant={inviteTarget === 'tutors' ? 'default' : 'outline'} onClick={() => setInviteTarget('tutors')}>Tutors</Button>
+                </div>
+                <div className="space-y-2">
+                  <Label>Emails</Label>
+                  <Textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} placeholder="one@example.com, two@example.com" rows={3} />
+                </div>
+                {inviteTarget === 'students' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Course Name</Label>
+                      <Input value={inviteCourseName} onChange={(e) => setInviteCourseName(e.target.value)} placeholder="e.g., Advanced Mathematics" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tutor Name</Label>
+                      <Input value={inviteTutorName} onChange={(e) => setInviteTutorName(e.target.value)} placeholder="e.g., Ms. Smith" />
+                    </div>
+                  </>
+                )}
+                <div className="space-y-2">
+                  <Label>Department</Label>
+                  <Input value={inviteDepartment} onChange={(e) => setInviteDepartment(e.target.value)} placeholder="e.g., Mathematics" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
+                  <Button disabled={inviteSubmitting} onClick={async () => {
+                    const emails = inviteEmails.split(/[,\n]/).map(e => e.trim()).filter(Boolean)
+                    if (emails.length === 0) {
+                      toast({ title: 'No emails', description: 'Please enter at least one email', variant: 'destructive' })
+                      return
+                    }
+                    setInviteSubmitting(true)
+                    try {
+                      if (inviteTarget === 'students') {
+                        const res = await apiFetch<any>('/api/admin/students/invite', {
+                          method: 'POST',
+                          body: JSON.stringify({ emails, courseName: inviteCourseName || undefined, tutorName: inviteTutorName || undefined, department: inviteDepartment || undefined })
+                        })
+                        const invited = Array.isArray(res?.invited) ? res.invited : []
+                        const sent = invited.filter((x: any) => x.sent).length
+                        toast({ title: 'Invitations sent', description: `${sent}/${emails.length} emails queued` })
+                      } else {
+                        const res = await apiFetch<any>('/api/admin/tutors/invite', {
+                          method: 'POST',
+                          body: JSON.stringify({ emails, tutorName: inviteTutorName || undefined, department: inviteDepartment || undefined })
+                        })
+                        const invited = Array.isArray(res?.invited) ? res.invited : []
+                        const sent = invited.filter((x: any) => x.sent).length
+                        toast({ title: 'Tutor invitations sent', description: `${sent}/${emails.length} emails queued` })
+                      }
+                      setInviteOpen(false)
+                      setInviteEmails('')
+                      setInviteCourseName('')
+                      setInviteTutorName('')
+                      setInviteDepartment('')
+                    } catch (e: any) {
+                      toast({ title: 'Failed to send invitations', description: e?.message || 'Try again later', variant: 'destructive' })
+                    } finally {
+                      setInviteSubmitting(false)
+                    }
+                  }}>{inviteSubmitting ? 'Sending...' : 'Send Invitations'}</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
         {/* Page content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

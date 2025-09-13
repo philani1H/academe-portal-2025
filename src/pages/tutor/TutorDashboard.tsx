@@ -304,10 +304,20 @@ export default function TutorDashboard() {
       try {
         setLoading(true)
         setError(null)
-        // Ideally, tutorId comes from auth/user context; fallback to localStorage
-        const storedUser = localStorage.getItem('user')
-        const parsed = storedUser ? JSON.parse(storedUser) : null
-        const tutorId = parsed?.id
+        // Resolve current user from backend (preferred), fallback to localStorage if needed
+        let tutorId: string | undefined
+        try {
+          const me = await apiFetch<any>('/api/auth/me')
+          const role = (me?.user?.role || me?.role || '').toString().toLowerCase()
+          if (role === 'tutor') {
+            tutorId = me?.user?.id || me?.id
+          }
+        } catch {}
+        if (!tutorId) {
+          const storedUser = localStorage.getItem('user')
+          const parsed = storedUser ? JSON.parse(storedUser) : null
+          tutorId = parsed?.id
+        }
         const data = await apiFetch<any>(`/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
         if (canceled) return
         // Normalize

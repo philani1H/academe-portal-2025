@@ -1,8 +1,11 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
+
 import { ProtectedRoute } from '../components/ProtectedRoute';
 import Login from '../pages/auth/Login';
 import Signup from '../pages/auth/Signup';
+import SetPassword from '../pages/auth/SetPassword';
+
 import Dashboard from '../pages/Dashboard';
 import StudentPortal from '../pages/student/StudentPortal';
 import TutorPortal from '../pages/tutor/TutorPortal';
@@ -14,6 +17,8 @@ export const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/set-password" element={<SetPassword />} />
+
       <Route path="/unauthorized" element={<Unauthorized />} />
       
       <Route

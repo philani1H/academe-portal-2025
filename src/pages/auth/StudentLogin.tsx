@@ -1,17 +1,53 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { apiFetch } from '@/lib/api';
 
 const StudentLogin = () => {
   const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Add login logic here
-    navigate('/students');
+    setError('');
+    setLoading(true);
+    try {
+      const res = await apiFetch<any>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      if (!(res as any)?.success) {
+        setError((res as any)?.error || 'Invalid credentials');
+        return;
+      }
+      // Load current user and route by role
+      try {
+        const me = await apiFetch<any>('/api/auth/me');
+        const role = (me?.user?.role || me?.role || '').toString().toLowerCase();
+        if (role === 'student') {
+          navigate('/student');
+        } else if (role === 'tutor') {
+          navigate('/tutor');
+        } else if (role === 'admin') {
+          navigate('/admin');
+        } else {
+          navigate('/');
+        }
+      } catch {
+        navigate('/');
+      }
+    } catch (err: any) {
+      setError('Login failed. Please check your credentials.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -21,6 +57,9 @@ const StudentLogin = () => {
           <CardTitle className="text-2xl font-bold text-center">Student Login</CardTitle>
         </CardHeader>
         <CardContent>
+          {error && (
+            <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -29,6 +68,8 @@ const StudentLogin = () => {
                 type="email"
                 placeholder="Enter your email"
                 required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -38,9 +79,13 @@ const StudentLogin = () => {
                 type="password"
                 placeholder="Enter your password"
                 required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button type="submit" className="w-full">Login</Button>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Logging in...' : 'Login'}
+            </Button>
           </form>
         </CardContent>
       </Card>
