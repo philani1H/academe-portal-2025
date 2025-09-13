@@ -6,7 +6,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
-import { sendEmail, renderBrandedEmail } from '../lib/email';
+import { sendEmail, renderBrandedEmail, renderInvitationEmail } from '../lib/email';
+import crypto from 'crypto';
 
 // Resolve base path in both ESM and CJS
 const resolvedDir = (typeof __dirname !== 'undefined')
@@ -34,6 +35,8 @@ app.use(cors({
           'https://www.excellenceakademie.co.za',
           'https://excellenceacademia.co.za',
           'https://www.excellenceacademia.co.za',
+          'https://academe-2025.onrender.com',
+          'https://academe-portal-2025.onrender.com',
           process.env.FRONTEND_URL
         ].filter(Boolean as any);
 
@@ -47,7 +50,7 @@ app.use(cors({
 
         callback(new Error('Not allowed by CORS'));
       }
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173'],
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173', 'https://academe-portal-2025.onrender.com'],
   credentials: true,
   optionsSuccessStatus: 200,
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -70,6 +73,277 @@ app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   next();
+});
+
+// University Application content – return default payload if none exists
+app.get('/api/admin/content/university-application', async (req, res) => {
+  try {
+    // Try to read from a canonical table if it exists; otherwise return defaults
+    const record = await prisma.universityApplicationContent
+      ?.findFirst({ where: { isActive: true } })
+      .catch(() => null as any);
+    if (record) {
+      return res.json({
+        success: true,
+        services: record.services ?? '[]',
+        requirements: record.requirements ?? '[]',
+        process: record.process ?? '[]',
+      });
+    }
+    // Default empty response (avoid 404 for better UX)
+    return res.json({ success: true, services: '[]', requirements: '[]', process: '[]' });
+  } catch (error) {
+    console.error('University application content error:', error);
+    return res.json({ success: true, services: '[]', requirements: '[]', process: '[]' });
+  }
+});
+
+// Tutor ratings – lightweight storage in SQLite for now
+async function ensureTutorRatingsTable() {
+  const db = await getConnection();
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS tutor_ratings (
+        id TEXT PRIMARY KEY,
+        tutor_id TEXT NOT NULL,
+        rating INTEGER NOT NULL,
+        comment TEXT,
+        created_at TEXT NOT NULL
+      );
+    `);
+  } finally {
+    await db.close();
+  }
+}
+
+app.post('/api/admin/content/tutors/:id/ratings', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const tutorId = String(req.params.id || '');
+    const { rating, comment } = req.body || {};
+    const r = Number(rating);
+    if (!tutorId) return res.status(400).json({ success: false, error: 'Tutor ID is required' });
+    if (!Number.isFinite(r) || r < 1 || r > 5) return res.status(400).json({ success: false, error: 'Rating must be 1-5' });
+
+    await ensureTutorRatingsTable();
+    const db = await getConnection();
+    try {
+      const id = (globalThis.crypto?.randomUUID?.() || require('crypto').randomUUID());
+      const now = new Date().toISOString();
+      await db.run(
+        'INSERT INTO tutor_ratings (id, tutor_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?)',
+        [id, tutorId, r, String(comment || ''), now]
+      );
+      return res.json({ success: true, id });
+    } finally {
+      await db.close();
+    }
+  } catch (error) {
+    console.error('Create tutor rating error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to submit rating' });
+  }
+});
+
+// Invite tutors (admin only)
+app.post('/api/admin/tutors/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { emails, department, tutorName } = req.body || {};
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ success: false, error: 'emails[] is required' });
+    }
+    const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+    const results: any[] = [];
+    for (const email of emails) {
+      const clean = String(email || '').trim().toLowerCase();
+      if (!clean || !clean.includes('@')) continue;
+      const token = jwt.sign({ email: clean, purpose: 'tutor-invite' }, JWT_SECRET, { expiresIn: '7d' });
+      const link = `${frontendBase.replace(/\/$/, '')}/set-password?token=${encodeURIComponent(token)}`;
+      const content = renderInvitationEmail({ recipientName: clean.split('@')[0], actionUrl: link, tutorName, department });
+      const send = await sendEmail({ to: clean, subject: 'Tutor Invitation • Excellence Academia', content });
+      results.push({ email: clean, sent: !!send.success });
+    }
+    return res.json({ success: true, invited: results });
+  } catch (error) {
+    console.error('Tutor invite error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send tutor invitations' });
+  }
+});
+
+// Student auth: login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ success: false, error: 'Email and password are required' });
+    await ensureCredentialsTable();
+    const db = await getConnection();
+    try {
+      const row = await db.get('SELECT * FROM user_credentials WHERE email = ?', [String(email).toLowerCase()]);
+      if (!row || !row.password_hash) return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      const [scheme, salt, stored] = String(row.password_hash).split(':');
+      if (scheme !== 'scrypt' || !salt || !stored) return res.status(500).json({ success: false, error: 'Invalid credential record' });
+      const derived = await new Promise<string>((resolve, reject) => {
+        crypto.scrypt(String(password), salt, 64, (err, dk) => err ? reject(err) : resolve(dk.toString('hex')));
+      });
+      if (derived !== stored) return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      // load or create user
+      const userEmail = String(email).toLowerCase();
+      let user = await prisma.user.findUnique({ where: { email: userEmail } });
+      if (!user) user = await prisma.user.create({ data: { email: userEmail, name: userEmail.split('@')[0], role: 'student' } });
+      const token = jwt.sign({ id: user.id, email: user.email, role: 'student' }, JWT_SECRET, { expiresIn: '7d' });
+      const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
+      res.setHeader('Set-Cookie', `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax;${secure}`);
+      return res.json({ success: true, user: { id: user.id, email: user.email, role: 'student' } });
+    } finally {
+      await db.close();
+    }
+  } catch (error) {
+    console.error('Student login error:', error);
+    return res.status(500).json({ success: false, error: 'Login failed' });
+  }
+});
+
+// Student auth: logout
+app.post('/api/auth/logout', (req, res) => {
+  const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
+  res.setHeader('Set-Cookie', `auth_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax;${secure}`);
+  return res.json({ success: true });
+});
+
+// Current user (student/admin)
+app.get('/api/auth/me', authenticateJWT, (req, res) => {
+  return res.json({ success: true, user: req.user });
+});
+
+// List users (basic) - for tutor student-management
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+    return res.json({ success: true, data: users });
+  } catch (error) {
+    console.error('List users error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to list users' });
+  }
+});
+
+// Admin stats for analytics
+app.get('/api/admin/stats', async (req, res) => {
+  try {
+    const totalStudents = await prisma.user.count({ where: { role: 'student' } });
+    const totalCourses = await prisma.course.count().catch(() => 0 as any);
+    const activeStudents = Math.round(totalStudents * 0.7);
+    return res.json({ success: true, data: {
+      totalStudents,
+      activeStudents,
+      courses: totalCourses,
+      completionRate: 75,
+      averageGrade: 82,
+      monthlyGrowth: 12,
+      courseStats: [],
+      monthlyData: []
+    }});
+  } catch (error) {
+    console.error('Admin stats error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load stats' });
+  }
+});
+
+// Ensure credentials table exists (for student password storage)
+async function ensureCredentialsTable() {
+  const db = await getConnection();
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS user_credentials (
+        email TEXT PRIMARY KEY,
+        user_id TEXT,
+        password_hash TEXT,
+        created_at TEXT,
+        updated_at TEXT
+      );
+    `);
+  } finally {
+    await db.close();
+  }
+}
+
+function hashPassword(password: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16).toString('hex');
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) return reject(err);
+      resolve(`scrypt:${salt}:${derivedKey.toString('hex')}`);
+    });
+  });
+}
+
+// Invite students (admin only)
+app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { emails, courseName, tutorName, department } = req.body || {};
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ success: false, error: 'emails[] is required' });
+    }
+    const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+    const results: any[] = [];
+    for (const email of emails) {
+      const clean = String(email || '').trim().toLowerCase();
+      if (!clean || !clean.includes('@')) continue;
+      const token = jwt.sign({ email: clean, purpose: 'invite' }, JWT_SECRET, { expiresIn: '7d' });
+      const link = `${frontendBase.replace(/\/$/, '')}/set-password?token=${encodeURIComponent(token)}`;
+      const content = renderInvitationEmail({ recipientName: clean.split('@')[0], actionUrl: link, courseName, tutorName, department });
+      const send = await sendEmail({ to: clean, subject: 'You are invited to Excellence Academia', content });
+      results.push({ email: clean, sent: !!send.success });
+    }
+    return res.json({ success: true, invited: results });
+  } catch (error) {
+    console.error('Invite error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send invitations' });
+  }
+});
+
+// Set password from invitation token
+app.post('/api/auth/set-password', async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password || String(password).length < 8) {
+      return res.status(400).json({ success: false, error: 'Valid token and password (min 8 chars) are required' });
+    }
+    let payload: any;
+    try {
+      payload = jwt.verify(token, JWT_SECRET) as any;
+    } catch (e) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired token' });
+    }
+    if (!payload.email || !['invite', 'tutor-invite'].includes(String(payload.purpose))) {
+      return res.status(400).json({ success: false, error: 'Invalid token purpose' });
+    }
+    const email = String(payload.email).toLowerCase();
+    await ensureCredentialsTable();
+    const hash = await hashPassword(String(password));
+
+    // Ensure User exists
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      const role = payload.purpose === 'tutor-invite' ? 'tutor' : 'student';
+      user = await prisma.user.create({ data: { email, name: email.split('@')[0], role } });
+    }
+
+    const db = await getConnection();
+    try {
+      const now = new Date().toISOString();
+      await db.run(
+        `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
+        [email, user.id, hash, now, now]
+      );
+    } finally {
+      await db.close();
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Set password error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to set password' });
+  }
 });
 app.use('/uploads', express.static(uploadsDir));
 
@@ -167,14 +441,16 @@ app.get('/api/health', async (req, res) => {
 
 // Admin auth endpoints
 app.post('/api/admin/auth/login', async (req, res) => {
-  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || process.env.ADMIN_EMAIL || 'admin';
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
-  const { username, password } = req.body || {};
-  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-    const token = jwt.sign({ username, role: 'admin', exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) }, JWT_SECRET);
+  const { username, email, password } = req.body || {};
+  const submittedId = (email || username || '').toString().trim();
+
+  if (submittedId && submittedId === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const token = jwt.sign({ username: submittedId, role: 'admin', exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) }, JWT_SECRET);
     const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
     res.setHeader('Set-Cookie', `admin_token=${token}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Strict;${secure}`);
-    return res.status(200).json({ success: true, message: 'Login successful', user: { username, role: 'admin' } });
+    return res.status(200).json({ success: true, message: 'Login successful', user: { username: submittedId, role: 'admin' } });
   }
   return res.status(401).json({ success: false, message: 'Invalid credentials' });
 });

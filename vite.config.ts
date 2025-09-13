@@ -10,10 +10,12 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'https://academe-portal-2025.onrender.com',
+        // In dev, prefer local API to avoid remote mismatches and enable cookie auth
+        target: process.env.VITE_API_URL || 'http://127.0.0.1:3000',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        // Keep '/api' prefix so backend receives '/api/*' routes
+        rewrite: (path) => path
       }
     },
     hmr: {

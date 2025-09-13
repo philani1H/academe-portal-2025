@@ -38,7 +38,8 @@ const Testimonials = () => {
   const fetchTestimonials = async () => {
     try {
       const data = await apiFetch<any[]>('/api/admin/content/testimonials');
-      setTestimonials(data);
+      const list = Array.isArray(data) ? data.filter(Boolean) : []
+      setTestimonials(list);
     } catch (error) {
       console.error('Error fetching testimonials:', error);
       setTestimonials([])

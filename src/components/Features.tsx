@@ -1,10 +1,10 @@
-
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
+
 import { apiFetch } from "@/lib/api"
 import { motion, AnimatePresence } from "framer-motion"
-import { CheckCircle, AlertCircle, Info, MessageSquare, Plus, X, Edit, Trash2 } from "lucide-react"
+import { CheckCircle, AlertCircle, Info, MessageSquare, Plus, X, Edit, Trash2, Star } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -33,6 +33,82 @@ interface Feature {
 }
 
 const initialAnnouncements: any[] = []
+
+// Ensure TS knows about the global aclib object
+declare global {
+  interface Window { aclib?: any }
+}
+
+// Loader that injects the ACLib script exactly once
+const AclibLoader = () => {
+  useEffect(() => {
+    // Avoid loading external ad script in development to prevent noisy errors
+    if (import.meta.env?.DEV) return;
+    const existing = document.getElementById('aclib') as HTMLScriptElement | null
+    if (!existing) {
+      const s = document.createElement('script')
+      s.id = 'aclib'
+      s.type = 'text/javascript'
+      s.src = '//acscdn.com/script/aclib.js'
+      s.async = true
+      document.head.appendChild(s)
+    }
+  }, [])
+  return null
+}
+
+// Professional Banner Component - 728x90 Leaderboard
+const ProfessionalBanner = ({ className = "", placement = "" }) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [containerId] = useState(() => `aclib-zone-${placement || 'default'}-${Math.random().toString(36).slice(2, 8)}`)
+
+  useEffect(() => {
+    // Attempt to run banner once script is available
+    const run = () => {
+      try {
+        if (!import.meta.env?.DEV && window.aclib && typeof window.aclib.runBanner === 'function') {
+          window.aclib.runBanner({
+            zoneId: '10397366',
+            targetId: containerId,
+          })
+        }
+      } catch (e) {
+        // swallow
+      }
+    }
+    // Try immediately and again shortly after in case the script is still loading
+    run()
+    const t = window.setTimeout(run, 800)
+    return () => window.clearTimeout(t)
+  }, [containerId])
+
+  return (
+    <div className={`bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 shadow-sm overflow-hidden ${className}`}>
+      {/* Loader ensures the script exists */}
+      <AclibLoader />
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-2">
+            <Star className="w-4 h-4 text-blue-600" />
+            <span className="text-xs font-medium text-blue-800">Sponsored Content</span>
+          </div>
+          <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">Advertisement</span>
+        </div>
+        {/* 728x90 Banner Ad Container */}
+        <div className="bg-white rounded-lg border border-blue-200 flex items-center justify-center" style={{ width: '728px', height: '90px', maxWidth: '100%', margin: '0 auto' }}>
+          {import.meta.env?.DEV ? (
+            <div className="text-xs text-gray-500">Ad placeholder (disabled in development)</div>
+          ) : (
+            <div id={containerId} ref={containerRef} className="w-full h-full flex items-center justify-center" />
+          )}
+        </div>
+        <div className="mt-2 text-center">
+          <p className="text-xs text-blue-600">Supporting quality education through trusted partnerships</p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const Features = () => {
   const [features, setFeatures] = useState<Feature[]>([])
@@ -73,7 +149,7 @@ const Features = () => {
   const fetchAnnouncements = async () => {
     try {
       const data = await apiFetch<any[]>('/api/admin/content/announcements')
-      setAnnouncements(data)
+      setAnnouncements(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Error fetching announcements:', error)
       setAnnouncements([])
@@ -199,6 +275,16 @@ const Features = () => {
             Discover the unique advantages that set our tutoring services apart and help our students achieve academic
             excellence
           </p>
+        </motion.div>
+
+        {/* Top Banner Placement */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="mb-12"
+        >
+          <ProfessionalBanner placement="top" />
         </motion.div>
 
         {/* Admin Controls Toggle */}
@@ -354,6 +440,16 @@ const Features = () => {
                 </motion.div>
               )}
             </div>
+
+            {/* Mid-Content Banner Placement */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.6 }}
+              className="mt-12 mb-8"
+            >
+              <ProfessionalBanner placement="middle" />
+            </motion.div>
           </TabsContent>
 
           {/* Announcements Tab Content */}
@@ -608,7 +704,18 @@ const Features = () => {
             </Button>
           </div>
         </motion.div>
+
+        {/* Bottom Banner Placement */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.8 }}
+          className="mt-12"
+        >
+          <ProfessionalBanner placement="bottom" />
+        </motion.div>
       </div>
+      
       <p className="text-center text-xs text-gray-500 mt-4">
         © {new Date().getFullYear()} Excellence Academia. All rights reserved. POPI Act Compliance.
       </p>

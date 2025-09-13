@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types/user';
+import { apiFetch } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string, role: 'student' | 'tutor' | 'admin') => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -16,12 +17,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Check for existing session
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-      setIsAuthenticated(true);
-    }
+    // Hydrate from backend session if available; fallback to localStorage
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await apiFetch<any>('/api/auth/me');
+        const u = me?.user || me;
+        if (u && !cancelled) {
+          setUser(u);
+          setIsAuthenticated(true);
+          localStorage.setItem('user', JSON.stringify(u));
+          return;
+        }
+      } catch {}
+      if (!cancelled) {
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+          setIsAuthenticated(true);
+        }
+      }
+    })();
+    return () => { cancelled = true };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -59,7 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch {}
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('user');
