@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { apiFetch } from "@/lib/api"
+import { Loading } from "@/components/ui/loading"
 import {
   LayoutDashboard,
   BookOpen,
@@ -136,7 +138,7 @@ interface Analytics {
   monthlyGrowth: number
 }
 
-// Mock data
+// Mock data (used as graceful fallback)
 const mockCourses: Course[] = [
   {
     id: "course-1",
@@ -283,30 +285,103 @@ const mockNotifications: Notification[] = [
 
 export default function TutorDashboard() {
   // State
-  const [user, setUser] = useState<User>({
-    id: "tutor-1",
-    name: "Dr. Sarah Wilson",
-    email: "dr.wilson@university.edu",
-    role: "Senior Tutor",
-    avatar: "/placeholder.svg?height=64&width=64",
-    department: "Mathematics & Science",
-  })
-  const [courses, setCourses] = useState<Course[]>(mockCourses)
-  const [students, setStudents] = useState<Student[]>(mockStudents)
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
-  const [analytics, setAnalytics] = useState<Analytics>({
-    totalStudents: 74,
-    activeStudents: 68,
-    totalCourses: 8,
-    completionRate: 87.5,
-    averageGrade: 84.2,
-    monthlyGrowth: 12.5,
-  })
-  const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const [courses, setCourses] = useState<Course[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [analytics, setAnalytics] = useState<Analytics | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [activeTab, setActiveTab] = useState("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Fetch data
+  useEffect(() => {
+    let canceled = false
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        // Ideally, tutorId comes from auth/user context; fallback to localStorage
+        const storedUser = localStorage.getItem('user')
+        const parsed = storedUser ? JSON.parse(storedUser) : null
+        const tutorId = parsed?.id
+        const data = await apiFetch<any>(`/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
+        if (canceled) return
+        // Normalize
+        const stats: Analytics = {
+          totalStudents: data?.statistics?.totalStudents ?? 0,
+          activeStudents: data?.statistics?.activeStudents ?? 0,
+          totalCourses: data?.statistics?.totalCourses ?? 0,
+          completionRate: Math.round((data?.statistics?.completionRate ?? 0) * 10) / 10,
+          averageGrade: Math.round((data?.statistics?.averageRating ?? 0) * 10) / 10,
+          monthlyGrowth: 0,
+        }
+        setAnalytics(stats)
+        setUser({
+          id: data?.tutor?.id ?? 'tutor',
+          name: data?.tutor?.name ?? 'Tutor',
+          email: data?.tutor?.contactEmail ?? '',
+          role: 'Tutor',
+          avatar: data?.tutor?.image ?? undefined,
+          department: (data?.tutor?.subjects?.[0] ?? 'Education'),
+        })
+        setCourses((data?.courses || []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          students: c.students ?? (c.enrollments?.length ?? 0),
+          nextSession: c.nextSession,
+          progress: Math.min(100, Math.max(0, Math.round(c.progress ?? 0))),
+          materials: c.materials ?? [],
+          tests: c.tests ?? [],
+          color: c.color ?? '#4f46e5',
+          category: c.category ?? 'General',
+          duration: c.duration ?? '',
+          level: 'Beginner',
+          rating: 0,
+          totalLessons: 0,
+          completedLessons: 0,
+        })))
+        setStudents((data?.students || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          email: s.email,
+          progress: Math.min(100, Math.max(0, Math.round(s.progress ?? 0))),
+          lastActivity: s.lastActivity ?? new Date().toISOString(),
+          status: (s.status as any) ?? 'active',
+          enrolledCourses: s.enrolledCourses ?? [],
+          joinDate: new Date().toISOString(),
+          totalAssignments: 0,
+          completedAssignments: 0,
+          avatar: s.avatar,
+        })))
+        setNotifications((data?.notifications || []).map((n: any) => ({
+          id: n.id,
+          message: n.message,
+          type: (n.type as any) ?? 'info',
+          read: !!n.read,
+          timestamp: n.timestamp,
+          priority: 'low',
+        })))
+      } catch (e: any) {
+        console.error('Failed to load tutor dashboard:', e)
+        setError(e?.message || 'Failed to load tutor dashboard')
+        // Fallback to mock so UI stays useful
+        setUser({ id: 'tutor-1', name: 'Dr. Sarah Wilson', email: 'dr.wilson@university.edu', role: 'Tutor', avatar: '/placeholder.svg?height=64&width=64', department: 'Mathematics & Science' })
+        setCourses(mockCourses)
+        setStudents(mockStudents)
+        setNotifications(mockNotifications)
+        setAnalytics({ totalStudents: 74, activeStudents: 68, totalCourses: 8, completionRate: 87.5, averageGrade: 84.2, monthlyGrowth: 12.5 })
+      } finally {
+        if (!canceled) setLoading(false)
+      }
+    }
+    load()
+    return () => { canceled = true }
+  }, [])
 
   // Effects
   useEffect(() => {
@@ -343,6 +418,10 @@ export default function TutorDashboard() {
     { id: "materials", label: "Materials", icon: Upload },
     { id: "settings", label: "Settings", icon: Settings },
   ]
+
+  if (loading) {
+    return <Loading message="Loading tutor dashboard..." className="min-h-[60vh]" />
+  }
 
   return (
     <TooltipProvider>
@@ -462,10 +541,12 @@ export default function TutorDashboard() {
                     </Badge>
                   )}
                 </Button>
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
-                  <AvatarFallback className="bg-primary text-primary-foreground">{user.name.charAt(0)}</AvatarFallback>
-                </Avatar>
+                {user && (
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
+                    <AvatarFallback className="bg-primary text-primary-foreground">{user.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                )}
               </div>
             </div>
           </header>
@@ -479,16 +560,18 @@ export default function TutorDashboard() {
                 <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-6 border border-border">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-2xl font-bold text-foreground">Welcome back, {user.name}!</h2>
+                      <h2 className="text-2xl font-bold text-foreground">Welcome back, {user?.name || 'Tutor'}!</h2>
                       <p className="text-muted-foreground mt-1">Here's what's happening with your courses today.</p>
                     </div>
                     <div className="hidden md:block">
-                      <Avatar className="h-16 w-16">
-                        <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
-                        <AvatarFallback className="bg-primary text-primary-foreground text-xl">
-                          {user.name.charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
+                      {user && (
+                        <Avatar className="h-16 w-16">
+                          <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
+                          <AvatarFallback className="bg-primary text-primary-foreground text-xl">
+                            {user.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -506,7 +589,7 @@ export default function TutorDashboard() {
                         <Users className="h-4 w-4 text-primary" />
                       </CardHeader>
                       <CardContent>
-                        <div className="text-2xl font-bold">{analytics.totalStudents}</div>
+                        <div className="text-2xl font-bold">{analytics?.totalStudents ?? 0}</div>
                         <p className="text-xs text-muted-foreground">
                           {activeStudents.length} active, {pendingStudents.length} pending
                         </p>
@@ -525,7 +608,7 @@ export default function TutorDashboard() {
                         <BookOpen className="h-4 w-4 text-accent" />
                       </CardHeader>
                       <CardContent>
-                        <div className="text-2xl font-bold">{analytics.totalCourses}</div>
+                        <div className="text-2xl font-bold">{analytics?.totalCourses ?? 0}</div>
                         <p className="text-xs text-muted-foreground">
                           {courses.reduce((sum, course) => sum + course.tests.length, 0)} tests created
                         </p>
@@ -544,8 +627,8 @@ export default function TutorDashboard() {
                         <Target className="h-4 w-4 text-chart-2" />
                       </CardHeader>
                       <CardContent>
-                        <div className="text-2xl font-bold">{analytics.completionRate}%</div>
-                        <p className="text-xs text-muted-foreground">+{analytics.monthlyGrowth}% from last month</p>
+                        <div className="text-2xl font-bold">{analytics?.completionRate ?? 0}%</div>
+                        <p className="text-xs text-muted-foreground">+{analytics?.monthlyGrowth ?? 0}% from last month</p>
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -561,7 +644,7 @@ export default function TutorDashboard() {
                         <Award className="h-4 w-4 text-chart-4" />
                       </CardHeader>
                       <CardContent>
-                        <div className="text-2xl font-bold">{analytics.averageGrade}</div>
+                        <div className="text-2xl font-bold">{analytics?.averageGrade ?? 0}</div>
                         <p className="text-xs text-muted-foreground">Across all courses</p>
                       </CardContent>
                     </Card>
@@ -773,12 +856,9 @@ export default function TutorDashboard() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <FileUploadPage
-                        onUpload={handleFileUpload}
-                        accept=".pdf,.doc,.docx,.ppt,.pptx,.mp4,.mp3,.jpg,.png"
-                        multiple={true}
-                        maxSize={50}
-                      />
+                      <div className="mt-2">
+                        <FileUploadPage />
+                      </div>
                     </CardContent>
                   </Card>
 

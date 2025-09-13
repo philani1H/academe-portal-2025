@@ -6,14 +6,29 @@ export function withBase(path: string): string {
   return `${API_BASE}${path}`;
 }
 
-export async function apiFetch<T = any>(path: string, init?: RequestInit): Promise<T> {
-  const url = withBase(path);
-  
+function getAuthToken(): string | null {
   try {
+    return localStorage.getItem('auth_token');
+  } catch {
+    return null;
+  }
+}
+
+export async function apiFetch<T = any>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  const url = withBase(path);
+  const controller = new AbortController();
+  const timeoutMs = init?.timeoutMs ?? 20000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const token = getAuthToken();
     const response = await fetch(url, {
       ...(init || {}),
+      credentials: 'include',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init?.headers || {}),
       },
     } as RequestInit);
@@ -25,17 +40,13 @@ export async function apiFetch<T = any>(path: string, init?: RequestInit): Promi
 
     const json = await response.json().catch(() => null);
     
-    // Handle null responses
     if (json === null) {
       console.warn(`API returned null for ${path}`);
-      // Return empty array for array types, null for others
       return (Array.isArray(init?.body) ? [] : null) as T;
     }
 
-    // Handle wrapped responses
     const data = json.data !== undefined ? json.data : json;
     
-    // Ensure arrays are initialized
     if (Array.isArray(data)) {
       return data.filter(item => item !== null) as T;
     }
@@ -43,8 +54,9 @@ export async function apiFetch<T = any>(path: string, init?: RequestInit): Promi
     return data as T;
   } catch (error) {
     console.error(`API fetch error for ${path}:`, error);
-    // Return empty array for array types, null for others
     return (Array.isArray(init?.body) ? [] : null) as T;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
