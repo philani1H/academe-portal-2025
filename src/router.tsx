@@ -3,6 +3,12 @@ import App from './App';
 import Login from './pages/auth/Login';
 import StudentPortal from './pages/student/StudentPortal';
 import TutorDashboard from './pages/tutor/TutorDashboard';
+import AnalyticsDashboardPage from './pages/tutor/analytics-dashboard';
+import CourseManagementPage from './pages/tutor/course-management';
+import StudentManagementPage from './pages/tutor/student-management';
+import TestManagementPage from './pages/tutor/test-management';
+import NotificationSystemPage from './pages/tutor/notification-system';
+import FileUploadPage from './pages/tutor/file-upload';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ContentManagement from './pages/admin/ContentManagement';
 import AdminLogin from './pages/admin/AdminLogin';
@@ -28,6 +34,12 @@ export const router = createBrowserRouter([
       { path: 'become-tutor', element: <BecomeTutor /> },
       { path: 'student-portal', element: <StudentPortal /> },
       { path: 'tutors-dashboard', element: <TutorDashboard /> },
+      { path: 'tutor/analytics', element: <AnalyticsDashboardPage /> },
+      { path: 'tutor/courses', element: <CourseManagementPage /> },
+      { path: 'tutor/students', element: <StudentManagementPage /> },
+      { path: 'tutor/tests', element: <TestManagementPage /> },
+      { path: 'tutor/notifications', element: <NotificationSystemPage /> },
+      { path: 'tutor/upload', element: <FileUploadPage /> },
       { path: 'admin', element: <AdminDashboard /> },
       { path: 'admin/content', element: <ContentManagement /> },
       { path: 'admin/login', element: <AdminLogin /> },
