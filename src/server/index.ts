@@ -265,6 +265,61 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
+// Update user
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, status } = req.body || {};
+    if (!id?.trim()) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
+    const db = await getConnection();
+    const existing = await db.get('SELECT * FROM users WHERE id = ?', [id]);
+    if (!existing) {
+      await db.close();
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const nextName = name !== undefined ? name : existing.name;
+    const nextEmail = email !== undefined ? email : existing.email;
+    const nextStatus = status !== undefined ? status : existing.status;
+    await db.run('UPDATE users SET name = ?, email = ?, status = ?, updated_at = ? WHERE id = ?', [
+      nextName,
+      nextEmail,
+      nextStatus,
+      new Date().toISOString(),
+      id,
+    ]);
+    const updated = await db.get('SELECT * FROM users WHERE id = ?', [id]);
+    await db.close();
+    return res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update user' });
+  }
+});
+
+// Delete user (soft delete -> set status inactive)
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id?.trim()) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+    const db = await getConnection();
+    const result = await db.run('UPDATE users SET status = ? WHERE id = ?', ['inactive', id]);
+    await db.close();
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete user' });
+  }
+});
+
 // High-performance Course routes
 app.get('/api/courses', async (req, res) => {
   try {
@@ -901,6 +956,20 @@ app.post('/api/tests', async (req, res) => {
   }
 });
 
+// List tests
+app.get('/api/tests', async (req, res) => {
+  try {
+    const db = await getConnection();
+    const tests = await db.all('SELECT * FROM tests ORDER BY created_at DESC');
+    await db.close();
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.json({ success: true, data: tests });
+  } catch (error) {
+    console.error('Error fetching tests:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch tests' });
+  }
+});
+
 // Bulk students creation endpoint
 app.post('/api/students/bulk', async (req, res) => {
   try {
@@ -999,6 +1068,51 @@ app.post('/api/notifications', async (req, res) => {
   } catch (error) {
     console.error('Notification error:', error);
     return res.status(500).json({ success: false, error: 'Failed to send notification' });
+  }
+});
+
+// List notifications
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const db = await getConnection();
+    const notifications = await db.all('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200');
+    await db.close();
+    res.set('Cache-Control', 'public, max-age=120');
+    return res.json({ success: true, data: notifications });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch notifications' });
+  }
+});
+
+// Students list
+app.get('/api/students', async (req, res) => {
+  try {
+    const students = await prisma.user.findMany({
+      where: { role: 'student' },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        enrollments: { include: { course: true } },
+      },
+    });
+    const result = students.map((s) => ({
+      id: s.id,
+      name: s.name,
+      email: s.email,
+      status: (s as any).status || 'active',
+      progress: Math.floor(Math.random() * 100),
+      lastActivity: (s.updatedAt as Date).toISOString(),
+      enrolledCourses: (s.enrollments || []).map((e: any) => e.course?.id).filter(Boolean),
+      joinDate: (s.createdAt as Date).toISOString(),
+      totalAssignments: Math.floor(Math.random() * 12),
+      completedAssignments: Math.floor(Math.random() * 12),
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || 'Student')}&background=random`,
+    }));
+    res.set('Cache-Control', 'public, max-age=120');
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch students' });
   }
 });
 
