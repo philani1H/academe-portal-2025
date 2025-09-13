@@ -412,7 +412,6 @@ export default function AdminDashboard() {
         courses: [],
         createdAt: new Date().toISOString(),
         lastActive: new Date().toISOString(),
-        rating: 0,
         students: 0,
       }
 
@@ -425,14 +424,20 @@ export default function AdminDashboard() {
         )
       )
       
-      setNewTutor({
-        name: "",
-        email: "",
-        department: "",
-        specialization: "",
-      })
+      // Notify tutor via email (invite/added)
+      try {
+        await fetch('/api/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: 'Welcome to Excellence Academia',
+            message: `${newTutor.name}, your tutor profile has been created in the ${newTutor.department} department. You can now log in and start setting up your courses.`,
+            type: 'user',
+            recipients: { tutors: false, students: false, specific: [newTutor.email] },
+          })
+        })
+      } catch (e) { console.warn('Invite email failed:', e) }
 
-      // Create notification
       const notificationData: Notification = {
         id: `n-${Date.now()}`,
         title: "New Tutor Added",
@@ -448,6 +453,13 @@ export default function AdminDashboard() {
       }
 
       setNotifications((prev) => [notificationData, ...prev])
+
+      setNewTutor({
+        name: '',
+        email: '',
+        department: '',
+        specialization: '',
+      })
 
       console.log("Tutor created successfully")
     } catch (error) {
@@ -642,9 +654,22 @@ export default function AdminDashboard() {
         prev.map((tutor) => (tutor.id === tutorId ? { ...tutor, status: "active" } : tutor))
       )
 
-      // Create notification
+      // Email the tutor
       const tutor = tutors.find((t) => t.id === tutorId)
       if (tutor) {
+        try {
+          await fetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: 'Tutor Application Approved',
+              message: `Hi ${tutor.name}, your application has been approved. Welcome aboard!`,
+              type: 'approval',
+              recipients: { tutors: false, students: false, specific: [tutor.email] },
+            })
+          })
+        } catch (e) { console.warn('Approve email failed:', e) }
+
         const notificationData: Notification = {
           id: `n-${Date.now()}`,
           title: "Tutor Approved",
@@ -671,16 +696,28 @@ export default function AdminDashboard() {
 
   const handleRejectTutor = async (tutorId: string) => {
     try {
-      // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 500))
 
       setTutors((prev) =>
         prev.map((tutor) => (tutor.id === tutorId ? { ...tutor, status: "rejected" } : tutor))
       )
 
-      // Create notification
+      // Email the tutor
       const tutor = tutors.find((t) => t.id === tutorId)
       if (tutor) {
+        try {
+          await fetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: 'Tutor Application Update',
+              message: `Hi ${tutor.name}, we appreciate your interest. Unfortunately, your application was not approved at this time.`,
+              type: 'approval',
+              recipients: { tutors: false, students: false, specific: [tutor.email] },
+            })
+          })
+        } catch (e) { console.warn('Reject email failed:', e) }
+
         const notificationData: Notification = {
           id: `n-${Date.now()}`,
           title: "Tutor Application Rejected",
