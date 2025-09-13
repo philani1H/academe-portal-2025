@@ -1,12 +1,12 @@
 'use client';
 
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import Dashboard from '@/pages/Dashboard';
+import StudentPortal from '@/pages/student/StudentPortal';
 
 export default function StudentDashboardPage() {
   return (
     <ProtectedRoute allowedRoles={['student']}>
-      <Dashboard />
+      <StudentPortal />
     </ProtectedRoute>
   );
 }

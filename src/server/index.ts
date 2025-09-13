@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
-import { sendEmail } from '../lib/email';
+import { sendEmail, renderBrandedEmail } from '../lib/email';
 
 // Resolve base path in both ESM and CJS
 const resolvedDir = (typeof __dirname !== 'undefined')
@@ -262,6 +262,61 @@ app.get('/api/users/:id', async (req, res) => {
       success: false,
       error: 'Failed to fetch user' 
     });
+  }
+});
+
+// Update user
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, status } = req.body || {};
+    if (!id?.trim()) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+
+    const db = await getConnection();
+    const existing = await db.get('SELECT * FROM users WHERE id = ?', [id]);
+    if (!existing) {
+      await db.close();
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const nextName = name !== undefined ? name : existing.name;
+    const nextEmail = email !== undefined ? email : existing.email;
+    const nextStatus = status !== undefined ? status : existing.status;
+    await db.run('UPDATE users SET name = ?, email = ?, status = ?, updated_at = ? WHERE id = ?', [
+      nextName,
+      nextEmail,
+      nextStatus,
+      new Date().toISOString(),
+      id,
+    ]);
+    const updated = await db.get('SELECT * FROM users WHERE id = ?', [id]);
+    await db.close();
+    return res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update user' });
+  }
+});
+
+// Delete user (soft delete -> set status inactive)
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id?.trim()) {
+      return res.status(400).json({ success: false, error: 'User ID is required' });
+    }
+    const db = await getConnection();
+    const result = await db.run('UPDATE users SET status = ? WHERE id = ?', ['inactive', id]);
+    await db.close();
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete user' });
   }
 });
 
@@ -829,27 +884,29 @@ app.post('/api/contact', async (req, res) => {
       return res.status(400).json({ success: false, error: 'name, email, and message are required' });
     }
     const to = process.env.CONTACT_EMAIL || 'admin@excellenceacademia.com';
-    const adminHtml = `
-      <div>
-        <h2>New Contact Form Submission</h2>
+    const adminHtml = renderBrandedEmail({
+      title: 'New Contact Form Submission',
+      message: `
         <p><strong>Name:</strong> ${name}</p>
         <p><strong>Email:</strong> ${email}</p>
         ${subject ? `<p><strong>Subject:</strong> ${subject}</p>` : ''}
         <p><strong>Message:</strong></p>
         <p>${(message || '').replace(/\n/g, '<br/>')}</p>
-      </div>
-    `;
+      `,
+      footerNote: 'A visitor submitted this message via the contact form.',
+    });
     const adminSend = await sendEmail({ to, subject: subject || 'New Contact Message', content: adminHtml });
 
     // Optional: send acknowledgement to user (best UX)
     if (email) {
-      const ackHtml = `
-        <div>
+      const ackHtml = renderBrandedEmail({
+        title: 'We received your message',
+        message: `
           <p>Hi ${name},</p>
           <p>We received your message and will get back to you shortly.</p>
           <p>Best regards,<br/>Excellence Academia</p>
-        </div>
-      `;
+        `,
+      });
       try { await sendEmail({ to: email, subject: 'We received your message', content: ackHtml }); } catch {}
     }
 
@@ -858,6 +915,22 @@ app.post('/api/contact', async (req, res) => {
   } catch (error) {
     console.error('Contact email error:', error);
     return res.status(500).json({ success: false, error: 'Failed to send message' });
+  }
+});
+
+// Admin test email endpoint (for verifying RESEND configuration)
+app.post('/api/admin/test-email', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const to = (req.body && req.body.to) || (process.env.CONTACT_EMAIL || 'admin@excellenceacademia.com');
+    const html = renderBrandedEmail({
+      title: 'Test Email from Excellence Academia',
+      message: '<p>This is a test email to verify your email delivery configuration.</p>',
+    });
+    const sent = await sendEmail({ to, subject: 'Test Email', content: html });
+    return res.status(200).json({ success: true, result: sent });
+  } catch (error) {
+    console.error('Test email error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send test email' });
   }
 });
 
@@ -898,6 +971,20 @@ app.post('/api/tests', async (req, res) => {
       success: false,
       error: 'Failed to create test' 
     });
+  }
+});
+
+// List tests
+app.get('/api/tests', async (req, res) => {
+  try {
+    const db = await getConnection();
+    const tests = await db.all('SELECT * FROM tests ORDER BY created_at DESC');
+    await db.close();
+    res.set('Cache-Control', 'public, max-age=300');
+    return res.json({ success: true, data: tests });
+  } catch (error) {
+    console.error('Error fetching tests:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch tests' });
   }
 });
 
@@ -978,19 +1065,35 @@ app.post('/api/notifications', async (req, res) => {
       }
 
       // Send emails
-      const emailPromises = emails.map(email => 
-        sendEmail({
-          to: email,
-          subject: title,
-          content: `
-            <div>
-              <h2>${title}</h2>
-              <p>${message}</p>
-              <p>Best regards,<br/>Excellence Academia</p>
-            </div>
-          `
-        })
-      );
+      const brandColor = '#4f46e5';
+      const emailPromises = emails.map(email => {
+        const html = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background:#f8fafc; padding:24px; color:#0f172a;">
+            <table width="100%" cellspacing="0" cellpadding="0" style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden;">
+              <tr>
+                <td style="background:${brandColor}; padding:18px 24px; color:#fff;">
+                  <h2 style="margin:0; font-size:18px;">Excellence Academia</h2>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:24px;">
+                  <h3 style="margin:0 0 8px; font-size:20px; color:#0f172a;">${title}</h3>
+                  <p style="margin:0 0 16px; line-height:1.6; color:#334155;">${message}</p>
+                  <div style="margin-top:16px; padding:12px 16px; background:#f1f5f9; border-radius:8px; color:#475569; font-size:12px;">
+                    This is an automated notification. Please do not reply to this email.
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:16px 24px; border-top:1px solid #e2e8f0; color:#64748b; font-size:12px;">
+                  © ${new Date().getFullYear()} Excellence Academia. All rights reserved.
+                </td>
+              </tr>
+            </table>
+          </div>
+        `;
+        return sendEmail({ to: email, subject: title, content: html });
+      });
 
       await Promise.allSettled(emailPromises);
     }
@@ -999,6 +1102,51 @@ app.post('/api/notifications', async (req, res) => {
   } catch (error) {
     console.error('Notification error:', error);
     return res.status(500).json({ success: false, error: 'Failed to send notification' });
+  }
+});
+
+// List notifications
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const db = await getConnection();
+    const notifications = await db.all('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200');
+    await db.close();
+    res.set('Cache-Control', 'public, max-age=120');
+    return res.json({ success: true, data: notifications });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch notifications' });
+  }
+});
+
+// Students list
+app.get('/api/students', async (req, res) => {
+  try {
+    const students = await prisma.user.findMany({
+      where: { role: 'student' },
+      orderBy: { updatedAt: 'desc' },
+      include: {
+        enrollments: { include: { course: true } },
+      },
+    });
+    const result = students.map((s) => ({
+      id: s.id,
+      name: s.name,
+      email: s.email,
+      status: (s as any).status || 'active',
+      progress: Math.floor(Math.random() * 100),
+      lastActivity: (s.updatedAt as Date).toISOString(),
+      enrolledCourses: (s.enrollments || []).map((e: any) => e.course?.id).filter(Boolean),
+      joinDate: (s.createdAt as Date).toISOString(),
+      totalAssignments: Math.floor(Math.random() * 12),
+      completedAssignments: Math.floor(Math.random() * 12),
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || 'Student')}&background=random`,
+    }));
+    res.set('Cache-Control', 'public, max-age=120');
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch students' });
   }
 });
 

@@ -62,6 +62,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { apiFetch } from "@/lib/api"
 
 // Types
 interface Course {
@@ -506,14 +507,15 @@ export default function StudentPortal() {
   const fetchStudentData = async () => {
     try {
       setLoading(true)
-      const res = await fetch('/api/student/dashboard')
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
-      const data = await res.json()
+      const storedUser = localStorage.getItem('user')
+      const parsed = storedUser ? JSON.parse(storedUser) : null
+      const studentId = parsed?.id
+      const data = await apiFetch<any>(`/student/dashboard${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ''}`)
       
-      if (data.student) setUser(data.student)
-      if (data.courses) setCourses(data.courses)
-      if (data.notifications) setNotifications(data.notifications)
-      if (data.assignments) setAssignments(data.assignments)
+      if (data?.student) setUser(data.student)
+      if (data?.courses) setCourses(data.courses)
+      if (data?.notifications) setNotifications(data.notifications)
+      if (data?.assignments) setAssignments(data.assignments)
     } catch (e) {
       console.error('Failed to fetch student data:', e)
       // Fallback to mock data on error
