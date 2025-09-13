@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
-import { sendEmail } from '../lib/email';
+import { sendEmail, renderBrandedEmail } from '../lib/email';
 
 // Resolve base path in both ESM and CJS
 const resolvedDir = (typeof __dirname !== 'undefined')
@@ -884,27 +884,29 @@ app.post('/api/contact', async (req, res) => {
       return res.status(400).json({ success: false, error: 'name, email, and message are required' });
     }
     const to = process.env.CONTACT_EMAIL || 'admin@excellenceacademia.com';
-    const adminHtml = `
-      <div>
-        <h2>New Contact Form Submission</h2>
+    const adminHtml = renderBrandedEmail({
+      title: 'New Contact Form Submission',
+      message: `
         <p><strong>Name:</strong> ${name}</p>
         <p><strong>Email:</strong> ${email}</p>
         ${subject ? `<p><strong>Subject:</strong> ${subject}</p>` : ''}
         <p><strong>Message:</strong></p>
         <p>${(message || '').replace(/\n/g, '<br/>')}</p>
-      </div>
-    `;
+      `,
+      footerNote: 'A visitor submitted this message via the contact form.',
+    });
     const adminSend = await sendEmail({ to, subject: subject || 'New Contact Message', content: adminHtml });
 
     // Optional: send acknowledgement to user (best UX)
     if (email) {
-      const ackHtml = `
-        <div>
+      const ackHtml = renderBrandedEmail({
+        title: 'We received your message',
+        message: `
           <p>Hi ${name},</p>
           <p>We received your message and will get back to you shortly.</p>
           <p>Best regards,<br/>Excellence Academia</p>
-        </div>
-      `;
+        `,
+      });
       try { await sendEmail({ to: email, subject: 'We received your message', content: ackHtml }); } catch {}
     }
 
@@ -913,6 +915,22 @@ app.post('/api/contact', async (req, res) => {
   } catch (error) {
     console.error('Contact email error:', error);
     return res.status(500).json({ success: false, error: 'Failed to send message' });
+  }
+});
+
+// Admin test email endpoint (for verifying RESEND configuration)
+app.post('/api/admin/test-email', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const to = (req.body && req.body.to) || (process.env.CONTACT_EMAIL || 'admin@excellenceacademia.com');
+    const html = renderBrandedEmail({
+      title: 'Test Email from Excellence Academia',
+      message: '<p>This is a test email to verify your email delivery configuration.</p>',
+    });
+    const sent = await sendEmail({ to, subject: 'Test Email', content: html });
+    return res.status(200).json({ success: true, result: sent });
+  } catch (error) {
+    console.error('Test email error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send test email' });
   }
 });
 
