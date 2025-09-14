@@ -19,9 +19,10 @@ const uploadsDir = path.resolve(baseDir, '..', 'public', 'uploads');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Enhanced CORS configuration for production
+// Enhanced CORS configuration
+const isProd = process.env.NODE_ENV === 'production';
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
+  origin: isProd
     ? (origin, callback) => {
         // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
@@ -50,7 +51,7 @@ app.use(cors({
 
         callback(new Error('Not allowed by CORS'));
       }
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173', 'https://academe-portal-2025.onrender.com'],
+    : true, // in development, allow all origins so Vite LAN hosts work
   credentials: true,
   optionsSuccessStatus: 200,
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -59,7 +60,9 @@ app.use(cors({
 
 // Preflight handler to avoid framework default errors
 app.options('*', cors({
-  origin: true,
+  origin: isProd
+    ? undefined
+    : true,
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS']

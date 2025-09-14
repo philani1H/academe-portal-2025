@@ -314,6 +314,48 @@ const ContentManagement = () => {
   
   const [loading, setLoading] = useState(true)
 
+  // Save Tutors
+  const saveTutor = async (tutor: Tutor) => {
+    try {
+      const method = tutor.id ? 'PUT' : 'POST'
+      const data = await apiFetch<Tutor>('/api/admin/content/tutors', {
+        method,
+        body: JSON.stringify(tutor)
+      })
+      if (tutor.id) {
+        setTutors(tutors.map(t => t.id === tutor.id ? data : t))
+      } else {
+        setTutors([...tutors, data])
+      }
+      setEditingTutor(null)
+      toast({ title: 'Success', description: 'Tutor saved successfully' })
+    } catch (error) {
+      console.error('Error saving tutor:', error)
+      toast({ title: 'Error', description: 'Failed to save tutor', variant: 'destructive' })
+    }
+  }
+
+  // Save Subjects
+  const saveSubject = async (subject: Subject) => {
+    try {
+      const method = subject.id ? 'PUT' : 'POST'
+      const data = await apiFetch<Subject>('/api/admin/content/subjects', {
+        method,
+        body: JSON.stringify(subject)
+      })
+      if (subject.id) {
+        setSubjects(subjects.map(s => s.id === subject.id ? data : s))
+      } else {
+        setSubjects([...subjects, data])
+      }
+      setEditingSubject(null)
+      toast({ title: 'Success', description: 'Subject saved successfully' })
+    } catch (error) {
+      console.error('Error saving subject:', error)
+      toast({ title: 'Error', description: 'Failed to save subject', variant: 'destructive' })
+    }
+  }
+
   // Fetch all content on component mount
   const fetchAllContent = React.useCallback(async () => {
     setLoading(true)
@@ -911,118 +953,72 @@ const ContentManagement = () => {
     </Card>
   )
 
-  // Hero Content Edit Dialog
-  const HeroEditDialog = () => (
-    <Dialog open={!!editingHero} onOpenChange={() => setEditingHero(null)}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Edit Hero Content</DialogTitle>
-          <DialogDescription>
-            Update the main hero section content
-          </DialogDescription>
-        </DialogHeader>
-        
-        {editingHero && (
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  value={editingHero.title}
-                  onChange={(e) => setEditingHero({
-                    ...editingHero,
-                    title: e.target.value
-                  })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="subtitle">Subtitle</Label>
-                <Input
-                  id="subtitle"
-                  value={editingHero.subtitle}
-                  onChange={(e) => setEditingHero({
-                    ...editingHero,
-                    subtitle: e.target.value
-                  })}
-                />
-              </div>
-            </div>
-            
-            <div>
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={editingHero.description}
-                onChange={(e) => setEditingHero({
-                  ...editingHero,
-                  description: e.target.value
-                })}
-                rows={3}
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="buttonText">Primary Button Text</Label>
-                <Input
-                  id="buttonText"
-                  value={editingHero.buttonText}
-                  onChange={(e) => setEditingHero({
-                    ...editingHero,
-                    buttonText: e.target.value
-                  })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="secondaryButtonText">Secondary Button Text</Label>
-                <Input
-                  id="secondaryButtonText"
-                  value={editingHero.secondaryButtonText}
-                  onChange={(e) => setEditingHero({
-                    ...editingHero,
-                    secondaryButtonText: e.target.value
-                  })}
-                />
-              </div>
-            </div>
-            
-            <div>
-              <Label htmlFor="trustIndicatorText">Trust Indicator Text</Label>
-              <Input
-                id="trustIndicatorText"
-                value={editingHero.trustIndicatorText}
-                onChange={(e) => setEditingHero({
-                  ...editingHero,
-                  trustIndicatorText: e.target.value
-                })}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="universities">Universities (comma-separated)</Label>
-              <Input
-                id="universities"
-                value={editingHero.universities.join(', ')}
-                onChange={(e) => setEditingHero({
-                  ...editingHero,
-                  universities: e.target.value.split(',').map(u => u.trim())
-                })}
-              />
-            </div>
-          </div>
-        )}
-        
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setEditingHero(null)}>
-            Cancel
+  const renderSubjectsTab = () => (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Book className="h-5 w-5" />
+          Subjects Management
+        </CardTitle>
+        <CardDescription>
+          Manage website subjects and their details
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">Subjects ({subjects.length})</h3>
+          <Button onClick={() => setEditingSubject({
+            id: null,
+            name: '',
+            description: '',
+            image: ''
+          })}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Subject
           </Button>
-          <Button onClick={() => editingHero && saveHeroContent(editingHero)}>
-            Save Changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+        
+        <div className="space-y-4">
+          {subjects.map((subject) => (
+            <Card key={subject.id} className="p-4">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <h4 className="font-semibold">{subject.name}</h4>
+                  <p className="text-sm text-gray-600 mt-1">{subject.description}</p>
+                </div>
+                <div className="flex gap-2 ml-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditingSubject(subject)}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => deleteSubject(subject.id!)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              {subject.image && (
+                <div className="justify-self-end">
+                  <img src={subject.image} alt="Subject" className="h-24 w-24 object-cover rounded-md border" />
+                </div>
+              )}
+            </Card>
+          ))}
+          
+          {subjects.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No subjects found. Add your first subject to get started.
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 
   // Feature Edit Dialog
@@ -1139,6 +1135,122 @@ const ContentManagement = () => {
           </Button>
           <Button onClick={() => editingFeature && saveFeature(editingFeature)}>
             {editingFeature?.id ? 'Update' : 'Create'} Feature
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Hero Edit Dialog
+  const HeroEditDialog = () => (
+    <Dialog open={!!editingHero} onOpenChange={() => setEditingHero(null)}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{editingHero?.id ? 'Edit' : 'Add'} Hero Content</DialogTitle>
+          <DialogDescription>Manage the homepage hero section content</DialogDescription>
+        </DialogHeader>
+        {editingHero && (
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="heroTitle">Title</Label>
+                <Input id="heroTitle" value={editingHero.title} onChange={(e) => setEditingHero({ ...editingHero, title: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="heroSubtitle">Subtitle</Label>
+                <Input id="heroSubtitle" value={editingHero.subtitle} onChange={(e) => setEditingHero({ ...editingHero, subtitle: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="heroDescription">Description</Label>
+              <Textarea id="heroDescription" rows={3} value={editingHero.description} onChange={(e) => setEditingHero({ ...editingHero, description: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="heroPrimaryBtn">Primary Button Text</Label>
+                <Input id="heroPrimaryBtn" value={editingHero.buttonText} onChange={(e) => setEditingHero({ ...editingHero, buttonText: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="heroSecondaryBtn">Secondary Button Text</Label>
+                <Input id="heroSecondaryBtn" value={editingHero.secondaryButtonText} onChange={(e) => setEditingHero({ ...editingHero, secondaryButtonText: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+              <div>
+                <Label htmlFor="heroTrust">Trust Indicator Text</Label>
+                <Input id="heroTrust" value={editingHero.trustIndicatorText} onChange={(e) => setEditingHero({ ...editingHero, trustIndicatorText: e.target.value })} />
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch id="heroActive" checked={!!editingHero.isActive} onCheckedChange={(checked) => setEditingHero({ ...editingHero, isActive: checked })} />
+                <Label htmlFor="heroActive">Active</Label>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="heroBg">Background Gradient</Label>
+              <Input id="heroBg" placeholder="e.g., from-blue-50 to-indigo-50" value={editingHero.backgroundGradient} onChange={(e) => setEditingHero({ ...editingHero, backgroundGradient: e.target.value })} />
+            </div>
+            <div>
+              <Label>Universities</Label>
+              {editingHero.universities.map((u, index) => (
+                <div key={index} className="flex gap-2 mt-2">
+                  <Input value={u} onChange={(e) => {
+                    const arr = [...editingHero.universities]
+                    arr[index] = e.target.value
+                    setEditingHero({ ...editingHero, universities: arr })
+                  }} placeholder="University name" />
+                  <Button variant="outline" size="icon" onClick={() => {
+                    const arr = editingHero.universities.filter((_, i) => i !== index)
+                    setEditingHero({ ...editingHero, universities: arr })
+                  }}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => setEditingHero({ ...editingHero, universities: [...editingHero.universities, ''] })}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add University
+              </Button>
+            </div>
+            <div>
+              <Label>Features</Label>
+              {editingHero.features.map((f, index) => (
+                <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                  <Input value={f.title} onChange={(e) => {
+                    const arr = [...editingHero.features]
+                    arr[index] = { ...arr[index], title: e.target.value }
+                    setEditingHero({ ...editingHero, features: arr })
+                  }} placeholder="Title" />
+                  <Input value={f.description} onChange={(e) => {
+                    const arr = [...editingHero.features]
+                    arr[index] = { ...arr[index], description: e.target.value }
+                    setEditingHero({ ...editingHero, features: arr })
+                  }} placeholder="Description" />
+                  <div className="flex gap-2">
+                    <Input value={f.icon} onChange={(e) => {
+                      const arr = [...editingHero.features]
+                      arr[index] = { ...arr[index], icon: e.target.value }
+                      setEditingHero({ ...editingHero, features: arr })
+                    }} placeholder="Icon key" />
+                    <Button variant="outline" size="icon" onClick={() => {
+                      const arr = editingHero.features.filter((_, i) => i !== index)
+                      setEditingHero({ ...editingHero, features: arr })
+                    }}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              <Button variant="outline" size="sm" className="mt-2" onClick={() => setEditingHero({ ...editingHero, features: [...editingHero.features, { title: '', description: '', icon: '' }] })}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Feature Row
+              </Button>
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingHero(null)}>Cancel</Button>
+          <Button onClick={() => editingHero && saveHeroContent(editingHero)}>
+            {editingHero?.id ? 'Update' : 'Create'} Hero Content
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1281,25 +1393,29 @@ const ContentManagement = () => {
         </div>
 
         <Tabs defaultValue="hero" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="content">Content</TabsTrigger>
-            <TabsTrigger value="tutors">Tutors</TabsTrigger>
-            <TabsTrigger value="subjects">Subjects</TabsTrigger>
-            <TabsTrigger value="pages">Pages</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
+          <div className="w-full overflow-x-auto">
+            <TabsList className="flex min-w-max gap-2">
+              <TabsTrigger className="whitespace-nowrap" value="content">Content</TabsTrigger>
+              <TabsTrigger className="whitespace-nowrap" value="tutors">Tutors</TabsTrigger>
+              <TabsTrigger className="whitespace-nowrap" value="subjects">Subjects</TabsTrigger>
+              <TabsTrigger className="whitespace-nowrap" value="pages">Pages</TabsTrigger>
+              <TabsTrigger className="whitespace-nowrap" value="settings">Settings</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="content" className="mt-6">
             <div className="space-y-6">
               <Tabs defaultValue="hero" className="w-full">
-                <TabsList className="grid w-full grid-cols-6">
-                  <TabsTrigger value="hero">Hero</TabsTrigger>
-                  <TabsTrigger value="features">Features</TabsTrigger>
-                  <TabsTrigger value="announcements">News</TabsTrigger>
-                  <TabsTrigger value="pricing">Pricing</TabsTrigger>
-                  <TabsTrigger value="testimonials">Reviews</TabsTrigger>
-                  <TabsTrigger value="team">Team</TabsTrigger>
-                </TabsList>
+                <div className="w-full overflow-x-auto">
+                  <TabsList className="flex min-w-max gap-2">
+                    <TabsTrigger className="whitespace-nowrap" value="hero">Hero</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="features">Features</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="announcements">News</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="pricing">Pricing</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="testimonials">Reviews</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="team">Team</TabsTrigger>
+                  </TabsList>
+                </div>
 
                 <TabsContent value="hero" className="mt-6">
                   {renderHeroContentTab()}
@@ -1736,12 +1852,14 @@ const ContentManagement = () => {
           <TabsContent value="pages" className="mt-6">
             <div className="space-y-6">
               <Tabs defaultValue="become-tutor" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="become-tutor">Become Tutor</TabsTrigger>
-                  <TabsTrigger value="exam-rewrite">Exam Rewrite</TabsTrigger>
-                  <TabsTrigger value="university-application">University App</TabsTrigger>
-                  <TabsTrigger value="about-us">About Us</TabsTrigger>
-                </TabsList>
+                <div className="w-full overflow-x-auto">
+                  <TabsList className="flex min-w-max gap-2">
+                    <TabsTrigger className="whitespace-nowrap" value="become-tutor">Become Tutor</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="exam-rewrite">Exam Rewrite</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="university-application">University App</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="about-us">About Us</TabsTrigger>
+                  </TabsList>
+                </div>
 
                 <TabsContent value="become-tutor" className="mt-6">
                   <Card>
@@ -1944,12 +2062,14 @@ const ContentManagement = () => {
           <TabsContent value="settings" className="mt-6">
             <div className="space-y-6">
               <Tabs defaultValue="footer" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="footer">Footer</TabsTrigger>
-                  <TabsTrigger value="navigation">Navigation</TabsTrigger>
-                  <TabsTrigger value="contact">Contact</TabsTrigger>
-                  <TabsTrigger value="site">Site</TabsTrigger>
-                </TabsList>
+                <div className="w-full overflow-x-auto">
+                  <TabsList className="flex min-w-max gap-2">
+                    <TabsTrigger className="whitespace-nowrap" value="footer">Footer</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="navigation">Navigation</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="contact">Contact</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="site">Site</TabsTrigger>
+                  </TabsList>
+                </div>
 
                 <TabsContent value="footer" className="mt-6">
                   <Card>
