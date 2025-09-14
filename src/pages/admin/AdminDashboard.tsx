@@ -212,6 +212,12 @@ export default function AdminDashboard() {
   const [isContentManagerOpen, setIsContentManagerOpen] = useState(false)
 
   // Effects
+  // Collapse sidebar by default on small screens
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setSidebarOpen(false)
+    }
+  }, [])
   useEffect(() => {
     // Calculate unread notifications
     setUnreadCount(notifications.filter((n) => !n.read).length)
@@ -1292,7 +1298,7 @@ export default function AdminDashboard() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
                 <Button size="sm" onClick={() => setInviteOpen(true)}>
                   <UserPlus className="h-4 w-4 mr-2" /> Invite
                 </Button>
@@ -3173,11 +3179,13 @@ export default function AdminDashboard() {
             </DialogHeader>
             <div className="py-4">
               <Tabs defaultValue="overview">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="courses">Courses</TabsTrigger>
-                  <TabsTrigger value="students">Students</TabsTrigger>
-                </TabsList>
+                <div className="w-full overflow-x-auto">
+                  <TabsList className="flex min-w-max gap-2">
+                    <TabsTrigger className="whitespace-nowrap" value="overview">Overview</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="courses">Courses</TabsTrigger>
+                    <TabsTrigger className="whitespace-nowrap" value="students">Students</TabsTrigger>
+                  </TabsList>
+                </div>
                 <TabsContent value="overview" className="space-y-4 mt-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">

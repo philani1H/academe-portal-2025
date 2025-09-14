@@ -14,20 +14,32 @@ model User {
   email           String    @unique
   name            String
   role            String    // "student", "teacher", "admin"
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  last_active     DateTime? @map("last_active")
+  status          String?   @default("active")
+  department_id   String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
   enrollments     CourseEnrollment[]
   testSubmissions TestSubmission[]
+  
+  @@map("users")
 }
 
 model Course {
   id          String    @id @default(uuid())
   title       String
   description String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  category    String?
+  status      String?   @default("draft")
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
+  color       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
   enrollments CourseEnrollment[]
   tests       Test[]
+  
+  @@map("courses")
 }
 
 model CourseEnrollment {

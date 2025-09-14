@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-
 import { apiFetch } from "@/lib/api"
 import { motion, AnimatePresence } from "framer-motion"
 import { CheckCircle, AlertCircle, Info, MessageSquare, Plus, X, Edit, Trash2, Star } from "lucide-react"
@@ -34,58 +33,61 @@ interface Feature {
 
 const initialAnnouncements: any[] = []
 
-// Ensure TS knows about the global aclib object
-declare global {
-  interface Window { aclib?: any }
-}
-
-// Loader that injects the ACLib script exactly once
-const AclibLoader = () => {
+// Advertisement Script Loader Hook
+const useAdScript = () => {
   useEffect(() => {
-    // Avoid loading external ad script in development to prevent noisy errors
-    if (import.meta.env?.DEV) return;
-    const existing = document.getElementById('aclib') as HTMLScriptElement | null
-    if (!existing) {
-      const s = document.createElement('script')
-      s.id = 'aclib'
-      s.type = 'text/javascript'
-      s.src = '//acscdn.com/script/aclib.js'
-      s.async = true
-      document.head.appendChild(s)
+    // Check if script is already loaded
+    if (document.getElementById('aclib')) {
+      return
+    }
+
+    // Create and load the advertisement script
+    const script = document.createElement('script')
+    script.id = 'aclib'
+    script.type = 'text/javascript'
+    script.src = '//acscdn.com/script/aclib.js'
+    script.async = true
+    
+    document.head.appendChild(script)
+
+    return () => {
+      // Cleanup function to remove script if component unmounts
+      const existingScript = document.getElementById('aclib')
+      if (existingScript) {
+        existingScript.remove()
+      }
     }
   }, [])
-  return null
 }
 
 // Professional Banner Component - 728x90 Leaderboard
 const ProfessionalBanner = ({ className = "", placement = "" }) => {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [containerId] = useState(() => `aclib-zone-${placement || 'default'}-${Math.random().toString(36).slice(2, 8)}`)
-
+  const [adLoaded, setAdLoaded] = useState(false)
+  
   useEffect(() => {
-    // Attempt to run banner once script is available
-    const run = () => {
-      try {
-        if (!import.meta.env?.DEV && window.aclib && typeof window.aclib.runBanner === 'function') {
+    // Wait for aclib script to load and then run the banner
+    const checkAndRunBanner = () => {
+      if (window.aclib && window.aclib.runBanner) {
+        try {
           window.aclib.runBanner({
             zoneId: '10397366',
-            targetId: containerId,
           })
+          setAdLoaded(true)
+        } catch (error) {
+          console.warn('Ad banner failed to load:', error)
         }
-      } catch (e) {
-        // swallow
+      } else {
+        // Retry after a short delay if aclib is not ready
+        setTimeout(checkAndRunBanner, 100)
       }
     }
-    // Try immediately and again shortly after in case the script is still loading
-    run()
-    const t = window.setTimeout(run, 800)
-    return () => window.clearTimeout(t)
-  }, [containerId])
+
+    const timer = setTimeout(checkAndRunBanner, 500)
+    return () => clearTimeout(timer)
+  }, [])
 
   return (
     <div className={`bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 shadow-sm overflow-hidden ${className}`}>
-      {/* Loader ensures the script exists */}
-      <AclibLoader />
       <div className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
@@ -94,16 +96,20 @@ const ProfessionalBanner = ({ className = "", placement = "" }) => {
           </div>
           <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">Advertisement</span>
         </div>
+        
         {/* 728x90 Banner Ad Container */}
         <div className="bg-white rounded-lg border border-blue-200 flex items-center justify-center" style={{ width: '728px', height: '90px', maxWidth: '100%', margin: '0 auto' }}>
-          {import.meta.env?.DEV ? (
-            <div className="text-xs text-gray-500">Ad placeholder (disabled in development)</div>
-          ) : (
-            <div id={containerId} ref={containerRef} className="w-full h-full flex items-center justify-center" />
-          )}
+          <div id={`aclib-banner-${placement}`}>
+            {!adLoaded && (
+              <div className="text-gray-400 text-sm">Loading advertisement...</div>
+            )}
+          </div>
         </div>
+        
         <div className="mt-2 text-center">
-          <p className="text-xs text-blue-600">Supporting quality education through trusted partnerships</p>
+          <p className="text-xs text-blue-600">
+            Supporting quality education through trusted partnerships
+          </p>
         </div>
       </div>
     </div>
@@ -111,6 +117,9 @@ const ProfessionalBanner = ({ className = "", placement = "" }) => {
 }
 
 const Features = () => {
+  // Load advertisement script
+  useAdScript()
+  
   const [features, setFeatures] = useState<Feature[]>([])
   const [isAdmin, setIsAdmin] = useState(false) // Set to false by default for production
   const [announcements, setAnnouncements] = useState(initialAnnouncements)
