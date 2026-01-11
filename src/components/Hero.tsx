@@ -249,7 +249,7 @@ const Hero = () => {
       {/* Grade Selection Dialog - Improved Design */}
       <Dialog open={showGradeDialog} onOpenChange={setShowGradeDialog}>
         <DialogContent className="sm:max-w-[650px] bg-gradient-to-br from-[#0B1340] to-[#274690] text-white border-blue-300/20 p-0 overflow-hidden">
-          <div className="absolute inset-0 bg-[url('/path-to-pattern.svg')] opacity-5 pointer-events-none"></div>
+          <div className="absolute inset-0 opacity-5 pointer-events-none bg-grid-pattern"></div>
           
           <DialogHeader className="p-6 pb-2">
             <DialogTitle className="text-3xl font-bold text-center text-blue-200">Choose Your Path to Success</DialogTitle>
