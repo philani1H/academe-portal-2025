@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import crypto from "crypto"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -91,17 +92,32 @@ export default function NotificationSystemPage() {
 
     setIsSending(true)
     try {
-      const notification = await api.createNotification(newNotification.message, newNotification.priority)
-      setNotifications((prev) => [notification, ...prev])
+      const payload = {
+        message: newNotification.message,
+        subject: "Tutor Notification",
+        courseId: newNotification.courseId !== "all" ? newNotification.courseId : undefined,
+      }
+      const result = await api.sendTutorEmail(payload)
+      toast({
+        title: "Sent",
+        description: `Email sent to ${Number(result?.count ?? 0)} student(s)`,
+      })
+      setNotifications((prev) => [
+        {
+          id: crypto.randomUUID(),
+          message: newNotification.message,
+          type: "info",
+          read: false,
+          timestamp: new Date().toISOString(),
+          priority: newNotification.priority,
+        },
+        ...prev,
+      ])
       setNewNotification({
         message: "",
         courseId: "all",
         studentIds: [],
         priority: "medium",
-      })
-      toast({
-        title: "Success",
-        description: "Notification sent successfully",
       })
     } catch (error) {
       toast({

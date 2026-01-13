@@ -6,7 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
-import { sendEmail, renderBrandedEmail, renderInvitationEmail } from '../lib/email';
+import { sendEmail, renderBrandedEmail, renderInvitationEmail, renderBrandedEmailPreview } from '../lib/email';
 import crypto from 'crypto';
 
 // Resolve base path in both ESM and CJS
@@ -466,6 +466,216 @@ app.post('/api/admin/auth/logout', (req, res) => {
   const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
   res.setHeader('Set-Cookie', `admin_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict;${secure}`);
   return res.status(200).json({ success: true, message: 'Logged out' });
+});
+
+async function ensureNotificationsTable() {
+  const db = await getConnection();
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        type TEXT,
+        status TEXT,
+        created_at TEXT NOT NULL,
+        read INTEGER DEFAULT 0
+      );
+    `);
+  } finally {
+    await db.close();
+  }
+}
+
+app.post('/api/notifications', async (req, res) => {
+  try {
+    const { title, message, type = 'system', recipients } = req.body || {};
+    if (!title || !message) return res.status(400).json({ success: false, error: 'title and message are required' });
+    await ensureNotificationsTable();
+    const db = await getConnection();
+    try {
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      await db.run('INSERT INTO notifications (id, title, message, type, status, created_at, read) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+        id, String(title), String(message), String(type), 'sent', now, 0
+      ]);
+      const toSpecific = Array.isArray(recipients?.specific) ? recipients.specific.filter((e: any) => typeof e === 'string') : [];
+      const sendList: string[] = [];
+      if (recipients?.tutors) {
+        const tutors = await db.all(`SELECT email FROM users WHERE role = 'tutor' AND email IS NOT NULL AND TRIM(email) <> ''`);
+        sendList.push(...tutors.map((r: any) => String(r.email)));
+      }
+      if (recipients?.students) {
+        const students = await db.all(`SELECT email FROM users WHERE role = 'student' AND email IS NOT NULL AND TRIM(email) <> ''`);
+        sendList.push(...students.map((r: any) => String(r.email)));
+      }
+      sendList.push(...toSpecific.map((e: string) => e.toLowerCase()));
+      const uniqueList = Array.from(new Set(sendList)).slice(0, 200);
+      for (const to of uniqueList) {
+        const html = renderBrandedEmail({ title: String(title), message: `<p>${String(message)}</p>` });
+        await sendEmail({ to, subject: String(title), content: html });
+      }
+      return res.status(201).json({ success: true, id });
+    } finally {
+      await db.close();
+    }
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create notification' });
+  }
+});
+
+app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { emails, courseName, tutorName, department } = req.body || {};
+    const list = Array.isArray(emails) ? emails.filter((e: any) => typeof e === 'string').map((e: string) => e.trim()).filter(Boolean) : [];
+    if (list.length === 0) return res.status(400).json({ success: false, error: 'emails array required' });
+    const base = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+    const results: any[] = [];
+    for (const email of list.slice(0, 200)) {
+      const actionUrl = `${base}/welcome?email=${encodeURIComponent(email)}`;
+      const html = renderInvitationEmail({ recipientName: email.split('@')[0], actionUrl, courseName, tutorName, department });
+      const r = await sendEmail({ to: email, subject: 'Invitation to Excellence Academia', content: html });
+      results.push({ email, sent: !!r?.success });
+    }
+    return res.json({ success: true, invited: results });
+  } catch (error) {
+    console.error('Student invite error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send invitations' });
+  }
+});
+
+app.post('/api/admin/tutors/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { emails, tutorName, department } = req.body || {};
+    const list = Array.isArray(emails) ? emails.filter((e: any) => typeof e === 'string').map((e: string) => e.trim()).filter(Boolean) : [];
+    if (list.length === 0) return res.status(400).json({ success: false, error: 'emails array required' });
+    const base = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+    const results: any[] = [];
+    for (const email of list.slice(0, 200)) {
+      const actionUrl = `${base}/welcome?email=${encodeURIComponent(email)}`;
+      const html = renderInvitationEmail({ recipientName: tutorName || email.split('@')[0], actionUrl, tutorName, department });
+      const r = await sendEmail({ to: email, subject: 'Invitation to Excellence Academia (Tutor)', content: html });
+      results.push({ email, sent: !!r?.success });
+    }
+    return res.json({ success: true, invited: results });
+  } catch (error) {
+    console.error('Tutor invite error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send invitations' });
+  }
+});
+
+app.post('/api/admin/email/send', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { subject, message, recipients, department } = req.body || {};
+    if (!subject || !message) return res.status(400).json({ success: false, error: 'subject and message are required' });
+    const db = await getConnection();
+    try {
+      const sendList: string[] = [];
+      const deptClause = department ? ` AND department = ?` : '';
+      const params: any[] = department ? [department] : [];
+      if (recipients?.tutors) {
+        const tutors = await db.all(`SELECT email FROM users WHERE role = 'tutor' AND email IS NOT NULL AND TRIM(email) <> ''${deptClause}`, params);
+        sendList.push(...tutors.map((r: any) => String(r.email)));
+      }
+      if (recipients?.students) {
+        const students = await db.all(`SELECT email FROM users WHERE role = 'student' AND email IS NOT NULL AND TRIM(email) <> ''${deptClause}`, params);
+        sendList.push(...students.map((r: any) => String(r.email)));
+      }
+      const toSpecific = Array.isArray(recipients?.specific) ? recipients.specific.filter((e: any) => typeof e === 'string') : [];
+      sendList.push(...toSpecific.map((e: string) => e.toLowerCase()));
+      const uniqueList = Array.from(new Set(sendList)).slice(0, 500);
+      const html = renderBrandedEmail({ title: String(subject), message: `<p>${String(message)}</p>` });
+      const results: any[] = [];
+      for (const to of uniqueList) {
+        const r = await sendEmail({ to, subject: String(subject), content: html });
+        results.push({ email: to, sent: !!r?.success });
+      }
+      return res.json({ success: true, sent: results });
+    } finally {
+      await db.close();
+    }
+  } catch (error) {
+    console.error('Admin email send error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send emails' });
+  }
+});
+
+app.post('/api/admin/email/preview', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+  try {
+    const { template, title, intro, actionText, actionUrl, highlights, courseName, tutorName, department } = req.body || {};
+    if (!template || !title || !intro) return res.status(400).json({ success: false, error: 'template, title, intro required' });
+    const html = renderBrandedEmailPreview({
+      template,
+      title: String(title),
+      intro: String(intro),
+      actionText: actionText ? String(actionText) : undefined,
+      actionUrl: actionUrl ? String(actionUrl) : undefined,
+      highlights: Array.isArray(highlights) ? highlights.map((x: any) => String(x)) : undefined,
+      courseName: courseName ? String(courseName) : undefined,
+      tutorName: tutorName ? String(tutorName) : undefined,
+      department: department ? String(department) : undefined
+    });
+    return res.json({ success: true, html });
+  } catch (error) {
+    console.error('Email preview error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to render preview' });
+  }
+});
+
+// Tutor email endpoint - restrict recipients to tutor's own students
+app.post('/api/tutor/email/send', authenticateJWT, authorizeRoles('tutor'), async (req, res) => {
+  try {
+    const { subject, message, courseId } = req.body || {};
+    if (!message) return res.status(400).json({ success: false, error: 'message is required' });
+    const tutorId = String(req.user?.id || '').trim();
+    if (!tutorId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    const db = await getConnection();
+    try {
+      const emails: string[] = [];
+      if (courseId && String(courseId).trim().length > 0) {
+        const owns = await db.get('SELECT 1 FROM courses WHERE id = ? AND tutor_id = ?', [courseId, tutorId]);
+        if (!owns) return res.status(403).json({ success: false, error: 'Forbidden: course does not belong to tutor' });
+        const rows = await db.all(
+          `SELECT DISTINCT u.email 
+           FROM users u 
+           JOIN enrollments e ON e.student_id = u.id 
+           WHERE e.course_id = ? 
+             AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
+          [courseId]
+        );
+        emails.push(...rows.map((r: any) => String(r.email)));
+      } else {
+        const rows = await db.all(
+          `SELECT DISTINCT u.email 
+           FROM users u 
+           JOIN enrollments e ON e.student_id = u.id 
+           JOIN courses c ON c.id = e.course_id 
+           WHERE c.tutor_id = ? 
+             AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
+          [tutorId]
+        );
+        emails.push(...rows.map((r: any) => String(r.email)));
+      }
+      const unique = Array.from(new Set(emails)).slice(0, 500);
+      const html = renderBrandedEmail({
+        title: String(subject || 'Message from your tutor'),
+        message: `<p>${String(message)}</p>`,
+        footerNote: 'You received this email because you are enrolled with this tutor.'
+      });
+      const results: any[] = [];
+      for (const to of unique) {
+        const r = await sendEmail({ to, subject: String(subject || 'Tutor Notification'), content: html });
+        results.push({ email: to, sent: !!r?.success });
+      }
+      return res.json({ success: true, count: results.length, sent: results });
+    } finally {
+      await db.close();
+    }
+  } catch (error) {
+    console.error('Tutor email send error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send tutor emails' });
+  }
 });
 
 // Optimized generic query endpoint with validation

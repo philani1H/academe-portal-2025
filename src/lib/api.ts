@@ -238,6 +238,13 @@ export const api = {
       { method: 'POST', body: JSON.stringify(payload) }
     );
   },
+
+  async sendTutorEmail(payload: { message: string; subject?: string; courseId?: string }) {
+    return apiFetch<{ success: boolean; count: number; sent: { email: string; sent: boolean }[] }>(
+      '/api/tutor/email/send',
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+  },
 };
 
 // Types used by tutor pages
