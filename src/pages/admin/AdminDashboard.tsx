@@ -188,7 +188,7 @@ export default function AdminDashboard() {
   const [emailSpecific, setEmailSpecific] = useState("")
   const [emailDepartment, setEmailDepartment] = useState("")
   const [emailSending, setEmailSending] = useState(false)
-  const [emailTemplate, setEmailTemplate] = useState<'announcement'|'course-update'|'tutor-invitation'|'student-update'>('announcement')
+  const [emailTemplate, setEmailTemplate] = useState<'announcement'|'course-update'|'tutor-invitation'|'student-update'|'welcome'|'password-reset'|'enrollment-confirmation'|'assignment-notification'|'grade-notification'|'system-alert'>('announcement')
   const [emailActionText, setEmailActionText] = useState("View Details")
   const [emailActionUrl, setEmailActionUrl] = useState("")
   const [emailHighlights, setEmailHighlights] = useState("")
@@ -375,6 +375,40 @@ export default function AdminDashboard() {
   }
 
   const handleCreateTutor = async () => {
+    // Validation
+    if (!newTutor.name.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Tutor name is required",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newTutor.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newTutor.email)) {
+      toast({
+        title: "Validation Error",
+        description: "Valid email address is required",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newTutor.department.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Department is required",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newTutor.specialization.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Specialization is required",
+        variant: "destructive"
+      })
+      return
+    }
+
     setIsCreatingTutor(true)
 
     try {
@@ -410,14 +444,14 @@ export default function AdminDashboard() {
       }
 
       setTutors((prev) => [...prev, newTutorData])
-      
+
       // Update department stats
       setDepartments((prev) =>
         prev.map((dept) =>
           dept.name === newTutor.department ? { ...dept, tutors: dept.tutors + 1 } : dept
         )
       )
-      
+
       // Notify tutor via email (invite/added)
       try {
         await apiFetch('/api/notifications', {
@@ -429,7 +463,14 @@ export default function AdminDashboard() {
             recipients: { tutors: false, students: false, specific: [newTutor.email] },
           })
         })
-      } catch (e) { console.warn('Invite email failed:', e) }
+      } catch (e) {
+        console.warn('Invite email failed:', e)
+        toast({
+          title: "Email Notification",
+          description: "Tutor created but welcome email could not be sent",
+          variant: "default"
+        })
+      }
 
       const notificationData: Notification = {
         id: `n-${Date.now()}`,
@@ -454,15 +495,84 @@ export default function AdminDashboard() {
         specialization: '',
       })
 
-      console.log("Tutor created successfully")
+      toast({
+        title: "Success",
+        description: `Tutor ${newTutor.name} has been created successfully`,
+      })
+
+      // Refresh tutor list
+      await fetchTutors()
     } catch (error) {
       console.error("Failed to create tutor", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create tutor. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setIsCreatingTutor(false)
     }
   }
 
   const handleCreateCourse = async () => {
+    // Validation
+    if (!newCourse.name.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Course name is required",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newCourse.description.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Course description is required",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newCourse.department.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Department is required",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newCourse.tutorId.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Tutor must be assigned to the course",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newCourse.startDate.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Start date is required",
+        variant: "destructive"
+      })
+      return
+    }
+    if (!newCourse.endDate.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "End date is required",
+        variant: "destructive"
+      })
+      return
+    }
+    if (new Date(newCourse.endDate) <= new Date(newCourse.startDate)) {
+      toast({
+        title: "Validation Error",
+        description: "End date must be after start date",
+        variant: "destructive"
+      })
+      return
+    }
+
     setIsCreatingCourse(true)
 
     try {
@@ -542,9 +652,20 @@ export default function AdminDashboard() {
 
       setNotifications((prev) => [notificationData, ...prev])
 
-      console.log("Course created successfully")
+      toast({
+        title: "Success",
+        description: `Course "${newCourse.name}" has been created successfully`,
+      })
+
+      // Refresh course list
+      await fetchCourses()
     } catch (error) {
       console.error("Failed to create course", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create course. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setIsCreatingCourse(false)
     }
@@ -2989,10 +3110,16 @@ export default function AdminDashboard() {
                           <SelectValue placeholder="Select template" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="announcement">Announcement</SelectItem>
-                          <SelectItem value="course-update">Course Update</SelectItem>
-                          <SelectItem value="tutor-invitation">Tutor Invitation</SelectItem>
-                          <SelectItem value="student-update">Student Update</SelectItem>
+                          <SelectItem value="announcement">📢 Announcement</SelectItem>
+                          <SelectItem value="course-update">📚 Course Update</SelectItem>
+                          <SelectItem value="tutor-invitation">👨‍🏫 Tutor Invitation</SelectItem>
+                          <SelectItem value="student-update">🎓 Student Update</SelectItem>
+                          <SelectItem value="welcome">🎉 Welcome Email</SelectItem>
+                          <SelectItem value="password-reset">🔒 Password Reset</SelectItem>
+                          <SelectItem value="enrollment-confirmation">✅ Enrollment Confirmation</SelectItem>
+                          <SelectItem value="assignment-notification">📝 Assignment Notification</SelectItem>
+                          <SelectItem value="grade-notification">⭐ Grade Notification</SelectItem>
+                          <SelectItem value="system-alert">🔔 System Alert</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

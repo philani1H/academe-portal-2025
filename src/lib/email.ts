@@ -14,7 +14,13 @@ export type EmailTemplate =
   | 'announcement'
   | 'course-update'
   | 'tutor-invitation'
-  | 'student-update';
+  | 'student-update'
+  | 'welcome'
+  | 'password-reset'
+  | 'enrollment-confirmation'
+  | 'assignment-notification'
+  | 'grade-notification'
+  | 'system-alert';
 
 export interface EmailPreviewPayload {
   template: EmailTemplate;
@@ -534,6 +540,448 @@ export function renderBrandedEmail({
     </body>
     </html>
   `;
+}
+
+// Welcome email for new users
+export function renderWelcomeEmail({
+  recipientName,
+  userRole,
+  loginUrl,
+  supportEmail = 'info@excellenceakademie.co.za'
+}: {
+  recipientName: string;
+  userRole: 'student' | 'tutor' | 'admin';
+  loginUrl: string;
+  supportEmail?: string;
+}) {
+  const roleLabel = userRole === 'tutor' ? 'Tutor' : userRole === 'admin' ? 'Administrator' : 'Student';
+  const title = `Welcome to Excellence Academia, ${recipientName}!`;
+
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${recipientName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        Welcome to <strong style="color: ${colors.primary};">Excellence Academia</strong>! Your account has been successfully created with <strong>${roleLabel}</strong> access.
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0;">
+        You can now access your dashboard and start your journey towards academic excellence.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(16, 185, 129, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: ${colors.success}; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        ✨ Getting Started
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(16, 185, 129, 0.1);">
+            <div style="font-size: 15px; color: ${colors.mediumGray}; line-height: 1.6;">
+              ${userRole === 'student' ? '✓ Browse available courses and enroll' : ''}
+              ${userRole === 'tutor' ? '✓ Set up your profile and create courses' : ''}
+              ${userRole === 'admin' ? '✓ Access the admin dashboard to manage the platform' : ''}
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(16, 185, 129, 0.1);">
+            <div style="font-size: 15px; color: ${colors.mediumGray}; line-height: 1.6;">
+              ${userRole === 'student' ? '✓ Track your progress and grades' : ''}
+              ${userRole === 'tutor' ? '✓ Manage students and assignments' : ''}
+              ${userRole === 'admin' ? '✓ Oversee users, courses, and content' : ''}
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 15px; color: ${colors.mediumGray}; line-height: 1.6;">
+              ✓ Connect with the Excellence Academia community
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${loginUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            🚀 Access Your Dashboard
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <div style="margin: 32px 0; padding: 20px 24px; background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%); border-radius: 12px; border-left: 4px solid ${colors.info};">
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td width="32" valign="top">
+            <div style="font-size: 20px; line-height: 1;">💡</div>
+          </td>
+          <td>
+            <p style="margin: 0; font-size: 14px; color: #1E40AF; line-height: 1.6;">
+              <strong style="font-weight: 700;">Need Help?</strong><br>
+              If you have any questions or need assistance, our support team is here to help at <a href="mailto:${supportEmail}" style="color: ${colors.primary}; text-decoration: none; font-weight: 600;">${supportEmail}</a>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  return renderBrandedEmail({ title, message });
+}
+
+// Password reset email
+export function renderPasswordResetEmail({
+  recipientName,
+  resetUrl,
+  expiryHours = 24
+}: {
+  recipientName: string;
+  resetUrl: string;
+  expiryHours?: number;
+}) {
+  const title = 'Reset Your Password';
+
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${recipientName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        We received a request to reset your password for your Excellence Academia account.
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0;">
+        Click the button below to create a new password. This link will expire in ${expiryHours} hours.
+      </p>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${resetUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            🔒 Reset Password
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <div style="margin: 32px 0; padding: 20px; background: ${colors.veryLight}; border-radius: 12px; border: 1px dashed ${colors.lightGray}20;">
+      <p style="margin: 0 0 12px; font-size: 13px; color: ${colors.lightGray}; font-weight: 600;">
+        Alternative Reset Link
+      </p>
+      <p style="word-break: break-all; color: ${colors.primary}; font-size: 13px; margin: 0; font-family: 'Courier New', monospace; line-height: 1.6;">
+        ${resetUrl}
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 20px 24px; background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border-radius: 12px; border-left: 4px solid ${colors.warning};">
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td width="32" valign="top">
+            <div style="font-size: 20px; line-height: 1;">⚠️</div>
+          </td>
+          <td>
+            <p style="margin: 0; font-size: 14px; color: #78350F; line-height: 1.6;">
+              <strong style="font-weight: 700;">Did not request this?</strong><br>
+              If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  return renderBrandedEmail({
+    title,
+    message,
+    footerNote: 'For security reasons, this password reset link will expire automatically. Never share your password with anyone.'
+  });
+}
+
+// Enrollment confirmation email
+export function renderEnrollmentEmail({
+  studentName,
+  courseName,
+  tutorName,
+  startDate,
+  courseUrl
+}: {
+  studentName: string;
+  courseName: string;
+  tutorName: string;
+  startDate: string;
+  courseUrl: string;
+}) {
+  const title = 'Course Enrollment Confirmed!';
+
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        Great news! You've been successfully enrolled in <strong style="color: ${colors.primary};">${courseName}</strong>.
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0;">
+        Your learning journey begins now. Access your course materials and start learning today!
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(79, 70, 229, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(14, 165, 233, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: ${colors.primary}; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        📚 Course Details
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Course Name</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${courseName}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Your Tutor</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${tutorName}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Start Date</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${startDate}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${courseUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            📖 Access Course
+          </a>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  return renderBrandedEmail({ title, message });
+}
+
+// Assignment notification email
+export function renderAssignmentEmail({
+  studentName,
+  assignmentTitle,
+  courseName,
+  dueDate,
+  assignmentUrl
+}: {
+  studentName: string;
+  assignmentTitle: string;
+  courseName: string;
+  dueDate: string;
+  assignmentUrl: string;
+}) {
+  const title = 'New Assignment Posted';
+
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        A new assignment has been posted in <strong style="color: ${colors.primary};">${courseName}</strong>.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, rgba(245, 158, 11, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(251, 191, 36, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: ${colors.warning}; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        📝 Assignment Details
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(251, 191, 36, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Assignment</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${assignmentTitle}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(251, 191, 36, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Course</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${courseName}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Due Date</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${dueDate}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${assignmentUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            📋 View Assignment
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <div style="margin: 32px 0; padding: 20px 24px; background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border-radius: 12px; border-left: 4px solid ${colors.warning};">
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td width="32" valign="top">
+            <div style="font-size: 20px; line-height: 1;">⏰</div>
+          </td>
+          <td>
+            <p style="margin: 0; font-size: 14px; color: #78350F; line-height: 1.6;">
+              <strong style="font-weight: 700;">Don't forget!</strong><br>
+              Make sure to submit your assignment before the due date to avoid late penalties.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  return renderBrandedEmail({ title, message });
+}
+
+// Grade notification email
+export function renderGradeEmail({
+  studentName,
+  assignmentTitle,
+  courseName,
+  grade,
+  feedback,
+  viewUrl
+}: {
+  studentName: string;
+  assignmentTitle: string;
+  courseName: string;
+  grade: string;
+  feedback?: string;
+  viewUrl: string;
+}) {
+  const title = 'Assignment Graded';
+
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        Your assignment <strong>"${assignmentTitle}"</strong> in <strong style="color: ${colors.primary};">${courseName}</strong> has been graded.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(16, 185, 129, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: ${colors.success}; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        ⭐ Your Results
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(16, 185, 129, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Assignment</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${assignmentTitle}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(16, 185, 129, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Grade</div>
+            <div style="font-size: 24px; font-weight: 700; color: ${colors.success};">${grade}</div>
+          </td>
+        </tr>
+        ${feedback ? `
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 8px;">Feedback</div>
+            <div style="font-size: 15px; color: ${colors.mediumGray}; line-height: 1.7;">${feedback}</div>
+          </td>
+        </tr>` : ''}
+      </table>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${viewUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            📊 View Details
+          </a>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  return renderBrandedEmail({ title, message });
+}
+
+// System alert email
+export function renderSystemAlertEmail({
+  recipientName,
+  alertTitle,
+  alertMessage,
+  alertType = 'info',
+  actionText,
+  actionUrl
+}: {
+  recipientName: string;
+  alertTitle: string;
+  alertMessage: string;
+  alertType?: 'info' | 'warning' | 'success' | 'error';
+  actionText?: string;
+  actionUrl?: string;
+}) {
+  const alertColors = {
+    info: { bg: '#DBEAFE', border: colors.info, icon: '🔔' },
+    warning: { bg: '#FEF3C7', border: colors.warning, icon: '⚠️' },
+    success: { bg: '#D1FAE5', border: colors.success, icon: '✅' },
+    error: { bg: '#FEE2E2', border: '#EF4444', icon: '❌' }
+  };
+
+  const alertStyle = alertColors[alertType];
+  const title = alertTitle;
+
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${recipientName}</strong>,
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: ${alertStyle.bg}; border-radius: 16px; border-left: 4px solid ${alertStyle.border};">
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td width="40" valign="top">
+            <div style="font-size: 28px; line-height: 1;">${alertStyle.icon}</div>
+          </td>
+          <td>
+            <div style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray};">
+              ${alertMessage}
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    ${actionText && actionUrl ? `
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${actionUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            ${actionText}
+          </a>
+        </td>
+      </tr>
+    </table>` : ''}
+  `;
+
+  return renderBrandedEmail({ title, message });
 }
 
 export function renderBrandedEmailPreview(payload: EmailPreviewPayload) {
