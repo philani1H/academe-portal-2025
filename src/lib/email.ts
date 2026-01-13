@@ -1,8 +1,10 @@
-import { Resend } from 'resend';
+import * as brevo from '@getbrevo/brevo';
 
-const resendApiKey = process.env.RESEND_API_KEY || '';
-const resend = new Resend(resendApiKey);
-const defaultFrom = process.env.RESEND_FROM_EMAIL || 'Excellence Academia <notifications@excellenceacademia.com>';
+const brevoApiKey = process.env.BREVO_API_KEY || '';
+const apiInstance = new brevo.TransactionalEmailsApi();
+apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, brevoApiKey);
+const defaultFromEmail = process.env.BREVO_FROM_EMAIL || 'notifications@excellenceakademie.co.za';
+const defaultFromName = process.env.BREVO_FROM_NAME || 'Excellence Academia';
 
 export interface EmailPayload {
   to: string;
@@ -1110,28 +1112,29 @@ export function renderBrandedEmailPreview(payload: EmailPreviewPayload) {
 export async function sendEmail(payload: EmailPayload) {
   try {
     const { to, subject, content } = payload;
-    if (!resendApiKey) {
-      console.warn('⚠️ RESEND_API_KEY not configured. Email sending skipped (dev mode).');
-      console.info('📧 [EMAIL PREVIEW]', { 
-        to, 
-        subject, 
+    if (!brevoApiKey) {
+      console.warn('⚠️ BREVO_API_KEY not configured. Email sending skipped (dev mode).');
+      console.info('📧 [EMAIL PREVIEW]', {
+        to,
+        subject,
         contentLength: content.length,
-        preview: content.slice(0, 200) + '...' 
+        preview: content.slice(0, 200) + '...'
       });
       return { success: true, data: { mocked: true, message: 'Email logged in development mode' } };
     }
-    
-    const data = await resend.emails.send({
-      from: defaultFrom,
-      to: [to],
-      subject: subject,
-      html: content,
-    });
-    
-    console.info('✅ Email sent successfully:', { to, subject, messageId: data.id });
+
+    const sendSmtpEmail = new brevo.SendSmtpEmail();
+    sendSmtpEmail.sender = { email: defaultFromEmail, name: defaultFromName };
+    sendSmtpEmail.to = [{ email: to }];
+    sendSmtpEmail.subject = subject;
+    sendSmtpEmail.htmlContent = content;
+
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+
+    console.info('✅ Email sent successfully via Brevo:', { to, subject, messageId: data.messageId });
     return { success: true, data };
   } catch (error) {
-    console.error('❌ Error sending email:', error);
+    console.error('❌ Error sending email via Brevo:', error);
     return { success: false, error };
   }
 }
