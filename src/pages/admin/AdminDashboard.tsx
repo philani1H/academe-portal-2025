@@ -181,6 +181,18 @@ export default function AdminDashboard() {
       specific: [] as string[],
     },
   })
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailMessage, setEmailMessage] = useState("")
+  const [emailToTutors, setEmailToTutors] = useState(false)
+  const [emailToStudents, setEmailToStudents] = useState(false)
+  const [emailSpecific, setEmailSpecific] = useState("")
+  const [emailDepartment, setEmailDepartment] = useState("")
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailTemplate, setEmailTemplate] = useState<'announcement'|'course-update'|'tutor-invitation'|'student-update'>('announcement')
+  const [emailActionText, setEmailActionText] = useState("View Details")
+  const [emailActionUrl, setEmailActionUrl] = useState("")
+  const [emailHighlights, setEmailHighlights] = useState("")
+  const [emailPreviewHtml, setEmailPreviewHtml] = useState("")
   
   const [newDepartment, setNewDepartment] = useState({
     name: "",
@@ -239,7 +251,7 @@ export default function AdminDashboard() {
       const data = await apiFetch<any>(`/api/query`, {
         method: 'POST',
         body: JSON.stringify({
-          query: 'SELECT id, name, email, role, created_at as createdAt, last_active as lastActive FROM users WHERE role = "student" ORDER BY created_at DESC'
+          query: 'SELECT id, name, email, role, created_at as createdAt, updated_at as lastActive FROM users WHERE role = "student" ORDER BY created_at DESC'
         })
       })
       const rows = (data && (data as any).data) ? (data as any).data : data
@@ -265,7 +277,7 @@ export default function AdminDashboard() {
       const data = await apiFetch<any>(`/api/query`, {
         method: 'POST',
         body: JSON.stringify({
-          query: 'SELECT id, title, message, type, status, created_at as date, read FROM notifications ORDER BY created_at DESC LIMIT 20'
+          query: 'SELECT id, message as title, message, type, created_at as date, read FROM notifications ORDER BY created_at DESC LIMIT 20'
         })
       })
       const rows = (data && (data as any).data) ? (data as any).data : data
@@ -291,7 +303,7 @@ export default function AdminDashboard() {
       const deptResp = await apiFetch<any>(`/api/query`, {
         method: 'POST',
         body: JSON.stringify({
-          query: 'SELECT category as name, COUNT(*) as courses FROM subjects WHERE isActive = 1 GROUP BY category'
+          query: 'SELECT "General" as name, COUNT(*) as courses FROM courses'
         })
       })
       const deptList = (deptResp && (deptResp as any).data) ? (deptResp as any).data : deptResp
@@ -616,6 +628,49 @@ export default function AdminDashboard() {
     } finally {
       setIsSendingNotification(false)
     }
+  }
+
+  const handleSendEmails = async () => {
+    if (!emailSubject.trim() || !emailMessage.trim()) return
+    setEmailSending(true)
+    try {
+      const specificList = emailSpecific.split(/[,\n]/).map(e => e.trim()).filter(Boolean)
+      const payload = {
+        subject: emailSubject,
+        message: emailMessage,
+        department: emailDepartment || undefined,
+        recipients: {
+          tutors: emailToTutors,
+          students: emailToStudents,
+          specific: specificList
+        }
+      }
+      await apiFetch('/api/admin/email/send', { method: 'POST', body: JSON.stringify(payload) })
+      setEmailSubject("")
+      setEmailMessage("")
+      setEmailSpecific("")
+      setEmailDepartment("")
+      setEmailToTutors(false)
+      setEmailToStudents(false)
+    } finally {
+      setEmailSending(false)
+    }
+  }
+
+  const updateEmailPreview = async () => {
+    const highlights = emailHighlights.split(/[,\n]/).map(s => s.trim()).filter(Boolean)
+    const payload = {
+      template: emailTemplate,
+      title: emailSubject || 'Announcement',
+      intro: emailMessage || '',
+      actionText: emailActionText || undefined,
+      actionUrl: emailActionUrl || undefined,
+      highlights,
+      courseName: emailDepartment || undefined
+    }
+    const res: any = await apiFetch('/api/admin/email/preview', { method: 'POST', body: JSON.stringify(payload) })
+    const html = res?.html || (res?.data && (res.data as any).html) || ''
+    setEmailPreviewHtml(html)
   }
 
   const handleApproveTutor = async (tutorId: string) => {
@@ -2920,6 +2975,87 @@ export default function AdminDashboard() {
                   </DialogContent>
                 </Dialog>
               </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Email Center</CardTitle>
+                  <CardDescription>Compose and send emails to tutors or students</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Template</Label>
+                      <Select value={emailTemplate} onValueChange={(v) => setEmailTemplate(v as any)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select template" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="announcement">Announcement</SelectItem>
+                          <SelectItem value="course-update">Course Update</SelectItem>
+                          <SelectItem value="tutor-invitation">Tutor Invitation</SelectItem>
+                          <SelectItem value="student-update">Student Update</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Action Text</Label>
+                      <Input value={emailActionText} onChange={(e) => setEmailActionText(e.target.value)} placeholder="e.g., View Details" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Action URL</Label>
+                      <Input value={emailActionUrl} onChange={(e) => setEmailActionUrl(e.target.value)} placeholder="https://..." />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Subject</Label>
+                      <Input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Department (optional)</Label>
+                      <Input value={emailDepartment} onChange={(e) => setEmailDepartment(e.target.value)} placeholder="Filter recipients by department" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Message</Label>
+                    <Textarea value={emailMessage} onChange={(e) => setEmailMessage(e.target.value)} rows={6} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Highlights</Label>
+                    <Textarea value={emailHighlights} onChange={(e) => setEmailHighlights(e.target.value)} placeholder="comma separated items" rows={3} />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox checked={emailToTutors} onCheckedChange={(v) => setEmailToTutors(!!v)} />
+                      <Label>Tutors</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox checked={emailToStudents} onCheckedChange={(v) => setEmailToStudents(!!v)} />
+                      <Label>Students</Label>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Specific emails</Label>
+                      <Input placeholder="comma separated" value={emailSpecific} onChange={(e) => setEmailSpecific(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Button variant="outline" onClick={updateEmailPreview}>Update Preview</Button>
+                    </div>
+                    <div className="border rounded-md overflow-hidden bg-white">
+                      {emailPreviewHtml ? (
+                        <iframe title="email-preview" style={{ width: '100%', height: 380, border: '0' }} srcDoc={emailPreviewHtml} />
+                      ) : (
+                        <div className="p-6 text-sm text-muted-foreground">No preview yet</div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button onClick={handleSendEmails} disabled={emailSending || (!emailSubject.trim() || !emailMessage.trim())}>
+                    {emailSending ? 'Sending...' : 'Send Emails'}
+                  </Button>
+                </CardFooter>
+              </Card>
 
               <Tabs defaultValue="all" className="w-full">
                 <TabsList className="grid w-full max-w-md grid-cols-4">
