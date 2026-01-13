@@ -128,8 +128,11 @@ async function getStudentCourses(req: NextApiRequest, res: NextApiResponse) {
             type: 'success'
           }
         ],
-        grade: testSubmissions.length > 0 
-          ? testSubmissions.reduce((sum, submission) => sum + submission.score, 0) / testSubmissions.length
+        grade: completedTests.length > 0
+          ? completedTests.reduce((sum, test) => {
+              const submission = test.submissions && test.submissions[0];
+              return sum + (submission ? submission.score : 0);
+            }, 0) / completedTests.length
           : null,
         enrollmentDate: enrollment.createdAt.toISOString(),
         status: enrollment.status
