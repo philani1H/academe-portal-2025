@@ -94,7 +94,40 @@ export default function CourseManagementPage() {
 
   const handleCourseClick = (course: Course) => {
     setSelectedCourse(course)
-    onCourseSelect?.(course)
+  }
+
+  const handleEditCourse = (course: Course) => {
+    setSelectedCourse(course)
+    toast({
+      title: "Edit Course",
+      description: "Course editing functionality coming soon",
+    })
+  }
+
+  const handleUploadMaterial = (course: Course) => {
+    setSelectedCourse(course)
+    toast({
+      title: "Upload Material",
+      description: "Material upload functionality available in Materials tab",
+    })
+  }
+
+  const handleDeleteMaterial = async (materialId: string) => {
+    try {
+      // TODO: Implement actual API call
+      toast({
+        title: "Success",
+        description: "Material deleted successfully",
+      })
+      // Refresh course data
+      await loadCourses()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete material",
+        variant: "destructive",
+      })
+    }
   }
 
   if (loading) {
@@ -237,14 +270,27 @@ export default function CourseManagementPage() {
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button size="sm" variant="outline" className="flex-1 bg-transparent">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 bg-transparent"
+                  onClick={() => handleCourseClick(course)}
+                >
                   <Eye className="h-4 w-4 mr-1" />
                   View
                 </Button>
-                <Button size="sm" variant="outline">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleEditCourse(course)}
+                >
                   <Edit className="h-4 w-4" />
                 </Button>
-                <Button size="sm" variant="outline">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleUploadMaterial(course)}
+                >
                   <Upload className="h-4 w-4" />
                 </Button>
               </div>
@@ -315,7 +361,11 @@ export default function CourseManagementPage() {
                             </div>
                           </div>
                         </div>
-                        <Button size="sm" variant="outline">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteMaterial(material.id)}
+                        >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>

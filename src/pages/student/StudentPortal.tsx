@@ -63,6 +63,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { apiFetch } from "@/lib/api"
+import { MaterialViewer } from "@/components/MaterialViewer"
 
 // Types
 interface Course {
@@ -584,47 +585,82 @@ export default function StudentPortal() {
     }
   }
 
-  const handleSubmitTest = () => {
+  const handleSubmitTest = async () => {
     if (!selectedTest || !selectedCourse) return
 
-    // Update the test status
-    setCourses((prevCourses) =>
-      prevCourses.map((course) => {
-        if (course.id === selectedCourse.id) {
-          return {
-            ...course,
-            tests: course.tests.map((test) => {
-              if (test.id === selectedTest.id) {
-                return {
-                  ...test,
-                  status: "completed",
-                  submittedAt: new Date().toISOString(),
-                  // In a real app, we would calculate the grade based on answers
-                  grade: Math.floor(Math.random() * 30) + 70, // Random grade between 70-100
+    try {
+      // Get the student ID from localStorage (assuming it's stored there after login)
+      const userStr = localStorage.getItem('user')
+      const user = userStr ? JSON.parse(userStr) : null
+      const studentId = user?.id
+
+      if (!studentId) {
+        console.error('Student ID not found')
+        return
+      }
+
+      // Submit test to backend API
+      const response = await fetch('/api/student/tests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          studentId,
+          testId: selectedTest.id,
+          answers: currentTestAnswers,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error('Test submission failed:', errorData.error)
+        return
+      }
+
+      const result = await response.json()
+      const calculatedScore = result.submission.score
+
+      // Update the test status with real calculated score
+      setCourses((prevCourses) =>
+        prevCourses.map((course) => {
+          if (course.id === selectedCourse.id) {
+            return {
+              ...course,
+              tests: course.tests.map((test) => {
+                if (test.id === selectedTest.id) {
+                  return {
+                    ...test,
+                    status: "completed",
+                    submittedAt: new Date().toISOString(),
+                    grade: calculatedScore, // Real calculated grade from backend
+                  }
                 }
-              }
-              return test
-            }),
+                return test
+              }),
+            }
           }
-        }
-        return course
-      }),
-    )
+          return course
+        }),
+      )
 
-    setTestInProgress(false)
-    setTimeRemaining(null)
-    setCurrentTestAnswers({})
+      setTestInProgress(false)
+      setTimeRemaining(null)
+      setCurrentTestAnswers({})
 
-    // Add a notification about the submitted test
-    const newNotification: Notification = {
-      id: `notif-${Date.now()}`,
-      message: `You've submitted "${selectedTest.title}" for ${selectedCourse.name}`,
-      date: new Date().toISOString(),
-      type: "test",
-      read: false,
-      courseId: selectedCourse.id,
+      // Add a notification about the submitted test with score
+      const newNotification: Notification = {
+        id: `notif-${Date.now()}`,
+        message: `You've submitted "${selectedTest.title}" for ${selectedCourse.name}. Score: ${calculatedScore}%`,
+        date: new Date().toISOString(),
+        type: "test",
+        read: false,
+        courseId: selectedCourse.id,
+      }
+      setNotifications((prev) => [newNotification, ...prev])
+    } catch (error) {
+      console.error('Error submitting test:', error)
     }
-    setNotifications((prev) => [newNotification, ...prev])
   }
 
   const handleMarkMaterialComplete = (courseId: string, materialId: string, completed: boolean) => {
@@ -2511,85 +2547,17 @@ export default function StudentPortal() {
         </Dialog>
       )}
 
-      {/* Material Detail Dialog */}
+      {/* Material Viewer */}
       {selectedMaterial && (
-        <Dialog open={!!selectedMaterial} onOpenChange={() => setSelectedMaterial(null)}>
-          <DialogContent className="max-w-4xl">
-            <DialogHeader>
-              <DialogTitle>{selectedMaterial.name}</DialogTitle>
-              <DialogDescription>{selectedMaterial.description}</DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  {selectedMaterial.type === "pdf" && <FileText className="h-5 w-5 text-red-500" />}
-                  {selectedMaterial.type === "video" && <Play className="h-5 w-5 text-blue-500" />}
-                  {selectedMaterial.type === "document" && <FileText className="h-5 w-5 text-green-500" />}
-                  <span className="text-sm text-muted-foreground">
-                    {selectedMaterial.size} • Added: {new Date(selectedMaterial.dateAdded).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
-                    <Download className="h-4 w-4 mr-1" />
-                    Download
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <ExternalLink className="h-4 w-4 mr-1" />
-                    Open in New Tab
-                  </Button>
-                </div>
-              </div>
-
-              {selectedMaterial.type === "pdf" && (
-                <div className="border rounded-lg p-4 h-96 flex items-center justify-center bg-gray-50">
-                  <div className="text-center">
-                    <FileText className="h-12 w-12 text-red-500 mx-auto" />
-                    <p className="mt-2 text-sm text-muted-foreground">PDF Preview</p>
-                    <p className="text-xs text-muted-foreground">{selectedMaterial.name}</p>
-                  </div>
-                </div>
-              )}
-
-              {selectedMaterial.type === "video" && (
-                <div className="border rounded-lg p-4 h-96 flex items-center justify-center bg-gray-50">
-                  <div className="text-center">
-                    <Play className="h-12 w-12 text-blue-500 mx-auto" />
-                    <p className="mt-2 text-sm text-muted-foreground">Video Player</p>
-                    <p className="text-xs text-muted-foreground">{selectedMaterial.name}</p>
-                  </div>
-                </div>
-              )}
-
-              {selectedMaterial.type === "document" && (
-                <div className="border rounded-lg p-4 h-96 flex items-center justify-center bg-gray-50">
-                  <div className="text-center">
-                    <FileText className="h-12 w-12 text-green-500 mx-auto" />
-                    <p className="mt-2 text-sm text-muted-foreground">Document Preview</p>
-                    <p className="text-xs text-muted-foreground">{selectedMaterial.name}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                variant={selectedMaterial.completed ? "outline" : "default"}
-                onClick={() => {
-                  if (selectedCourse) {
-                    handleMarkMaterialComplete(selectedCourse.id, selectedMaterial.id, !selectedMaterial.completed)
-                  }
-                  setSelectedMaterial(null)
-                }}
-              >
-                <CheckSquare className="h-4 w-4 mr-1" />
-                {selectedMaterial.completed ? "Mark as Incomplete" : "Mark as Complete"}
-              </Button>
-              <Button variant="outline" onClick={() => setSelectedMaterial(null)}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <MaterialViewer
+          material={{
+            id: selectedMaterial.id,
+            title: selectedMaterial.name,
+            type: selectedMaterial.type,
+            url: selectedMaterial.url,
+          }}
+          onClose={() => setSelectedMaterial(null)}
+        />
       )}
     </div>
   )
