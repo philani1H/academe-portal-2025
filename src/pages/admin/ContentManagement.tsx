@@ -254,6 +254,14 @@ const ContentManagement = () => {
       reader.readAsDataURL(file)
     })
   }
+  const fileToText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsText(file)
+    })
+  }
   
   // Helper: upload image via API, returns URL string
   const uploadImage = async (file: File): Promise<string> => {
@@ -1146,7 +1154,7 @@ const ContentManagement = () => {
             </div>
             
             <div>
-              <Label htmlFor="featureDescription">Description</Label>
+              <Label htmlFor="featureDescription">Description (Type or Paste MD/HTML)</Label>
               <Textarea
                 id="featureDescription"
                 value={editingFeature.description}
@@ -1156,6 +1164,15 @@ const ContentManagement = () => {
                 })}
                 rows={3}
               />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingFeature({ ...editingFeature, description: text })
+                }} />
+              </div>
             </div>
             
             <div>
@@ -1261,8 +1278,17 @@ const ContentManagement = () => {
               </div>
             </div>
             <div>
-              <Label htmlFor="heroDescription">Description</Label>
+              <Label htmlFor="heroDescription">Description (Type or Paste MD/HTML)</Label>
               <Textarea id="heroDescription" rows={3} value={editingHero.description} onChange={(e) => setEditingHero({ ...editingHero, description: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingHero({ ...editingHero, description: text })
+                }} />
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -1387,8 +1413,17 @@ const ContentManagement = () => {
               </div>
             </div>
             <div>
-              <Label>Content</Label>
+              <Label>Content (Type or Paste MD/HTML)</Label>
               <Textarea rows={3} value={editingTestimonial.content} onChange={e => setEditingTestimonial({ ...editingTestimonial, content: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingTestimonial({ ...editingTestimonial, content: text })
+                }} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4 items-end">
               <div>
@@ -1443,8 +1478,17 @@ const ContentManagement = () => {
               </div>
             </div>
             <div>
-              <Label>Bio</Label>
+              <Label>Bio (Type or Paste MD/HTML)</Label>
               <Textarea rows={3} value={editingTeamMember.bio} onChange={e => setEditingTeamMember({ ...editingTeamMember, bio: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingTeamMember({ ...editingTeamMember, bio: text })
+                }} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4 items-end">
               <div>
@@ -1499,8 +1543,17 @@ const ContentManagement = () => {
               </div>
             </div>
             <div>
-              <Label>Description</Label>
+              <Label>Description (Type or Paste MD/HTML)</Label>
               <Textarea rows={3} value={editingSubject.description} onChange={e => setEditingSubject({ ...editingSubject, description: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingSubject({ ...editingSubject, description: text })
+                }} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4 items-end">
               <div>
@@ -1572,8 +1625,17 @@ const ContentManagement = () => {
               </div>
             </div>
             <div>
-              <Label>Description</Label>
+              <Label>Description (Type or Paste MD/HTML)</Label>
               <Textarea rows={3} value={editingTutor.description} onChange={e => setEditingTutor({ ...editingTutor, description: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingTutor({ ...editingTutor, description: text })
+                }} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4 items-end">
               <div>
@@ -1719,8 +1781,17 @@ const ContentManagement = () => {
         {editingAnnouncement && (
           <div className="grid gap-4 py-4">
             <div>
-              <Label>Content</Label>
+              <Label>Content (Type or Paste MD/HTML)</Label>
               <Textarea value={editingAnnouncement.content} onChange={e => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingAnnouncement({ ...editingAnnouncement, content: text })
+                }} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -1923,8 +1994,17 @@ const ContentManagement = () => {
               <Input value={editingContactUs.title} onChange={e => setEditingContactUs({ ...editingContactUs, title: e.target.value })} />
             </div>
             <div>
-              <Label>Description</Label>
+              <Label>Description (Type or Paste MD/HTML)</Label>
               <Textarea value={editingContactUs.description} onChange={e => setEditingContactUs({ ...editingContactUs, description: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingContactUs({ ...editingContactUs, description: text })
+                }} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4 items-end">
               <div>
@@ -1970,12 +2050,30 @@ const ContentManagement = () => {
         {editingAboutUs && (
           <div className="grid gap-4 py-4">
             <div>
-              <Label>Mission</Label>
+              <Label>Mission (Type or Paste MD/HTML)</Label>
               <Textarea value={editingAboutUs.mission} onChange={e => setEditingAboutUs({ ...editingAboutUs, mission: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingAboutUs({ ...editingAboutUs, mission: text })
+                }} />
+              </div>
             </div>
             <div>
-              <Label>Goal</Label>
+              <Label>Goal (Type or Paste MD/HTML)</Label>
               <Textarea value={editingAboutUs.goal} onChange={e => setEditingAboutUs({ ...editingAboutUs, goal: e.target.value })} />
+              <div className="mt-2">
+                <Label>Upload MD/HTML</Label>
+                <Input type="file" accept=".md,.html,text/markdown,text/html" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const text = await fileToText(file)
+                  setEditingAboutUs({ ...editingAboutUs, goal: text })
+                }} />
+              </div>
             </div>
           </div>
         )}
