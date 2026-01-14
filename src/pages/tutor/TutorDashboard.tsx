@@ -351,16 +351,49 @@ export default function TutorDashboard() {
         monthlyGrowth: 0,
       }
       setAnalytics(stats)
-      const rawName = data?.tutor?.name;
-      const name = (rawName && rawName !== 'Tutor' && rawName !== 'Student') ? rawName : (data?.tutor?.email?.split('@')[0] ?? 'Instructor');
-      setUser({
-        id: data?.tutor?.id ?? 'tutor',
-        name: name,
-        email: data?.tutor?.contactEmail ?? '',
-        role: 'Tutor',
+      const rawName = data?.tutor?.name
+      const name =
+        rawName && rawName !== "Tutor" && rawName !== "Student"
+          ? rawName
+          : data?.tutor?.email?.split("@")[0] ?? "Instructor"
+      const nextUser: User = {
+        id: data?.tutor?.id ?? "tutor",
+        name,
+        email: data?.tutor?.contactEmail ?? "",
+        role: "Tutor",
         avatar: data?.tutor?.image ?? undefined,
-        department: (data?.tutor?.subjects?.[0] ?? 'Education'),
-      })
+        department: data?.tutor?.subjects?.[0] ?? "Education",
+      }
+      setUser(nextUser)
+
+      try {
+        const storedUserRaw = localStorage.getItem("user")
+        if (storedUserRaw) {
+          const parsed = JSON.parse(storedUserRaw)
+          const updated = {
+            ...parsed,
+            id: nextUser.id || parsed.id,
+            name: nextUser.name,
+            role: parsed.role || nextUser.role,
+            email: nextUser.email || parsed.email,
+          }
+          localStorage.setItem("user", JSON.stringify(updated))
+        } else {
+          localStorage.setItem(
+            "user",
+            JSON.stringify({
+              id: nextUser.id,
+              name: nextUser.name,
+              email: nextUser.email,
+              role: nextUser.role,
+              department: nextUser.department,
+              avatar: nextUser.avatar,
+            }),
+          )
+        }
+      } catch (e) {
+        console.warn("Failed to sync tutor to localStorage", e)
+      }
       setCourses((data?.courses || []).map((c: any) => ({
         id: c.id,
         name: c.name,
@@ -402,8 +435,20 @@ export default function TutorDashboard() {
     } catch (e: any) {
       console.error('Failed to load tutor dashboard:', e)
       setError(e?.message || 'Failed to load tutor dashboard')
-      // Fallback to mock so UI stays useful
-      setUser({ id: 'tutor-1', name: 'Dr. Sarah Wilson', email: 'dr.wilson@university.edu', role: 'Tutor', avatar: '/placeholder.svg?height=64&width=64', department: 'Mathematics & Science' })
+      const fallbackUser: User = {
+        id: 'tutor-1',
+        name: 'Dr. Sarah Wilson',
+        email: 'dr.wilson@university.edu',
+        role: 'Tutor',
+        avatar: '/placeholder.svg?height=64&width=64',
+        department: 'Mathematics & Science',
+      }
+      setUser(fallbackUser)
+      try {
+        localStorage.setItem('user', JSON.stringify(fallbackUser))
+      } catch (storageError) {
+        console.warn('Failed to sync fallback tutor to localStorage', storageError)
+      }
       setCourses(mockCourses)
       setStudents(mockStudents)
       setNotifications(mockNotifications)

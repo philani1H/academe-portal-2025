@@ -151,20 +151,20 @@ export default function AdminDashboard() {
     activeTutors: 0,
     pendingApprovals: 0,
   })
-  
+
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null)
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
-  
+
   const [newTutor, setNewTutor] = useState({
     name: "",
     email: "",
     department: "",
     specialization: "",
   })
-  
+
   const [newCourse, setNewCourse] = useState({
     name: "",
     description: "",
@@ -174,7 +174,7 @@ export default function AdminDashboard() {
     endDate: "",
     section: "",
   })
-  
+
   const [newNotification, setNewNotification] = useState({
     title: "",
     message: "",
@@ -192,17 +192,17 @@ export default function AdminDashboard() {
   const [emailSpecific, setEmailSpecific] = useState("")
   const [emailDepartment, setEmailDepartment] = useState("")
   const [emailSending, setEmailSending] = useState(false)
-  const [emailTemplate, setEmailTemplate] = useState<'announcement'|'course-update'|'tutor-invitation'|'student-update'|'welcome'|'password-reset'|'enrollment-confirmation'|'assignment-notification'|'grade-notification'|'system-alert'>('announcement')
+  const [emailTemplate, setEmailTemplate] = useState<'announcement' | 'course-update' | 'tutor-invitation' | 'student-update' | 'welcome' | 'password-reset' | 'enrollment-confirmation' | 'assignment-notification' | 'grade-notification' | 'system-alert'>('announcement')
   const [emailActionText, setEmailActionText] = useState("View Details")
   const [emailActionUrl, setEmailActionUrl] = useState("")
   const [emailHighlights, setEmailHighlights] = useState("")
   const [emailPreviewHtml, setEmailPreviewHtml] = useState("")
-  
+
   const [newDepartment, setNewDepartment] = useState({
     name: "",
     color: "#4f46e5",
   })
-  
+
   const [activeTab, setActiveTab] = useState("dashboard")
   const [showContentManager, setShowContentManager] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -230,7 +230,7 @@ export default function AdminDashboard() {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws);
-        
+
         const extractedEmails = data
           .map((row: any) => row.Email || row.email || row.EMAIL)
           .filter((email: any) => email && typeof email === 'string' && email.includes('@'));
@@ -252,11 +252,11 @@ export default function AdminDashboard() {
     };
     reader.readAsBinaryString(file);
   };
-  
+
   const [filterRole, setFilterRole] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
   const [filterDepartment, setFilterDepartment] = useState<string | null>(null)
-  
+
   const [isCreatingTutor, setIsCreatingTutor] = useState(false)
   const [isCreatingCourse, setIsCreatingCourse] = useState(false)
   const [isCreatingDepartment, setIsCreatingDepartment] = useState(false)
@@ -349,7 +349,7 @@ export default function AdminDashboard() {
       const deptList = (deptResp && (deptResp as any).data) ? (deptResp as any).data : deptResp
       const departments = Array.isArray(deptList) ? deptList.map((d: any, i: number) => ({
         id: d.name?.toLowerCase().replace(/\s+/g, '-') || `dept-${i}`,
-        name: d.name || `Department ${i+1}`,
+        name: d.name || `Department ${i + 1}`,
         courses: Number(d.courses || 0),
         tutors: 0,
         students: 0,
@@ -649,7 +649,7 @@ export default function AdminDashboard() {
       }
 
       setCourses((prev) => [...prev, newCourseData])
-      
+
       // Update tutor's courses
       setTutors((prev) =>
         prev.map((tutor) =>
@@ -658,14 +658,14 @@ export default function AdminDashboard() {
             : tutor
         )
       )
-      
+
       // Update department stats
       setDepartments((prev) =>
         prev.map((dept) =>
           dept.name === newCourse.department ? { ...dept, courses: dept.courses + 1 } : dept
         )
       )
-      
+
       setNewCourse({
         name: "",
         description: "",
@@ -1143,9 +1143,8 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <aside
-        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out ${
-          sidebarOpen ? "left-0 w-64" : "-left-64 w-64 md:left-0 md:w-20"
-        }`}
+        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out ${sidebarOpen ? "left-0 w-64" : "-left-64 w-64 md:left-0 md:w-20"
+          }`}
       >
         <div className="flex flex-col h-full">
           <div className="p-4 border-b border-gray-200 flex items-center justify-between">
@@ -1165,11 +1164,9 @@ export default function AdminDashboard() {
             <nav className="space-y-1 px-2">
               <button
                 onClick={() => setActiveTab("dashboard")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Home className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Dashboard</span>}
@@ -1177,11 +1174,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("tutors")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "tutors" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "tutors" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <User className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && (
@@ -1201,11 +1196,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("students")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "students" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "students" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Users className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && (
@@ -1225,11 +1218,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("courses")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <BookOpen className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && (
@@ -1249,11 +1240,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("departments")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "departments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "departments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Building className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Departments</span>}
@@ -1261,11 +1250,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("notifications")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Bell className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && (
@@ -1281,11 +1268,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("timetable")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Timetable</span>}
@@ -1293,11 +1278,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("content")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "content" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "content" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Layout className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Content</span>}
@@ -1305,11 +1288,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("finance")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "finance" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "finance" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <DollarSign className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Finance</span>}
@@ -1317,11 +1298,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("it_management")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "it_management" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "it_management" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Server className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>IT Management</span>}
@@ -1329,11 +1308,9 @@ export default function AdminDashboard() {
 
               <button
                 onClick={() => setActiveTab("settings")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "settings" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "settings" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Settings className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Settings</span>}
@@ -1406,9 +1383,8 @@ export default function AdminDashboard() {
                     setActiveTab("dashboard")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Home className="h-5 w-5 mr-2" />
                   <span>Dashboard</span>
@@ -1419,9 +1395,8 @@ export default function AdminDashboard() {
                     setActiveTab("tutors")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "tutors" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "tutors" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <User className="h-5 w-5 mr-2" />
                   <div className="flex justify-between items-center w-full">
@@ -1437,9 +1412,8 @@ export default function AdminDashboard() {
                     setActiveTab("students")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "students" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "students" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Users className="h-5 w-5 mr-2" />
                   <div className="flex justify-between items-center w-full">
@@ -1455,9 +1429,8 @@ export default function AdminDashboard() {
                     setActiveTab("courses")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <BookOpen className="h-5 w-5 mr-2" />
                   <div className="flex justify-between items-center w-full">
@@ -1473,9 +1446,8 @@ export default function AdminDashboard() {
                     setActiveTab("departments")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "departments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "departments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Building className="h-5 w-5 mr-2" />
                   <span>Departments</span>
@@ -1486,9 +1458,8 @@ export default function AdminDashboard() {
                     setActiveTab("notifications")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Bell className="h-5 w-5 mr-2" />
                   <div className="flex justify-between items-center w-full">
@@ -1502,9 +1473,8 @@ export default function AdminDashboard() {
                     setActiveTab("timetable")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Calendar className="h-5 w-5 mr-2" />
                   <span>Timetable</span>
@@ -1515,9 +1485,8 @@ export default function AdminDashboard() {
                     setActiveTab("finance")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "finance" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "finance" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <DollarSign className="h-5 w-5 mr-2" />
                   <span>Finance</span>
@@ -1528,9 +1497,8 @@ export default function AdminDashboard() {
                     setActiveTab("it_management")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "it_management" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "it_management" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Server className="h-5 w-5 mr-2" />
                   <span>IT Management</span>
@@ -1541,9 +1509,8 @@ export default function AdminDashboard() {
                     setActiveTab("settings")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "settings" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "settings" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Settings className="h-5 w-5 mr-2" />
                   <span>Settings</span>
@@ -1571,209 +1538,209 @@ export default function AdminDashboard() {
         {/* Header */}
         <header className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
           <div className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center gap-4">
-                <Button variant="ghost" size="sm" onClick={() => setMobileMenuOpen(true)} className="lg:hidden">
-                  <Menu className="h-4 w-4" />
-                </Button>
-                <div>
-                  <h2 className="text-lg font-semibold capitalize">{activeTab}</h2>
-                  <p className="text-sm text-muted-foreground">
-                    {activeTab === "dashboard" && "Overview of your teaching activities"}
-                    {activeTab === "courses" && "Manage your courses and content"}
-                    {activeTab === "students" && "Track student progress and enrollment"}
-                    {activeTab === "timetable" && "Manage class schedules and events"}
-                    {activeTab === "tests" && "Create and manage assessments"}
-                    {activeTab === "notifications" && "Communication and alerts"}
-                    {activeTab === "analytics" && "Performance insights and metrics"}
-                    {activeTab === "materials" && "Upload and organize course materials"}
-                    {activeTab === "settings" && "Configure your preferences"}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap justify-end">
-                <Button size="sm" onClick={() => setInviteOpen(true)}>
-                  <UserPlus className="h-4 w-4 mr-2" /> Invite
-                </Button>
-                <Button variant="ghost" size="sm" className="relative">
-                  <Bell className="h-4 w-4" />
-                  {unreadCount > 0 && (
-                    <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
-                      {unreadCount}
-                    </Badge>
-                  )}
-                </Button>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" className="relative">
-                        <Bell className="h-4 w-4" />
-                        {unreadCount > 0 && (
-                          <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
-                            {unreadCount}
-                          </Badge>
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>You have {unreadCount} unread notifications</p>
-                    </TooltipContent>
-                  </Tooltip>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="flex items-center gap-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <span className="hidden md:inline-block">{user.name}</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>
-                      <User className="mr-2 h-4 w-4" />
-                      <span>Profile</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>
-                      <LogOut className="mr-2 h-4 w-4" />
-                      <span>Logout</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" onClick={() => setMobileMenuOpen(true)} className="lg:hidden">
+                <Menu className="h-4 w-4" />
+              </Button>
+              <div>
+                <h2 className="text-lg font-semibold capitalize">{activeTab}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {activeTab === "dashboard" && "Overview of your teaching activities"}
+                  {activeTab === "courses" && "Manage your subjects and content"}
+                  {activeTab === "students" && "Track student progress and enrollment"}
+                  {activeTab === "timetable" && "Manage class schedules and events"}
+                  {activeTab === "tests" && "Create and manage assessments"}
+                  {activeTab === "notifications" && "Communication and alerts"}
+                  {activeTab === "analytics" && "Performance insights and metrics"}
+                  {activeTab === "materials" && "Upload and organize course materials"}
+                  {activeTab === "settings" && "Configure your preferences"}
+                </p>
               </div>
             </div>
-          </header>
-          {/* Invite Dialog */}
-          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Send Invitations</DialogTitle>
-                <DialogDescription>
-                  Invite students or tutors by email. Separate multiple emails with commas or new lines.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <Button variant={inviteTarget === 'students' ? 'default' : 'outline'} onClick={() => setInviteTarget('students')}>Students</Button>
-                  <Button variant={inviteTarget === 'tutors' ? 'default' : 'outline'} onClick={() => setInviteTarget('tutors')}>Tutors</Button>
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <Label>Emails</Label>
-                  <div>
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="hidden" 
-                      accept=".xlsx,.xls,.csv" 
-                      onChange={handleFileUpload}
-                    />
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => fileInputRef.current?.click()}
-                      className="h-8 gap-2"
-                    >
-                      <Upload className="h-3 w-3" />
-                      Import Excel
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} placeholder="one@example.com, two@example.com" rows={3} />
-                </div>
-                {inviteTarget === 'students' && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Course Name</Label>
-                      <Select value={inviteCourseName} onValueChange={(v) => {
-                        setInviteCourseName(v);
-                        const course = courses.find(c => c.name === v);
-                        if (course) {
-                          setInviteDepartment(course.department);
-                          const tutor = tutors.find(t => t.id === course.tutorId);
-                          if (tutor) setInviteTutorName(tutor.name);
-                        }
-                      }}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Course" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {courses.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Tutor Name</Label>
-                      <Select value={inviteTutorName} onValueChange={setInviteTutorName}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Tutor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {tutors.map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <Button size="sm" onClick={() => setInviteOpen(true)}>
+                <UserPlus className="h-4 w-4 mr-2" /> Invite
+              </Button>
+              <Button variant="ghost" size="sm" className="relative">
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
+                    {unreadCount}
+                  </Badge>
                 )}
-                <div className="space-y-2">
-                  <Label>Department</Label>
-                  <Select value={inviteDepartment} onValueChange={setInviteDepartment}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
-                  <Button disabled={inviteSubmitting} onClick={async () => {
-                    const emails = inviteEmails.split(/[,\n]/).map(e => e.trim()).filter(Boolean)
-                    if (emails.length === 0) {
-                      toast({ title: 'No emails', description: 'Please enter at least one email', variant: 'destructive' })
-                      return
-                    }
-                    setInviteSubmitting(true)
-                    try {
-                      if (inviteTarget === 'students') {
-                        const res = await apiFetch<any>('/api/admin/students/invite', {
-                          method: 'POST',
-                          body: JSON.stringify({ emails, courseName: inviteCourseName || undefined, tutorName: inviteTutorName || undefined, department: inviteDepartment || undefined })
-                        })
-                        const invited = Array.isArray(res?.invited) ? res.invited : []
-                        const sent = invited.filter((x: any) => x.sent).length
-                        toast({ title: 'Invitations sent', description: `${sent}/${emails.length} emails queued` })
-                      } else {
-                        const res = await apiFetch<any>('/api/admin/tutors/invite', {
-                          method: 'POST',
-                          body: JSON.stringify({ emails, tutorName: inviteTutorName || undefined, department: inviteDepartment || undefined })
-                        })
-                        const invited = Array.isArray(res?.invited) ? res.invited : []
-                        const sent = invited.filter((x: any) => x.sent).length
-                        toast({ title: 'Tutor invitations sent', description: `${sent}/${emails.length} emails queued` })
-                      }
-                      setInviteOpen(false)
-                      setInviteEmails('')
-                      setInviteCourseName('')
-                      setInviteTutorName('')
-                      setInviteDepartment('')
-                    } catch (e: any) {
-                      toast({ title: 'Failed to send invitations', description: e?.message || 'Try again later', variant: 'destructive' })
-                    } finally {
-                      setInviteSubmitting(false)
-                    }
-                  }}>{inviteSubmitting ? 'Sending...' : 'Send Invitations'}</Button>
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" className="relative">
+                    <Bell className="h-4 w-4" />
+                    {unreadCount > 0 && (
+                      <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
+                        {unreadCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>You have {unreadCount} unread notifications</p>
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center gap-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <span className="hidden md:inline-block">{user.name}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Profile</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Logout</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </header>
+        {/* Invite Dialog */}
+        <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Send Invitations</DialogTitle>
+              <DialogDescription>
+                Invite students or tutors by email. Separate multiple emails with commas or new lines.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Button variant={inviteTarget === 'students' ? 'default' : 'outline'} onClick={() => setInviteTarget('students')}>Students</Button>
+                <Button variant={inviteTarget === 'tutors' ? 'default' : 'outline'} onClick={() => setInviteTarget('tutors')}>Tutors</Button>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <Label>Emails</Label>
+                <div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleFileUpload}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-8 gap-2"
+                  >
+                    <Upload className="h-3 w-3" />
+                    Import Excel
+                  </Button>
                 </div>
               </div>
-            </DialogContent>
-          </Dialog>
+
+              <div className="space-y-2">
+                <Textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} placeholder="one@example.com, two@example.com" rows={3} />
+              </div>
+              {inviteTarget === 'students' && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Course Name</Label>
+                    <Select value={inviteCourseName} onValueChange={(v) => {
+                      setInviteCourseName(v);
+                      const course = courses.find(c => c.name === v);
+                      if (course) {
+                        setInviteDepartment(course.department);
+                        const tutor = tutors.find(t => t.id === course.tutorId);
+                        if (tutor) setInviteTutorName(tutor.name);
+                      }
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Course" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {courses.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tutor Name</Label>
+                    <Select value={inviteTutorName} onValueChange={setInviteTutorName}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Tutor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tutors.map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+              <div className="space-y-2">
+                <Label>Department</Label>
+                <Select value={inviteDepartment} onValueChange={setInviteDepartment}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
+                <Button disabled={inviteSubmitting} onClick={async () => {
+                  const emails = inviteEmails.split(/[,\n]/).map(e => e.trim()).filter(Boolean)
+                  if (emails.length === 0) {
+                    toast({ title: 'No emails', description: 'Please enter at least one email', variant: 'destructive' })
+                    return
+                  }
+                  setInviteSubmitting(true)
+                  try {
+                    if (inviteTarget === 'students') {
+                      const res = await apiFetch<any>('/api/admin/students/invite', {
+                        method: 'POST',
+                        body: JSON.stringify({ emails, courseName: inviteCourseName || undefined, tutorName: inviteTutorName || undefined, department: inviteDepartment || undefined })
+                      })
+                      const invited = Array.isArray(res?.invited) ? res.invited : []
+                      const sent = invited.filter((x: any) => x.sent).length
+                      toast({ title: 'Invitations sent', description: `${sent}/${emails.length} emails queued` })
+                    } else {
+                      const res = await apiFetch<any>('/api/admin/tutors/invite', {
+                        method: 'POST',
+                        body: JSON.stringify({ emails, tutorName: inviteTutorName || undefined, department: inviteDepartment || undefined })
+                      })
+                      const invited = Array.isArray(res?.invited) ? res.invited : []
+                      const sent = invited.filter((x: any) => x.sent).length
+                      toast({ title: 'Tutor invitations sent', description: `${sent}/${emails.length} emails queued` })
+                    }
+                    setInviteOpen(false)
+                    setInviteEmails('')
+                    setInviteCourseName('')
+                    setInviteTutorName('')
+                    setInviteDepartment('')
+                  } catch (e: any) {
+                    toast({ title: 'Failed to send invitations', description: e?.message || 'Try again later', variant: 'destructive' })
+                  } finally {
+                    setInviteSubmitting(false)
+                  }
+                }}>{inviteSubmitting ? 'Sending...' : 'Send Invitations'}</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Page content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1815,7 +1782,7 @@ export default function AdminDashboard() {
                 >
                   <Card className="border-l-4 border-blue-500">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Active Courses</CardTitle>
+                      <CardTitle className="text-sm font-medium">Active Subjects</CardTitle>
                       <BookOpen className="h-4 w-4 text-blue-500" />
                     </CardHeader>
                     <CardContent>
@@ -1976,7 +1943,7 @@ export default function AdminDashboard() {
                           >
                             <div>
                               <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="bg-amber-100 text-amber-800 hover:bg-amber-100">Course</Badge>
+                                <Badge variant="outline" className="bg-amber-100 text-amber-800 hover:bg-amber-100">Subject</Badge>
                                 <h3 className="font-medium">{course.name}</h3>
                               </div>
                               <p className="text-sm text-muted-foreground">{course.description}</p>
@@ -2092,20 +2059,20 @@ export default function AdminDashboard() {
                       <DialogTrigger asChild>
                         <Button className="w-full justify-start" variant="outline">
                           <Plus className="h-4 w-4 mr-2" />
-                          Create New Course
+                          Create New Subject
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Create New Course</DialogTitle>
+                          <DialogTitle>Create New Subject</DialogTitle>
                           <DialogDescription>
-                            Create a new course and assign it to a tutor.
+                            Create a new subject and assign it to a tutor.
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                              <Label htmlFor="course-name">Course Name</Label>
+                              <Label htmlFor="course-name">Subject Name</Label>
                               <Input
                                 id="course-name"
                                 placeholder="e.g., Advanced Physics"
@@ -2127,7 +2094,7 @@ export default function AdminDashboard() {
                             <Label htmlFor="course-description">Description</Label>
                             <Textarea
                               id="course-description"
-                              placeholder="Brief description of the course"
+                              placeholder="Brief description of the subject"
                               rows={3}
                               value={newCourse.description}
                               onChange={(e) => setNewCourse({ ...newCourse, description: e.target.value })}
@@ -2157,8 +2124,8 @@ export default function AdminDashboard() {
                               <Select
                                 onValueChange={(value) => {
                                   const tutor = tutors.find(t => t.id === value);
-                                  setNewCourse({ 
-                                    ...newCourse, 
+                                  setNewCourse({
+                                    ...newCourse,
                                     tutorId: value,
                                     department: tutor?.department || newCourse.department
                                   });
@@ -2203,7 +2170,7 @@ export default function AdminDashboard() {
                         </div>
                         <DialogFooter>
                           <Button onClick={handleCreateCourse} disabled={isCreatingCourse || !newCourse.name.trim() || !newCourse.description.trim() || !newCourse.department || !newCourse.tutorId || !newCourse.startDate || !newCourse.endDate}>
-                            {isCreatingCourse ? "Creating..." : "Create Course"}
+                            {isCreatingCourse ? "Creating..." : "Create Subject"}
                           </Button>
                         </DialogFooter>
                       </DialogContent>
@@ -2254,7 +2221,7 @@ export default function AdminDashboard() {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="system">System</SelectItem>
-                                <SelectItem value="course">Course</SelectItem>
+                                <SelectItem value="course">Subject</SelectItem>
                                 <SelectItem value="user">User</SelectItem>
                               </SelectContent>
                             </Select>
@@ -3470,12 +3437,12 @@ export default function AdminDashboard() {
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Finance Management</h2>
                 <div className="flex gap-2">
-                   <Button variant="outline">
+                  <Button variant="outline">
                     <Download className="mr-2 h-4 w-4" /> Export Report
-                   </Button>
-                   <Button>
+                  </Button>
+                  <Button>
                     <Plus className="mr-2 h-4 w-4" /> New Transaction
-                   </Button>
+                  </Button>
                 </div>
               </div>
 
@@ -3492,7 +3459,7 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
                 <Card>
-                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Expenses</CardTitle>
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
@@ -3501,8 +3468,8 @@ export default function AdminDashboard() {
                     <p className="text-xs text-muted-foreground">+4.5% from last month</p>
                   </CardContent>
                 </Card>
-                 <Card>
-                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
@@ -3511,8 +3478,8 @@ export default function AdminDashboard() {
                     <p className="text-xs text-muted-foreground">+28.4% from last month</p>
                   </CardContent>
                 </Card>
-                 <Card>
-                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Pending Payouts</CardTitle>
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
@@ -3529,7 +3496,7 @@ export default function AdminDashboard() {
                   <TabsTrigger value="invoices">Invoices</TabsTrigger>
                   <TabsTrigger value="payroll">Payroll</TabsTrigger>
                 </TabsList>
-                
+
                 <TabsContent value="transactions" className="space-y-4">
                   <Card>
                     <CardHeader>
@@ -3537,7 +3504,7 @@ export default function AdminDashboard() {
                       <CardDescription>All financial activity in the system</CardDescription>
                     </CardHeader>
                     <CardContent>
-                       <Table>
+                      <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead>Transaction ID</TableHead>
@@ -3548,7 +3515,7 @@ export default function AdminDashboard() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                           {[1, 2, 3, 4, 5].map((i) => (
+                          {[1, 2, 3, 4, 5].map((i) => (
                             <TableRow key={i}>
                               <TableCell className="font-medium">TRX-{1000 + i}</TableCell>
                               <TableCell>{new Date().toLocaleDateString()}</TableCell>
@@ -3556,15 +3523,15 @@ export default function AdminDashboard() {
                               <TableCell className="text-green-600">+$199.00</TableCell>
                               <TableCell><Badge variant="outline" className="bg-green-50 text-green-700">Completed</Badge></TableCell>
                             </TableRow>
-                           ))}
+                          ))}
                         </TableBody>
                       </Table>
                     </CardContent>
                   </Card>
                 </TabsContent>
-                
+
                 <TabsContent value="invoices">
-                   <Card>
+                  <Card>
                     <CardHeader>
                       <CardTitle>Invoices</CardTitle>
                       <CardDescription>Manage student invoices</CardDescription>
@@ -3572,11 +3539,11 @@ export default function AdminDashboard() {
                     <CardContent>
                       <div className="text-center py-8 text-muted-foreground">No pending invoices</div>
                     </CardContent>
-                   </Card>
+                  </Card>
                 </TabsContent>
 
                 <TabsContent value="payroll">
-                   <Card>
+                  <Card>
                     <CardHeader>
                       <CardTitle>Tutor Payroll</CardTitle>
                       <CardDescription>Manage tutor payments and history</CardDescription>
@@ -3584,7 +3551,7 @@ export default function AdminDashboard() {
                     <CardContent>
                       <div className="text-center py-8 text-muted-foreground">Payroll system ready</div>
                     </CardContent>
-                   </Card>
+                  </Card>
                 </TabsContent>
               </Tabs>
             </div>
@@ -3593,7 +3560,7 @@ export default function AdminDashboard() {
           {/* IT Management Tab */}
           {activeTab === "it_management" && (
             <div className="space-y-6">
-               <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">IT Management</h2>
                 <Button variant="destructive">
                   <AlertCircle className="mr-2 h-4 w-4" /> System Lockdown
@@ -3618,7 +3585,7 @@ export default function AdminDashboard() {
                         <span>12%</span>
                       </div>
                       <Progress value={12} className="h-1" />
-                       <div className="flex justify-between">
+                      <div className="flex justify-between">
                         <span>Memory Usage</span>
                         <span>45%</span>
                       </div>
@@ -3627,23 +3594,23 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
 
-                 <Card>
+                <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Database className="h-5 w-5" /> Database
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                     <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2">
                       <div className="h-3 w-3 rounded-full bg-green-500"></div>
                       <span className="font-medium">Connected</span>
                     </div>
                     <div className="space-y-2 text-sm text-muted-foreground">
-                       <div className="flex justify-between">
+                      <div className="flex justify-between">
                         <span>Connections</span>
                         <span>24/100</span>
                       </div>
-                       <div className="flex justify-between">
+                      <div className="flex justify-between">
                         <span>Size</span>
                         <span>1.2 GB</span>
                       </div>
@@ -3651,23 +3618,23 @@ export default function AdminDashboard() {
                   </CardContent>
                 </Card>
 
-                 <Card>
+                <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Globe className="h-5 w-5" /> Network
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                     <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2">
                       <div className="h-3 w-3 rounded-full bg-green-500"></div>
                       <span className="font-medium">Online</span>
                     </div>
-                     <div className="space-y-2 text-sm text-muted-foreground">
-                       <div className="flex justify-between">
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <div className="flex justify-between">
                         <span>Latency</span>
                         <span>24ms</span>
                       </div>
-                       <div className="flex justify-between">
+                      <div className="flex justify-between">
                         <span>Requests/min</span>
                         <span>340</span>
                       </div>

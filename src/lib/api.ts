@@ -303,17 +303,17 @@ export const api = {
   },
 
   async createTest(test: Partial<Test>): Promise<Test> {
-    const res = await apiFetch<any>('/api/tests', { method: 'POST', body: JSON.stringify(test) });
-    const t = res?.data ?? res;
+    const res = await apiFetch<any>('/api/tests/save', { method: 'POST', body: JSON.stringify(test) });
+    const id = String(res?.id ?? crypto.randomUUID());
     return {
-      id: String(t.id ?? t.ID ?? crypto.randomUUID()),
-      title: t.title,
-      description: t.description,
-      courseId: t.courseId,
-      dueDate: t.dueDate,
-      status: t.status ?? 'draft',
-      questions: t.questions ?? [],
-      totalPoints: t.totalPoints ?? 0,
+      id,
+      title: test.title || 'Untitled Test',
+      description: test.description || '',
+      courseId: String(test.courseId || ''),
+      dueDate: test.dueDate || new Date().toISOString(),
+      status: (test as any).status || 'draft',
+      questions: test.questions || [],
+      totalPoints: (test as any).totalPoints ?? 0,
       submissions: 0,
       averageScore: 0
     };

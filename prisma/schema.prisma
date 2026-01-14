@@ -13,6 +13,7 @@ model User {
   email            String             @unique(map: "sqlite_autoindex_users_1")
   password_hash    String
   role             String
+  department       String?
   createdAt        DateTime?          @default(now()) @map("created_at")
   updatedAt        DateTime?          @default(now()) @updatedAt @map("updated_at")
   courses          Course[]
@@ -30,6 +31,7 @@ model Course {
   name              String
   description       String?
   category          String?
+  department        String?
   tutorId           Int?               @map("tutor_id")
   createdAt         DateTime?          @default(now()) @map("created_at")
   updatedAt         DateTime?          @default(now()) @updatedAt @map("updated_at")

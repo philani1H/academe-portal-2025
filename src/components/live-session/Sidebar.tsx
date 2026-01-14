@@ -51,7 +51,8 @@ export function Sidebar({
   chatEndRef,
   fileInputRef,
   socket,
-  sessionId
+  sessionId,
+  currentUserId
 }: SidebarProps) {
   if (!isOpen) return null
 
@@ -113,6 +114,7 @@ export function Sidebar({
           <ParticipantsTab
             participants={participants}
             userRole={userRole}
+            currentUserId={currentUserId}
             onGrantShare={onGrantShare || (() => {})}
             onRevokeShare={onRevokeShare || (() => {})}
             onMuteParticipant={onMuteParticipant}

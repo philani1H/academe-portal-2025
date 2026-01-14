@@ -11,6 +11,9 @@ import jwt from 'jsonwebtoken';
 import { sendEmail, renderBrandedEmail, renderInvitationEmail, renderBrandedEmailPreview, renderStudentCredentialsEmail } from '../lib/email';
 import crypto from 'crypto';
 import multer from 'multer';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 
 // Resolve base path in both ESM and CJS
 const resolvedDir = (typeof __dirname !== 'undefined')
@@ -51,7 +54,7 @@ const startScheduledSessionChecker = () => {
       });
 
       for (const session of scheduledSessions) {
-        console.log(`Auto-starting scheduled session: ${session.title} for course ${session.course.name}`);
+        console.log(`Auto-starting scheduled session: ${session.title} for courseId=${session.courseId}, courseName=${session.course.name}`);
 
         // Generate session ID
         const sessionId = `${session.courseId}-${Date.now()}`;
@@ -65,20 +68,22 @@ const startScheduledSessionChecker = () => {
           }
         });
 
-        // Start the session (same logic as session-started handler)
         activeSessions.set(String(session.courseId), {
           sessionId,
           courseId: session.courseId,
           tutorName: session.tutor.name,
-          message: `${session.tutor.name} started a scheduled live session!`
+          courseName: session.course.name,
+          department: session.course.category,
+          message: `${session.tutor.name} started a scheduled live session for ${session.course.name}!`
         });
 
-        // Broadcast to all students enrolled in the course
         io.to(`course:${session.courseId}`).emit('session-live', {
           sessionId,
           courseId: session.courseId,
           tutorName: session.tutor.name,
-          message: `${session.tutor.name} started a scheduled live session!`
+          courseName: session.course.name,
+          department: session.course.category,
+          message: `${session.tutor.name} started a scheduled live session for ${session.course.name}!`
         });
 
         // Send emails to enrolled students
@@ -154,38 +159,38 @@ const isProd = process.env.NODE_ENV === 'production';
 const corsOptions = {
   origin: isProd
     ? (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-        // Allow requests with no origin (mobile apps, Postman, etc.)
-        if (!origin) return callback(null, true);
+      // Allow requests with no origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
 
-        const allowedOrigins = [
-          'https://excellence-akademie.com',
-          'https://www.excellence-akademie.com',
-          'https://excellence-akademie.co.za',
-          'https://www.excellence-akademie.co.za',
-          'https://excellenceakademie.co.za',
-          'https://www.excellenceakademie.co.za',
-          'https://excellenceacademia.co.za',
-          'https://www.excellenceacademia.co.za',
-          'https://academe-2025.onrender.com',
-          'https://academe-portal-2025.onrender.com',
-          process.env.FRONTEND_URL
-        ].filter(Boolean as any);
+      const allowedOrigins = [
+        'https://excellence-akademie.com',
+        'https://www.excellence-akademie.com',
+        'https://excellence-akademie.co.za',
+        'https://www.excellence-akademie.co.za',
+        'https://excellenceakademie.co.za',
+        'https://www.excellenceakademie.co.za',
+        'https://excellenceacademia.co.za',
+        'https://www.excellenceacademia.co.za',
+        'https://academe-2025.onrender.com',
+        'https://academe-portal-2025.onrender.com',
+        process.env.FRONTEND_URL
+      ].filter(Boolean as any);
 
-        try {
-          const originUrl = new URL(origin);
-          const originHost = originUrl.host;
-          const allowedHosts = allowedOrigins.map((u: string) => new URL(u).host);
-          const isAllowed = allowedHosts.some((h: string) => originHost === h);
-          if (isAllowed) return callback(null, true);
-        } catch {}
+      try {
+        const originUrl = new URL(origin);
+        const originHost = originUrl.host;
+        const allowedHosts = allowedOrigins.map((u: string) => new URL(u).host);
+        const isAllowed = allowedHosts.some((h: string) => originHost === h);
+        if (isAllowed) return callback(null, true);
+      } catch { }
 
-        callback(new Error('Not allowed by CORS'));
-      }
+      callback(new Error('Not allowed by CORS'));
+    }
     : true, // in development, allow all origins so Vite LAN hosts work
   credentials: true,
   optionsSuccessStatus: 200,
   allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS']
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS']
 };
 
 app.use(cors(corsOptions as any));
@@ -193,66 +198,67 @@ app.use(express.json());
 
 // Timetable API
 const timetableFile = path.resolve(resolvedDir, 'data', 'timetable.json');
+const testsFile = path.resolve(resolvedDir, 'data', 'tests.json');
 
 // Ensure data directory exists
 fs.mkdir(path.dirname(timetableFile), { recursive: true }).catch(console.error);
 
 app.get('/api/timetable', async (req, res) => {
-    try {
-        const data = await fs.readFile(timetableFile, 'utf-8');
-        res.json({ data: JSON.parse(data) });
-    } catch (error) {
-        // If file doesn't exist, return empty array
-        res.json({ data: [] });
-    }
+  try {
+    const data = await fs.readFile(timetableFile, 'utf-8');
+    res.json({ data: JSON.parse(data) });
+  } catch (error) {
+    // If file doesn't exist, return empty array
+    res.json({ data: [] });
+  }
 });
 
 app.post('/api/timetable', async (req, res) => {
+  try {
+    const { timetable } = req.body;
+
+    // Read existing for diffing
+    let existing: any[] = [];
     try {
-        const { timetable } = req.body;
-        
-        // Read existing for diffing
-        let existing: any[] = [];
-        try {
-            const fileData = await fs.readFile(timetableFile, 'utf-8');
-            existing = JSON.parse(fileData);
-        } catch (e) {
-            // ignore
-        }
+      const fileData = await fs.readFile(timetableFile, 'utf-8');
+      existing = JSON.parse(fileData);
+    } catch (e) {
+      // ignore
+    }
 
-        // Find new entries
-        const existingIds = new Set(existing.map((e: any) => e.id));
-        const newEntries = Array.isArray(timetable) ? timetable.filter((e: any) => !existingIds.has(e.id)) : [];
+    // Find new entries
+    const existingIds = new Set(existing.map((e: any) => e.id));
+    const newEntries = Array.isArray(timetable) ? timetable.filter((e: any) => !existingIds.has(e.id)) : [];
 
-        // Save updated timetable
-        await fs.writeFile(timetableFile, JSON.stringify(timetable, null, 2));
-        res.json({ success: true });
+    // Save updated timetable
+    await fs.writeFile(timetableFile, JSON.stringify(timetable, null, 2));
+    res.json({ success: true });
 
-        // Send emails for new entries asynchronously
-        if (newEntries.length > 0) {
-            console.log(`Found ${newEntries.length} new timetable entries. Sending emails...`);
-            (async () => {
-                for (const entry of newEntries) {
-                    try {
-                        // Find course by name (fuzzy match)
-                        if (!entry.courseName) continue;
-                        
-                        const course = await prisma.course.findFirst({
-                            where: { name: { contains: entry.courseName } },
-                            include: {
-                                courseEnrollments: {
-                                    include: { user: true }
-                                }
-                            }
-                        });
+    // Send emails for new entries asynchronously
+    if (newEntries.length > 0) {
+      console.log(`Found ${newEntries.length} new timetable entries. Sending emails...`);
+      (async () => {
+        for (const entry of newEntries) {
+          try {
+            // Find course by name (fuzzy match)
+            if (!entry.courseName) continue;
 
-                        if (course && course.courseEnrollments.length > 0) {
-                             const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-                             
-                             await Promise.all(course.courseEnrollments.map(async (enrollment) => {
-                                const student = enrollment.user;
-                                if (student.email) {
-                                    const content = `
+            const course = await prisma.course.findFirst({
+              where: { name: { contains: entry.courseName } },
+              include: {
+                courseEnrollments: {
+                  include: { user: true }
+                }
+              }
+            });
+
+            if (course && course.courseEnrollments.length > 0) {
+              const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+
+              await Promise.all(course.courseEnrollments.map(async (enrollment) => {
+                const student = enrollment.user;
+                if (student.email) {
+                  const content = `
                                         <div style="font-family: sans-serif; color: #333;">
                                             <h2>New Class Scheduled</h2>
                                             <p>Hi ${student.name},</p>
@@ -265,25 +271,25 @@ app.post('/api/timetable', async (req, res) => {
                                             <a href="${frontendBase}/student/dashboard?tab=timetable" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Timetable</a>
                                         </div>
                                     `;
-                                    await sendEmail({
-                                        to: student.email,
-                                        subject: `📅 New Class: ${entry.courseName}`,
-                                        content
-                                    });
-                                }
-                             }));
-                        }
-                    } catch (err) {
-                        console.error('Error processing timetable email:', err);
-                    }
+                  await sendEmail({
+                    to: student.email,
+                    subject: `📅 New Class: ${entry.courseName}`,
+                    content
+                  });
                 }
-            })();
+              }));
+            }
+          } catch (err) {
+            console.error('Error processing timetable email:', err);
+          }
         }
-
-    } catch (error) {
-        console.error('Error saving timetable:', error);
-        res.status(500).json({ error: 'Failed to save timetable' });
+      })();
     }
+
+  } catch (error) {
+    console.error('Error saving timetable:', error);
+    res.status(500).json({ error: 'Failed to save timetable' });
+  }
 });
 
 // Configure Multer for file uploads
@@ -299,49 +305,138 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
-    storage: storage,
-    limits: {
-        fileSize: 500 * 1024 * 1024 // Limit file size to 500MB
-    }
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 500 * 1024 * 1024 // Limit file size to 500MB
+  }
 });
 
 // Upload endpoint for course materials
 app.post('/api/upload/material', upload.single('file'), async (req, res) => {
-    try {
-        const file = req.file;
-        const { courseId, type, name, description } = req.body;
+  try {
+    const file = req.file;
+    const { courseId, type, name, description } = req.body;
 
-        if (!file) {
-            return res.status(400).json({ error: 'No file uploaded' });
-        }
-        if (!courseId) {
-            // Clean up file if no courseId
-            await fs.unlink(file.path).catch(console.error);
-            return res.status(400).json({ error: 'Course ID is required' });
-        }
-
-        // Create URL (relative path)
-        const fileUrl = `/uploads/${file.filename}`;
-
-        console.log(`File uploaded: ${file.filename} for course ${courseId}`);
-
-        // Save to database
-        const material = await prisma.courseMaterial.create({
-            data: {
-                courseId: parseInt(courseId),
-                name: name || file.originalname,
-                type: type || 'video',
-                url: fileUrl,
-                description: description || 'Live session recording'
-            }
-        });
-
-        res.json({ success: true, material });
-    } catch (error) {
-        console.error('Upload error:', error);
-        res.status(500).json({ error: 'Failed to upload material' });
+    if (!file) {
+      return res.status(400).json({ error: 'No file uploaded' });
     }
+    if (!courseId) {
+      // Clean up file if no courseId
+      await fs.unlink(file.path).catch(console.error);
+      return res.status(400).json({ error: 'Course ID is required' });
+    }
+
+    // Create URL (relative path)
+    const fileUrl = `/uploads/${file.filename}`;
+
+    console.log(`File uploaded: ${file.filename} for course ${courseId}`);
+
+    // Save to database
+    const material = await prisma.courseMaterial.create({
+      data: {
+        courseId: parseInt(courseId),
+        name: name || file.originalname,
+        type: type || 'video',
+        url: fileUrl,
+        description: description || 'Live session recording'
+      }
+    });
+
+    res.json({ success: true, material });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: 'Failed to upload material' });
+  }
+});
+
+app.post('/api/tests/upload', upload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ success: false, error: 'No file' });
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext !== '.pdf') {
+      await fs.unlink(file.path).catch(() => {});
+      return res.status(400).json({ success: false, error: 'Only PDF supported' });
+    }
+    const data = await fs.readFile(file.path);
+    const parsed = await pdfParse(data);
+    const text = String(parsed.text || '').replace(/\r/g, '');
+    const rawSections = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
+    const sections = rawSections.map((s, i) => {
+      const lines = s.split('\n');
+      const titleLine = lines[0] || `Section ${i + 1}`;
+      const content = lines.slice(1).join('\n');
+      return { title: titleLine, content: content || s };
+    });
+    await fs.unlink(file.path).catch(() => {});
+    return res.json({ success: true, sections });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Parse failed' });
+  }
+});
+
+app.post('/api/tests/generate', async (req, res) => {
+  try {
+    const { sections, options } = req.body || {};
+    const num = Number(options?.count || 20);
+    const sentences = Array.isArray(sections)
+      ? sections.flatMap((sec: any) => String(sec?.content || '').split(/[\.!\?]\s+/).map((t: string) => t.trim()).filter((t: string) => t.length > 20))
+      : [];
+    const pick = (arr: string[], n: number) => arr.slice(0, n);
+    const slice = pick(sentences, num);
+    const randWord = (s: string) => {
+      const words = s.split(/\s+/).filter(w => w.length > 6);
+      return words[0] || null;
+    };
+    const makeMCQ = (s: string) => {
+      const key = randWord(s) || s.split(/\s+/)[0];
+      const distractors = ['analysis', 'process', 'context', 'outcome'].filter(d => d.toLowerCase() !== String(key).toLowerCase());
+      const options = [key, ...distractors].slice(0, 4).sort(() => Math.random() - 0.5);
+      return { type: 'mcq', prompt: s, options, answer: key };
+    };
+    const makeTF = (s: string) => {
+      return { type: 'true_false', prompt: s, answer: true };
+    };
+    const makeFill = (s: string) => {
+      const key = randWord(s);
+      if (!key) return { type: 'short', prompt: s, answer: '' };
+      const prompt = s.replace(new RegExp(key, 'i'), '_____');
+      return { type: 'fill', prompt, answer: key };
+    };
+    const makeShort = (s: string) => {
+      return { type: 'short', prompt: s, answer: '' };
+    };
+    const out: any[] = [];
+    slice.forEach((s, i) => {
+      if (i % 4 === 0) out.push(makeMCQ(s));
+      else if (i % 4 === 1) out.push(makeTF(s));
+      else if (i % 4 === 2) out.push(makeFill(s));
+      else out.push(makeShort(s));
+    });
+    return res.json({ success: true, questions: out });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Generate failed' });
+  }
+});
+
+app.post('/api/tests/save', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const id = String(body?.id || Date.now());
+    const payload = { id, ...body };
+    let existing: any[] = [];
+    try {
+      const raw = await fs.readFile(testsFile, 'utf-8');
+      existing = JSON.parse(raw);
+    } catch {}
+    const next = Array.isArray(existing) ? [...existing, payload] : [payload];
+    await fs.mkdir(path.dirname(testsFile), { recursive: true }).catch(() => {});
+    await fs.writeFile(testsFile, JSON.stringify(next, null, 2));
+    return res.json({ success: true, id });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Save failed' });
+  }
 });
 
 // Socket.IO Setup
@@ -363,108 +458,128 @@ io.on('connection', (socket) => {
 
   socket.on('join-course-room', async (courseIds) => {
     if (Array.isArray(courseIds)) {
-        // Optional: verify enrollment if possible
-        // For now, we trust the client's enrollment list
-        courseIds.forEach(id => socket.join(`course:${id}`));
-        console.log(`Socket ${socket.id} joined course rooms: ${courseIds.join(', ')}`);
+      // Optional: verify enrollment if possible
+      // For now, we trust the client's enrollment list
+      courseIds.forEach(id => socket.join(`course:${id}`));
+      console.log(`Socket ${socket.id} joined course rooms: ${courseIds.join(', ')}`);
     }
   });
 
   socket.on('join-session', ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
     socket.join(sessionId);
     console.log(`User ${userId} (${userRole}) joined session ${sessionId}`);
-    
+
     // Notify others in the session
     socket.to(sessionId).emit('user-joined', { userId, userRole, socketId: socket.id, userName, isVideoOn, isAudioOn });
   });
 
   socket.on('stream-state-change', ({ sessionId, isVideoOn, isAudioOn }) => {
-      socket.to(sessionId).emit('stream-state-changed', { socketId: socket.id, isVideoOn, isAudioOn });
+    socket.to(sessionId).emit('stream-state-changed', { socketId: socket.id, isVideoOn, isAudioOn });
   });
 
-  // Explicit session start handler with student list verification
+  socket.on('hand-raised-change', ({ sessionId, isHandRaised }) => {
+    socket.to(sessionId).emit('hand-raised-changed', { socketId: socket.id, isHandRaised });
+  });
+
   socket.on('session-started', async ({ sessionId, courseId, tutorName, students }) => {
-     console.log(`Session started for course ${courseId} by ${tutorName}`);
-     
-     // Track active session
-     if (courseId) {
-         activeSessions.set(String(courseId), {
-             sessionId,
-             courseId,
-             tutorName,
-             message: `${tutorName} started a live session!`
-         });
-         
-         // Broadcast to all students enrolled in the course
-         io.to(`course:${courseId}`).emit('session-live', {
-           sessionId,
-           courseId,
-           tutorName,
-           message: `${tutorName} started a live session!`
-         });
-         console.log(`Broadcasted live session to all students in course:${courseId}`);
-     }
+    console.log(`Session started event received`, { sessionId, courseId, tutorName });
 
-     // Send emails to enrolled students in the course
-     try {
-        const cId = parseInt(String(courseId));
-        if (!isNaN(cId)) {
-            const course = await prisma.course.findUnique({
-                where: { id: cId },
-                include: {
-                    courseEnrollments: {
-                        include: { user: true }
-                    }
-                }
-            });
+    try {
+      const cId = parseInt(String(courseId));
+      if (isNaN(cId)) {
+        console.error('Invalid courseId for session-started', { courseId });
+        return;
+      }
 
-            if (course && course.courseEnrollments.length > 0) {
-                const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-                const sessionLink = `${frontendBase}/student/dashboard?joinSession=${sessionId}&courseId=${courseId}&tutorName=${encodeURIComponent(tutorName)}`;
-                
-                console.log(`Sending live session emails to ${course.courseEnrollments.length} students...`);
-                
-                // Send emails in parallel
-                await Promise.all(course.courseEnrollments.map(async (enrollment) => {
-                    const student = enrollment.user;
-                    if (student.email) {
-                        const content = `
+      const course = await prisma.course.findUnique({
+        where: { id: cId },
+        include: {
+          courseEnrollments: {
+            include: { user: true }
+          }
+        }
+      });
+
+      const courseName = course?.name || (course as any)?.title || 'Course';
+      const department = (course as any)?.category;
+
+      activeSessions.set(String(cId), {
+        sessionId,
+        courseId: cId,
+        tutorName,
+        courseName,
+        department,
+        message: `${tutorName} started a live session for ${courseName}!`
+      });
+
+      io.to(`course:${cId}`).emit('session-live', {
+        sessionId,
+        courseId: cId,
+        tutorName,
+        courseName,
+        department,
+        message: `${tutorName} started a live session for ${courseName}!`
+      });
+      console.log(`Broadcasted live session`, { courseId: cId, courseName, sessionId });
+
+      if (course && course.courseEnrollments.length > 0) {
+        const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+        const sessionLink = `${frontendBase}/student/dashboard?joinSession=${sessionId}&courseId=${cId}&courseName=${encodeURIComponent(courseName)}&tutorName=${encodeURIComponent(tutorName)}`;
+
+        console.log(`Sending live session emails`, {
+          courseId: cId,
+          courseName,
+          recipients: course.courseEnrollments.length
+        });
+
+        await Promise.all(course.courseEnrollments.map(async (enrollment) => {
+          const student = enrollment.user;
+          if (student.email) {
+            const content = `
                             <div style="font-family: sans-serif; color: #333;">
                                 <h2>Live Session Started!</h2>
                                 <p>Hi ${student.name},</p>
-                                <p><strong>${tutorName}</strong> has started a live session for <strong>${course.title || 'your course'}</strong>.</p>
+                                <p><strong>${tutorName}</strong> has started a live session for <strong>${courseName}</strong>.</p>
                                 <br/>
                                 <a href="${sessionLink}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Join Live Session</a>
                                 <br/><br/>
                                 <p>See you there!</p>
                             </div>
                         `;
-                        try {
-                            await sendEmail({
-                                to: student.email,
-                                subject: `🔴 Live Now: ${course.title || 'Class'}`,
-                                content
-                            });
-                        } catch (e) {
-                            console.error(`Failed to send email to ${student.email}`, e);
-                        }
-                    }
-                }));
-                console.log(`Sent emails to ${course.courseEnrollments.length} students`);
+            try {
+              await sendEmail({
+                to: student.email,
+                subject: `🔴 Live Now: ${courseName}`,
+                content
+              });
+            } catch (e) {
+              console.error(`Failed to send email to ${student.email}`, e);
             }
-        }
-     } catch (error) {
-         console.error('Error sending live session emails:', error);
-     }
+          }
+        }));
+        console.log(`Sent live session emails successfully`, {
+          courseId: cId,
+          courseName,
+          recipients: course.courseEnrollments.length
+        });
+      } else {
+        console.log('No enrolled students found for course, skipping email broadcast', {
+          courseId: cId,
+          courseName
+        });
+      }
+    } catch (error) {
+      console.error('Error handling session-started', error);
+    }
   });
 
   socket.on('end-session', ({ courseId, sessionId }) => {
-      console.log(`Session ended for course ${courseId}`);
-      if (courseId) {
-          activeSessions.delete(String(courseId));
-      }
-      // Optionally notify students that session ended
-      io.to(`course:${courseId}`).emit('session-ended', { courseId, sessionId });
+    console.log(`Session ended for course ${courseId}`);
+    if (courseId) {
+      activeSessions.delete(String(courseId));
+    }
+    // Optionally notify students that session ended
+    io.to(`course:${courseId}`).emit('session-ended', { courseId, sessionId });
   });
 
   socket.on('signal', ({ to, signal, from, userRole, isVideoOn, isAudioOn }) => {
@@ -478,7 +593,7 @@ io.on('connection', (socket) => {
   socket.on('whiteboard-clear', ({ sessionId }) => {
     socket.to(sessionId).emit('whiteboard-clear');
   });
-  
+
   socket.on('whiteboard-image', ({ sessionId, imageUrl }) => {
     socket.to(sessionId).emit('whiteboard-image', imageUrl);
   });
@@ -488,9 +603,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('shared-notes-update', ({ sessionId, notes }) => {
-      socket.to(sessionId).emit('shared-notes-update', notes);
+    socket.to(sessionId).emit('shared-notes-update', notes);
   });
-  
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
@@ -504,7 +619,7 @@ app.options('*', cors({
     : true,
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS']
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS']
 }));
 
 // Security and performance middleware
@@ -625,27 +740,34 @@ app.post('/api/auth/login', async (req, res) => {
       if (!row) {
         console.log(`[Auth] Auto-registering new user: ${userEmail}`);
         const role = req.body.role || 'student';
-        
+
+        // Create credentials first
+        const hash = await hashPassword(String(password));
+        const now = new Date().toISOString();
+
         // Ensure Prisma user exists
         let user = await prisma.user.findUnique({ where: { email: userEmail } });
         if (!user) {
-          user = await prisma.user.create({ 
-            data: { email: userEmail, name: userEmail.split('@')[0], role } 
+          user = await prisma.user.create({
+            data: {
+              email: userEmail,
+              name: userEmail.split('@')[0],
+              role,
+              password_hash: hash
+            }
           });
         }
 
-        // Create credentials
-        const hash = await hashPassword(String(password));
-        const now = new Date().toISOString();
+        // Create credentials record (legacy/redundant but kept for consistency)
         await db.run(
           'INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
           [userEmail, user.id, hash, now, now]
         );
-        
+
         // Set row for subsequent verification
-        row = { 
-          email: userEmail, 
-          user_id: user.id, 
+        row = {
+          email: userEmail,
+          user_id: user.id,
           password_hash: hash,
           created_at: now,
           updated_at: now
@@ -661,10 +783,10 @@ app.post('/api/auth/login', async (req, res) => {
       if (derived !== stored) return res.status(401).json({ success: false, error: 'Invalid credentials' });
       // load or create user
       let user = await prisma.user.findUnique({ where: { email: userEmail } });
-      
+
       // Allow role to be passed in body, default to student
       const role = req.body.role || 'student';
-      
+
       if (!user) user = await prisma.user.create({ data: { email: userEmail, name: userEmail.split('@')[0], role } });
       const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
       const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
@@ -730,7 +852,7 @@ app.get('/api/tutor/:tutorId/students', async (req, res) => {
             // Initialize student entry
             studentMap.set(student.id, {
               ...student,
-              enrolledCourses: [course] 
+              enrolledCourses: [course]
             });
           } else {
             // Add course to existing student entry if not already there
@@ -757,16 +879,18 @@ app.get('/api/admin/stats', async (req, res) => {
     const totalStudents = await prisma.user.count({ where: { role: 'student' } });
     const totalCourses = await prisma.course.count().catch(() => 0 as any);
     const activeStudents = Math.round(totalStudents * 0.7);
-    return res.json({ success: true, data: {
-      totalStudents,
-      activeStudents,
-      courses: totalCourses,
-      completionRate: 75,
-      averageGrade: 82,
-      monthlyGrowth: 12,
-      courseStats: [],
-      monthlyData: []
-    }});
+    return res.json({
+      success: true, data: {
+        totalStudents,
+        activeStudents,
+        courses: totalCourses,
+        completionRate: 75,
+        averageGrade: 82,
+        monthlyGrowth: 12,
+        courseStats: [],
+        monthlyData: []
+      }
+    });
   } catch (error) {
     console.error('Admin stats error:', error);
     return res.status(500).json({ success: false, error: 'Failed to load stats' });
@@ -832,7 +956,7 @@ app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin', 
       // If not, do we create a new one with student number email?
       // The previous logic was creating student number email.
       // Let's stick to the previous logic for NEW users, but handle existing users gracefully.
-      
+
       let isNewUser = false;
       let tempPassword = '';
 
@@ -846,15 +970,15 @@ app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin', 
           const randomSuffix = Math.floor(1000 + Math.random() * 9000).toString();
           studentNumber = `${year}${randomSuffix}`;
           studentEmail = `${studentNumber}@excellenceakademie.co.za`; // Official email
-          
+
           const existing = await prisma.user.findUnique({ where: { email: studentEmail } });
           if (!existing) isUnique = true;
           attempts++;
         }
 
         if (!isUnique) {
-            results.push({ email: clean, error: 'Failed to generate unique Student ID' });
-            continue;
+          results.push({ email: clean, error: 'Failed to generate unique Student ID' });
+          continue;
         }
 
         // 2. Generate Temporary Password
@@ -862,20 +986,20 @@ app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin', 
 
         // 3. Create User
         const name = clean.split('@')[0];
-        
+
         // We store the official email in the User table?
         // Or do we store the personal email?
         // The schema has `email` unique.
         // If we store official email, we lose the link to personal email unless we store it elsewhere.
         // But we are sending credentials TO the personal email (`clean`).
-        
-        user = await prisma.user.create({ 
-          data: { 
+
+        user = await prisma.user.create({
+          data: {
             email: studentEmail, // Official email
-            name: name, 
+            name: name,
             role: 'student',
-            department_id: department || null 
-          } 
+            department_id: department || null
+          }
         });
 
         // 4. Save Credentials
@@ -903,42 +1027,42 @@ app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin', 
       // Enrollment
       if (courseId && user) {
         const enrollment = await prisma.courseEnrollment.findFirst({
-            where: { userId: user.id, courseId: courseId }
+          where: { userId: user.id, courseId: courseId }
         });
         if (!enrollment) {
-            await prisma.courseEnrollment.create({
-                data: { userId: user.id, courseId: courseId, status: 'enrolled' }
-            });
+          await prisma.courseEnrollment.create({
+            data: { userId: user.id, courseId: courseId, status: 'enrolled' }
+          });
         }
       }
 
       // 5. Send Email
       if (isNewUser) {
-          const link = `${frontendBase.replace(/\/$/, '')}/login`;
-          const content = renderStudentCredentialsEmail({ 
-            recipientName: user.name, 
-            studentNumber, 
-            studentEmail, 
-            tempPassword, 
-            loginUrl: link, 
-            courseName 
-          });
-          
-          const send = await sendEmail({ to: clean, subject: 'Your Student Login Credentials - Excellence Academia', content });
-          results.push({ email: clean, studentNumber, studentEmail, sent: !!send.success });
+        const link = `${frontendBase.replace(/\/$/, '')}/login`;
+        const content = renderStudentCredentialsEmail({
+          recipientName: user.name,
+          studentNumber,
+          studentEmail,
+          tempPassword,
+          loginUrl: link,
+          courseName
+        });
+
+        const send = await sendEmail({ to: clean, subject: 'Your Student Login Credentials - Excellence Academia', content });
+        results.push({ email: clean, studentNumber, studentEmail, sent: !!send.success });
       } else {
-          // Send enrollment notification?
-          // For now, only if invited to course
-          if (courseName) {
-              const content = renderBrandedEmail({
-                  title: 'Course Enrollment',
-                  message: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`
-              });
-              const send = await sendEmail({ to: clean, subject: 'Course Enrollment - Excellence Academia', content });
-              results.push({ email: clean, enrolled: true, sent: !!send.success });
-          } else {
-              results.push({ email: clean, error: 'User already exists' });
-          }
+        // Send enrollment notification?
+        // For now, only if invited to course
+        if (courseName) {
+          const content = renderBrandedEmail({
+            title: 'Course Enrollment',
+            message: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`
+          });
+          const send = await sendEmail({ to: clean, subject: 'Course Enrollment - Excellence Academia', content });
+          results.push({ email: clean, enrolled: true, sent: !!send.success });
+        } else {
+          results.push({ email: clean, error: 'User already exists' });
+        }
       }
     }
     return res.json({ success: true, invited: results });
@@ -1002,12 +1126,12 @@ app.set('trust proxy', 1);
 // Enhanced request logging with performance metrics
 app.use((req, res, next) => {
   const start = Date.now();
-  
+
   res.on('finish', () => {
     const duration = Date.now() - start;
     console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
   });
-  
+
   next();
 });
 
@@ -1057,8 +1181,8 @@ app.use((err, req, res, next) => {
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
     timestamp: new Date().toISOString()
   });
-  
-  res.status(err.status || 500).json({ 
+
+  res.status(err.status || 500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
     timestamp: new Date().toISOString()
@@ -1070,9 +1194,9 @@ app.get('/api/health', async (req, res) => {
   try {
     // Quick database connectivity check
     await prisma.$queryRaw`SELECT 1`;
-    
-    res.json({ 
-      status: 'healthy', 
+
+    res.json({
+      status: 'healthy',
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version || '1.0.0',
       environment: process.env.NODE_ENV || 'development',
@@ -1256,20 +1380,20 @@ app.post('/api/tutor/students/invite', authenticateJWT, authorizeRoles('tutor'),
   try {
     const { emails, courseName } = req.body || {};
     const tutorId = req.user?.id;
-    
+
     // Basic validation
     if (!courseName) return res.status(400).json({ success: false, error: 'courseName is required' });
-    
+
     const list = Array.isArray(emails) ? emails.filter((e: any) => typeof e === 'string').map((e: string) => e.trim()).filter(Boolean) : [];
     if (list.length === 0) return res.status(400).json({ success: false, error: 'emails array required' });
-    
+
     // Verify course belongs to tutor
     const db = await getConnection();
     const course = await db.get('SELECT * FROM courses WHERE name = ? AND tutor_id = ?', [courseName, tutorId]);
     await db.close();
-    
+
     if (!course) {
-        return res.status(403).json({ success: false, error: 'Course not found or access denied' });
+      return res.status(403).json({ success: false, error: 'Course not found or access denied' });
     }
 
     const base = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
@@ -1349,28 +1473,28 @@ app.post('/api/tutor/email/send', authenticateJWT, authorizeRoles('tutor'), asyn
 app.post('/api/query', async (req, res) => {
   try {
     const { query, params } = req.body;
-    
+
     if (!query || typeof query !== 'string') {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Valid query string is required' 
+        error: 'Valid query string is required'
       });
     }
 
     // Basic SQL injection protection - restrict dangerous operations
     const dangerousPatterns = /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE)\b/i;
     if (dangerousPatterns.test(query)) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         success: false,
-        error: 'Query contains restricted operations' 
+        error: 'Query contains restricted operations'
       });
     }
 
     const db = await getConnection();
     const result = await db.all(query, params || []);
     await db.close();
-    
-    res.json({ 
+
+    res.json({
       success: true,
       data: result,
       count: Array.isArray(result) ? result.length : 1,
@@ -1378,7 +1502,7 @@ app.post('/api/query', async (req, res) => {
     });
   } catch (error) {
     console.error('Query error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: 'Database query failed',
       message: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -1390,33 +1514,33 @@ app.post('/api/query', async (req, res) => {
 app.get('/api/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!id?.trim()) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'User ID is required' 
+        error: 'User ID is required'
       });
     }
 
     const db = await getConnection();
     const user = await db.get('SELECT * FROM users WHERE id = ?', [id]);
     await db.close();
-    
+
     if (user) {
       // Set cache headers for better performance
       res.set('Cache-Control', 'public, max-age=300'); // 5 minutes
       res.json({ success: true, data: user });
     } else {
-      res.status(404).json({ 
+      res.status(404).json({
         success: false,
-        error: 'User not found' 
+        error: 'User not found'
       });
     }
   } catch (error) {
     console.error('Error fetching user:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to fetch user' 
+      error: 'Failed to fetch user'
     });
   }
 });
@@ -1482,25 +1606,25 @@ app.get('/api/courses', async (req, res) => {
     const { limit = 50, offset = 0, category } = req.query;
     const limitInt = Math.min(parseInt(limit) || 50, 100); // Max 100 items
     const offsetInt = Math.max(parseInt(offset) || 0, 0);
-    
+
     const db = await getConnection();
     let query = 'SELECT * FROM courses';
     const params = [];
-    
+
     if (category) {
       query += ' WHERE category = ?';
       params.push(category);
     }
-    
+
     query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     params.push(limitInt, offsetInt);
-    
+
     const courses = await db.all(query, params);
     await db.close();
-    
+
     // Cache for 10 minutes
     res.set('Cache-Control', 'public, max-age=600');
-    res.json({ 
+    res.json({
       success: true,
       data: courses,
       pagination: {
@@ -1512,9 +1636,9 @@ app.get('/api/courses', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching courses:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to fetch courses' 
+      error: 'Failed to fetch courses'
     });
   }
 });
@@ -1522,32 +1646,32 @@ app.get('/api/courses', async (req, res) => {
 app.get('/api/courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!id?.trim()) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Course ID is required' 
+        error: 'Course ID is required'
       });
     }
 
     const db = await getConnection();
     const course = await db.get('SELECT * FROM courses WHERE id = ?', [id]);
     await db.close();
-    
+
     if (course) {
       res.set('Cache-Control', 'public, max-age=300');
       res.json({ success: true, data: course });
     } else {
-      res.status(404).json({ 
+      res.status(404).json({
         success: false,
-        error: 'Course not found' 
+        error: 'Course not found'
       });
     }
   } catch (error) {
     console.error('Error fetching course:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to fetch course' 
+      error: 'Failed to fetch course'
     });
   }
 });
@@ -1556,11 +1680,11 @@ app.get('/api/courses/:id', async (req, res) => {
 app.post('/api/courses', async (req, res) => {
   try {
     const { title, description, department, tutorId, startDate, endDate, category } = req.body;
-    
+
     if (!title || !description || !department || !tutorId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'title, description, department, and tutorId are required' 
+        error: 'title, description, department, and tutorId are required'
       });
     }
 
@@ -1587,9 +1711,9 @@ app.post('/api/courses', async (req, res) => {
     res.status(201).json({ success: true, data: newCourse });
   } catch (error) {
     console.error('Error creating course:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to create course' 
+      error: 'Failed to create course'
     });
   }
 });
@@ -1598,31 +1722,31 @@ app.post('/api/courses', async (req, res) => {
 app.delete('/api/courses/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     if (!id?.trim()) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'Course ID is required' 
+        error: 'Course ID is required'
       });
     }
 
     const db = await getConnection();
     const result = await db.run('DELETE FROM courses WHERE id = ?', [id]);
     await db.close();
-    
+
     if (result.changes === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        error: 'Course not found' 
+        error: 'Course not found'
       });
     }
 
     res.json({ success: true, message: 'Course deleted successfully' });
   } catch (error) {
     console.error('Error deleting course:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to delete course' 
+      error: 'Failed to delete course'
     });
   }
 });
@@ -1630,31 +1754,31 @@ app.delete('/api/courses/:id', async (req, res) => {
 // High-performance Tutors API with advanced filtering
 app.get('/api/tutors', async (req, res) => {
   try {
-    const { 
-      subject, 
-      rating, 
-      limit = 20, 
-      offset = 0, 
-      search 
+    const {
+      subject,
+      rating,
+      limit = 20,
+      offset = 0,
+      search
     } = req.query;
-    
+
     const limitInt = Math.min(parseInt(limit) || 20, 50);
     const offsetInt = Math.max(parseInt(offset) || 0, 0);
-    
+
     const whereConditions = { isActive: true };
-    
+
     // Apply filters
     if (subject) {
       whereConditions.subjects = { contains: subject };
     }
-    
+
     if (search) {
       whereConditions.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } }
       ];
     }
-    
+
     const tutors = await prisma.tutor.findMany({
       where: whereConditions,
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
@@ -1666,18 +1790,18 @@ app.get('/api/tutors', async (req, res) => {
     const tutorsWithMetrics = tutors.map(tutor => {
       let ratings = [];
       let subjectsList = [];
-      
+
       try {
         ratings = typeof tutor.ratings === 'string' ? JSON.parse(tutor.ratings) : (tutor.ratings || []);
         subjectsList = typeof tutor.subjects === 'string' ? JSON.parse(tutor.subjects) : (tutor.subjects || []);
       } catch (e) {
         console.warn('JSON parse error for tutor:', tutor.id);
       }
-      
-      const avgRating = ratings.length > 0 
+
+      const avgRating = ratings.length > 0
         ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
         : 0;
-      
+
       return {
         ...tutor,
         averageRating: avgRating,
@@ -1689,7 +1813,7 @@ app.get('/api/tutors', async (req, res) => {
     });
 
     // Filter by rating if specified
-    const filteredTutors = rating 
+    const filteredTutors = rating
       ? tutorsWithMetrics.filter(t => t.averageRating >= parseFloat(rating))
       : tutorsWithMetrics;
 
@@ -1706,9 +1830,9 @@ app.get('/api/tutors', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching tutors:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to fetch tutors' 
+      error: 'Failed to fetch tutors'
     });
   }
 });
@@ -1716,33 +1840,33 @@ app.get('/api/tutors', async (req, res) => {
 app.get('/api/tutors/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     const tutor = await prisma.tutor.findUnique({
       where: { id }
     });
-    
+
     if (!tutor) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        error: 'Tutor not found' 
+        error: 'Tutor not found'
       });
     }
-    
+
     // Parse JSON fields safely
     let ratings = [];
     let subjectsList = [];
-    
+
     try {
       ratings = typeof tutor.ratings === 'string' ? JSON.parse(tutor.ratings) : (tutor.ratings || []);
       subjectsList = typeof tutor.subjects === 'string' ? JSON.parse(tutor.subjects) : (tutor.subjects || []);
     } catch (e) {
       console.warn('JSON parse error for tutor:', tutor.id);
     }
-    
-    const avgRating = ratings.length > 0 
+
+    const avgRating = ratings.length > 0
       ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
       : 0;
-    
+
     const enhancedTutor = {
       ...tutor,
       averageRating: avgRating,
@@ -1755,9 +1879,9 @@ app.get('/api/tutors/:id', async (req, res) => {
     res.json({ success: true, data: enhancedTutor });
   } catch (error) {
     console.error('Error fetching tutor:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to fetch tutor' 
+      error: 'Failed to fetch tutor'
     });
   }
 });
@@ -1768,14 +1892,14 @@ app.get('/api/admin/content/:type', async (req, res) => {
     const contentType = req.params.type;
     let content;
     let cacheTime = 600; // 10 minutes default
-    
+
     const contentQueries = {
       'tutors': async () => {
-        const tutors = await prisma.tutor.findMany({ 
-          where: { isActive: true }, 
-          orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
+        const tutors = await prisma.tutor.findMany({
+          where: { isActive: true },
+          orderBy: [{ order: 'asc' }, { createdAt: 'desc' }]
         });
-        
+
         return tutors.map(tutor => {
           let ratings = [];
           try {
@@ -1783,11 +1907,11 @@ app.get('/api/admin/content/:type', async (req, res) => {
           } catch (e) {
             console.warn('Ratings parse error:', tutor.id);
           }
-          
-          const avgRating = ratings.length > 0 
+
+          const avgRating = ratings.length > 0
             ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
             : 0;
-          
+
           return {
             ...tutor,
             averageRating: avgRating,
@@ -1795,69 +1919,69 @@ app.get('/api/admin/content/:type', async (req, res) => {
           };
         });
       },
-      'team-members': () => prisma.teamMember.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
+      'team-members': () => prisma.teamMember.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }]
       }),
-      'about-us': () => prisma.aboutUsContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
+      'about-us': () => prisma.aboutUsContent.findFirst({
+        where: { isActive: true },
+        orderBy: { updatedAt: 'desc' }
       }),
-      'hero': () => prisma.heroContent.findFirst({ 
-        orderBy: { updatedAt: 'desc' } 
+      'hero': () => prisma.heroContent.findFirst({
+        orderBy: { updatedAt: 'desc' }
       }),
-      'features': () => prisma.feature.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
+      'features': () => prisma.feature.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
       }),
-      'announcements': () => prisma.announcement.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }] 
+      'announcements': () => prisma.announcement.findMany({
+        where: { isActive: true },
+        orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }]
       }),
-      'testimonials': () => prisma.testimonial.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }] 
+      'testimonials': () => prisma.testimonial.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }]
       }),
-      'pricing': () => prisma.pricingPlan.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
+      'pricing': () => prisma.pricingPlan.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
       }),
       'events': () => prisma.$queryRawUnsafe('SELECT * FROM events ORDER BY date ASC'),
-      'footer': () => prisma.footerContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
+      'footer': () => prisma.footerContent.findFirst({
+        where: { isActive: true },
+        orderBy: { updatedAt: 'desc' }
       }),
-      'subjects': () => prisma.subject.findMany({ 
-        where: { isActive: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
+      'subjects': () => prisma.subject.findMany({
+        where: { isActive: true },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
       }),
-      'navigation': () => prisma.navigationItem.findMany({ 
-        where: { isActive: true }, 
-        select: { path: true, label: true, type: true }, 
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] 
+      'navigation': () => prisma.navigationItem.findMany({
+        where: { isActive: true },
+        select: { path: true, label: true, type: true },
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
       }),
-      'exam-rewrite': () => prisma.examRewriteContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
+      'exam-rewrite': () => prisma.examRewriteContent.findFirst({
+        where: { isActive: true },
+        orderBy: { updatedAt: 'desc' }
       }),
-      'university-application': () => prisma.universityApplicationContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
+      'university-application': () => prisma.universityApplicationContent.findFirst({
+        where: { isActive: true },
+        orderBy: { updatedAt: 'desc' }
       }),
-      'contact-us': () => prisma.contactUsContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
+      'contact-us': () => prisma.contactUsContent.findFirst({
+        where: { isActive: true },
+        orderBy: { updatedAt: 'desc' }
       }),
-      'become-tutor': () => prisma.becomeTutorContent.findFirst({ 
-        where: { isActive: true }, 
-        orderBy: { updatedAt: 'desc' } 
+      'become-tutor': () => prisma.becomeTutorContent.findFirst({
+        where: { isActive: true },
+        orderBy: { updatedAt: 'desc' }
       })
     };
 
     const queryFn = contentQueries[contentType];
-    
+
     if (!queryFn) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
         error: 'Content type not found',
         availableTypes: Object.keys(contentQueries)
@@ -1868,12 +1992,12 @@ app.get('/api/admin/content/:type', async (req, res) => {
 
     if (content !== null && content !== undefined) {
       const listTypes = [
-        'tutors', 'team-members', 'features', 'testimonials', 
+        'tutors', 'team-members', 'features', 'testimonials',
         'pricing', 'subjects', 'announcements', 'events', 'navigation'
       ];
-      
+
       res.set('Cache-Control', `public, max-age=${cacheTime}`);
-      res.json({ 
+      res.json({
         success: true,
         data: content,
         type: contentType,
@@ -1882,9 +2006,9 @@ app.get('/api/admin/content/:type', async (req, res) => {
         timestamp: new Date().toISOString()
       });
     } else {
-      res.status(404).json({ 
+      res.status(404).json({
         success: false,
-        error: `${contentType} content not found` 
+        error: `${contentType} content not found`
       });
     }
   } catch (error) {
@@ -1893,7 +2017,7 @@ app.get('/api/admin/content/:type', async (req, res) => {
     const status = 500;
     const isProd = process.env.NODE_ENV === 'production';
     const message = isProd ? 'Failed to fetch content' : (error as any)?.message;
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: `Failed to fetch ${req.params.type} content`,
       message
@@ -2064,7 +2188,7 @@ app.post('/api/contact', async (req, res) => {
           <p>Best regards,<br/>Excellence Academia</p>
         `,
       });
-      try { await sendEmail({ to: email, subject: 'We received your message', content: ackHtml }); } catch {}
+      try { await sendEmail({ to: email, subject: 'We received your message', content: ackHtml }); } catch { }
     }
 
     if (!adminSend.success) throw new Error('Email send failed');
@@ -2095,11 +2219,11 @@ app.post('/api/admin/test-email', authenticateJWT, authorizeRoles('admin'), asyn
 app.post('/api/tests', async (req, res) => {
   try {
     const { title, description, dueDate, courseId, questions, totalPoints } = req.body;
-    
+
     if (!title || !courseId) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'title and courseId are required' 
+        error: 'title and courseId are required'
       });
     }
 
@@ -2124,9 +2248,9 @@ app.post('/api/tests', async (req, res) => {
     res.status(201).json({ success: true, data: newTest });
   } catch (error) {
     console.error('Error creating test:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to create test' 
+      error: 'Failed to create test'
     });
   }
 });
@@ -2149,24 +2273,24 @@ app.get('/api/tests', async (req, res) => {
 app.post('/api/students/bulk', async (req, res) => {
   try {
     const { emails } = req.body;
-    
+
     if (!emails || !Array.isArray(emails) || emails.length === 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         success: false,
-        error: 'emails array is required' 
+        error: 'emails array is required'
       });
     }
 
     const db = await getConnection();
     const ids = [];
-    
+
     for (const email of emails) {
       if (email && email.includes('@')) {
         const name = email
           .split("@")[0]
           .replace(/[.]/g, " ")
           .replace(/\b\w/g, (l) => l.toUpperCase());
-        
+
         const result = await db.run(
           'INSERT INTO users (name, email, role, created_at) VALUES (?, ?, ?, ?)',
           [name, email, 'student', new Date().toISOString()]
@@ -2174,15 +2298,15 @@ app.post('/api/students/bulk', async (req, res) => {
         ids.push(result.lastID.toString());
       }
     }
-    
+
     await db.close();
 
     res.status(201).json({ success: true, ids, count: ids.length });
   } catch (error) {
     console.error('Error creating bulk students:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to create students' 
+      error: 'Failed to create students'
     });
   }
 });
@@ -2206,17 +2330,17 @@ app.post('/api/notifications', async (req, res) => {
     // Send emails to recipients
     if (recipients) {
       const emails = [];
-      
+
       if (recipients.tutors) {
         const tutors = await prisma.tutor.findMany({ where: { isActive: true }, select: { contactEmail: true } });
         emails.push(...tutors.map(t => t.contactEmail).filter(Boolean));
       }
-      
+
       if (recipients.students) {
         const students = await prisma.user.findMany({ where: { role: 'student' }, select: { email: true } });
         emails.push(...students.map(s => s.email).filter(Boolean));
       }
-      
+
       if (recipients.specific && Array.isArray(recipients.specific)) {
         emails.push(...recipients.specific);
       }
@@ -2307,6 +2431,155 @@ app.get('/api/students', async (req, res) => {
   }
 });
 
+// Student Scheduled Sessions
+app.get('/api/student/scheduled-sessions', authenticateJWT, async (req, res) => {
+
+  try {
+    // Get studentId from query param or from authenticated user
+    const studentIdParam = req.query.studentId as string || String(req.user?.id || '');
+    const studentId = parseInt(studentIdParam, 10);
+    if (isNaN(studentId) || studentId <= 0) {
+      return res.status(400).json({ success: false, error: 'Student ID is required' });
+    }
+
+    // Get courses the student is enrolled in
+    const enrollments = await prisma.courseEnrollment.findMany({
+      where: { userId: studentId },
+      include: { course: true }
+    });
+    const courseIds = enrollments.map(e => e.courseId);
+
+    const now = new Date();
+    // Include sessions from 15 minutes ago (in case they're ongoing) to future
+    const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+
+    // Fetch scheduled sessions for those courses
+    const dbSessions = await prisma.scheduledSession.findMany({
+      where: {
+        courseId: { in: courseIds },
+        scheduledAt: { gte: fifteenMinutesAgo }
+      },
+      include: { course: true, tutor: true },
+      orderBy: { scheduledAt: 'asc' },
+      take: 20
+    });
+
+    // Get active ad-hoc sessions
+    const activeAdHocSessions: any[] = [];
+    activeSessions.forEach((session, cId) => {
+      const courseIdInt = parseInt(cId, 10);
+      if (courseIds.includes(courseIdInt)) {
+        // Check if this active session corresponds to a DB session
+        const isInDb = dbSessions.some(dbS =>
+          dbS.courseId === courseIdInt &&
+          (dbS.sessionId === session.sessionId || dbS.status === 'active')
+        );
+
+        if (!isInDb) {
+          const course = enrollments.find(e => e.courseId === courseIdInt)?.course;
+          activeAdHocSessions.push({
+            id: -courseIdInt, // Unique negative ID based on course
+            title: 'Live Session',
+            description: session.message || 'Live class in progress',
+            courseId: courseIdInt,
+            courseName: course?.name || 'Course',
+            tutorId: 0,
+            tutorName: session.tutorName || 'Tutor',
+            scheduledAt: new Date(),
+            duration: 60,
+            status: 'live',
+            sessionId: session.sessionId,
+            isLive: true,
+            isReady: true,
+            canJoin: true,
+            course: course,
+            tutor: { name: session.tutorName || 'Tutor' }
+          });
+        }
+      }
+    });
+
+    const result = [...dbSessions, ...activeAdHocSessions].map(s => {
+      const scheduledTime = new Date(s.scheduledAt);
+      const endTime = new Date(scheduledTime.getTime() + s.duration * 60 * 1000);
+      const isLive = activeSessions.has(String(s.courseId));
+
+      // Session is "ready" if:
+      // 1. Scheduled time is within 15 minutes from now (upcoming)
+      // 2. OR scheduled time has passed but session hasn't ended yet (ongoing window)
+      const fifteenMinutesFromNow = new Date(now.getTime() + 15 * 60 * 1000);
+      const isReady = !isLive && (
+        (scheduledTime <= fifteenMinutesFromNow && scheduledTime >= now) || // Starting soon
+        (scheduledTime < now && now < endTime) // Scheduled window is active
+      );
+
+      // Generate a session ID for ready sessions so students can join the waiting room
+      const sessionRoomId = s.sessionId || `${s.courseId}-${s.id}`;
+
+      return {
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        courseId: s.courseId,
+        courseName: s.course?.name || 'Unknown Course',
+        tutorId: s.tutorId,
+        tutorName: s.tutor?.name || 'Tutor',
+        scheduledAt: s.scheduledAt.toISOString(),
+        duration: s.duration,
+        status: isLive ? 'live' : isReady ? 'ready' : s.status,
+        sessionId: sessionRoomId,
+        isLive,
+        isReady,
+        canJoin: isLive || isReady,
+        course: s.course, // Include full object for frontend compatibility
+        tutor: s.tutor    // Include full object for frontend compatibility
+      };
+    });
+
+    return res.json({ success: true, sessions: result });
+  } catch (error) {
+    console.error('Error fetching student scheduled sessions:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch scheduled sessions' });
+  }
+});
+
+// Student Live Sessions - Get currently active live sessions for enrolled courses
+app.get('/api/student/live-sessions', async (req, res) => {
+  try {
+    const studentId = parseInt(req.query.studentId as string || (req as any).user?.id, 10);
+    if (isNaN(studentId)) {
+      return res.status(400).json({ success: false, error: 'Student ID is required' });
+    }
+
+    // Get courses the student is enrolled in
+    const enrollments = await prisma.courseEnrollment.findMany({
+      where: { userId: studentId },
+      select: { courseId: true, course: true }
+    });
+    const courseIds = enrollments.map(e => e.courseId);
+
+    // Check which enrolled courses have active sessions
+    const liveSessions: any[] = [];
+    for (const courseId of courseIds) {
+      const activeSession = activeSessions.get(String(courseId));
+      if (activeSession) {
+        const enrollment = enrollments.find(e => e.courseId === courseId);
+        liveSessions.push({
+          ...activeSession,
+          courseId,
+          courseName: (enrollment?.course as any)?.name || 'Course',
+          isLive: true
+        });
+      }
+    }
+
+    return res.json({ success: true, data: liveSessions });
+  } catch (error) {
+    console.error('Error fetching live sessions:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch live sessions' });
+  }
+});
+
 // Student Dashboard
 app.get('/api/student/dashboard', async (req, res) => {
   try {
@@ -2315,7 +2588,7 @@ app.get('/api/student/dashboard', async (req, res) => {
 
     const studentId = parseInt(String(rawStudentId), 10);
     if (isNaN(studentId)) {
-       return res.status(400).json({ success: false, error: 'Invalid Student ID format' });
+      return res.status(400).json({ success: false, error: 'Invalid Student ID format' });
     }
 
     const student = await prisma.user.findUnique({ where: { id: studentId } });
@@ -2354,6 +2627,19 @@ app.get('/api/student/dashboard', async (req, res) => {
       take: 10
     });
 
+    // Fetch scheduled sessions for courses the student is enrolled in
+    const enrolledCourseIds = enrollments.map(e => e.courseId);
+    const scheduledSessions = await prisma.scheduledSession.findMany({
+      where: {
+        courseId: { in: enrolledCourseIds },
+        scheduledAt: { gte: new Date() },
+        status: { in: ['scheduled', 'active'] }
+      },
+      include: { course: true, tutor: true },
+      orderBy: { scheduledAt: 'asc' },
+      take: 10
+    });
+
     const averageGrade = testSubmissions.length > 0
       ? testSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / testSubmissions.length
       : 0;
@@ -2361,78 +2647,78 @@ app.get('/api/student/dashboard', async (req, res) => {
     // Read timetable for real schedule
     let timetable: any[] = [];
     try {
-        const timetableData = await fs.readFile(timetableFile, 'utf-8');
-        timetable = JSON.parse(timetableData);
+      const timetableData = await fs.readFile(timetableFile, 'utf-8');
+      timetable = JSON.parse(timetableData);
     } catch (e) {
-        // ignore
+      // ignore
     }
 
     // Helper to find next session for a course
     const getNextSession = (courseName: string) => {
-        if (!courseName || timetable.length === 0) return null;
-        
-        const courseEntries = timetable.filter((t: any) => t.courseName === courseName);
-        if (courseEntries.length === 0) return null;
+      if (!courseName || timetable.length === 0) return null;
 
-        const daysMap: {[key: string]: number} = {
-            'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6
-        };
+      const courseEntries = timetable.filter((t: any) => t.courseName === courseName);
+      if (courseEntries.length === 0) return null;
 
-        const now = new Date();
-        
-        const upcomingSessions = courseEntries.map((entry: any) => {
-            const dayIndex = daysMap[entry.day.toLowerCase().trim()];
-            if (dayIndex === undefined) return null;
+      const daysMap: { [key: string]: number } = {
+        'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6
+      };
 
-            // Parse time (assuming HH:MM or HH:MM AM/PM)
-            let [time, modifier] = entry.time.split(' ');
-            let [hours, minutes] = time.split(':').map(Number);
-            
-            if (modifier) {
-                if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;
-                if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
-            }
+      const now = new Date();
 
-            const sessionDate = new Date(now);
-            sessionDate.setHours(hours, minutes, 0, 0);
+      const upcomingSessions = courseEntries.map((entry: any) => {
+        const dayIndex = daysMap[entry.day.toLowerCase().trim()];
+        if (dayIndex === undefined) return null;
 
-            // Calculate day difference
-            let dayDiff = dayIndex - now.getDay();
-            if (dayDiff < 0) dayDiff += 7;
-            
-            // If today but passed, move to next week
-            if (dayDiff === 0 && now > sessionDate) {
-                dayDiff = 7;
-            }
-            
-            sessionDate.setDate(now.getDate() + dayDiff);
-            return { date: sessionDate, ...entry };
-        }).filter(Boolean).sort((a: any, b: any) => a.date.getTime() - b.date.getTime());
+        // Parse time (assuming HH:MM or HH:MM AM/PM)
+        let [time, modifier] = entry.time.split(' ');
+        let [hours, minutes] = time.split(':').map(Number);
 
-        if (upcomingSessions.length === 0) return null;
+        if (modifier) {
+          if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;
+          if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
+        }
 
-        const next = upcomingSessions[0];
-        // Format: "Mon, 14 Oct at 10:00"
-        const formatted = next.date.toLocaleDateString('en-GB', { 
-            weekday: 'short', 
-            day: 'numeric', 
-            month: 'short',
-            hour: '2-digit', 
-            minute: '2-digit',
-            hour12: false
-        }).replace(',', '') + (next.type ? ` (${next.type})` : '');
-        
-        return { formatted, date: next.date };
+        const sessionDate = new Date(now);
+        sessionDate.setHours(hours, minutes, 0, 0);
+
+        // Calculate day difference
+        let dayDiff = dayIndex - now.getDay();
+        if (dayDiff < 0) dayDiff += 7;
+
+        // If today but passed, move to next week
+        if (dayDiff === 0 && now > sessionDate) {
+          dayDiff = 7;
+        }
+
+        sessionDate.setDate(now.getDate() + dayDiff);
+        return { date: sessionDate, ...entry };
+      }).filter(Boolean).sort((a: any, b: any) => a.date.getTime() - b.date.getTime());
+
+      if (upcomingSessions.length === 0) return null;
+
+      const next = upcomingSessions[0];
+      // Format: "Mon, 14 Oct at 10:00"
+      const formatted = next.date.toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).replace(',', '') + (next.type ? ` (${next.type})` : '');
+
+      return { formatted, date: next.date };
     };
 
     const courses = enrollments.map(e => {
       const course = e.course as any;
       const courseTests = (course.tests || []) as any[];
       const completedTests = courseTests.filter(t => t.submissions && t.submissions.length > 0);
-      
+
       // Check for active live session
       const activeSession = activeSessions.get(String(course.id));
-      
+
       const nextSessionData = getNextSession(course.name);
 
       return {
@@ -2441,28 +2727,28 @@ app.get('/api/student/dashboard', async (req, res) => {
         description: course.description,
         tutor: course.tutor?.name || 'Tutor',
         tutorEmail: course.tutor?.email || '',
-        nextSession: nextSessionData?.formatted || 'TBA', 
+        nextSession: nextSessionData?.formatted || 'TBA',
         nextSessionDate: nextSessionData?.date || null,
         progress: courseTests.length > 0 ? (completedTests.length / courseTests.length) * 100 : 0,
         isLive: !!activeSession,
         liveSessionId: activeSession?.sessionId,
         category: activeSession?.department,
         materials: (course.materials || []).map((m: any) => ({
-            id: m.id,
-            name: m.name,
-            type: m.type,
-            url: m.url,
-            dateAdded: m.createdAt,
-            completed: false // Todo: Track completion
+          id: m.id,
+          name: m.name,
+          type: m.type,
+          url: m.url,
+          dateAdded: m.createdAt,
+          completed: false // Todo: Track completion
         })),
         tests: courseTests.map(t => ({ id: t.id, title: t.title, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), questions: 10, totalPoints: 100, status: (t.submissions && t.submissions.length > 0) ? 'completed' : 'upcoming', score: (t.submissions && t.submissions.length > 0) ? t.submissions[0].score : null })),
         color: 'blue',
         announcements: (course.announcements || []).map((a: any) => ({
-            id: a.id,
-            title: a.title,
-            content: a.content,
-            date: a.createdAt,
-            type: 'info'
+          id: a.id,
+          title: a.title,
+          content: a.content,
+          date: a.createdAt,
+          type: 'info'
         })),
         grade: averageGrade,
         enrollmentDate: e.createdAt,
@@ -2471,40 +2757,61 @@ app.get('/api/student/dashboard', async (req, res) => {
     });
 
     const assignments = enrollments.flatMap(e => {
-        const course = e.course as any;
-        return (course.tests || [])
-            .filter((t: any) => !t.submissions || t.submissions.length === 0)
-            .map((t: any) => ({
-                id: t.id,
-                title: t.title,
-                description: t.description || 'Test/Assignment',
-                dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Todo: Real due date
-                courseId: course.id,
-                status: 'pending'
-            }));
+      const course = e.course as any;
+      return (course.tests || [])
+        .filter((t: any) => !t.submissions || t.submissions.length === 0)
+        .map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description || 'Test/Assignment',
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Todo: Real due date
+          courseId: course.id,
+          status: 'pending'
+        }));
     });
 
     const recentActivities = testSubmissions.map(s => ({
-        id: s.id,
-        type: 'assignment_submitted',
-        message: `Submitted ${s.test?.title || 'Test'}`,
-        timestamp: s.createdAt,
-        courseName: s.test?.course?.name || 'Course'
+      id: s.id,
+      type: 'assignment_submitted',
+      message: `Submitted ${s.test?.title || 'Test'}`,
+      timestamp: s.createdAt,
+      courseName: s.test?.course?.name || 'Course'
     }));
 
     // Generate upcoming sessions from timetable
-    const upcomingSessions = timetable
-        .filter((t: any) => enrollments.some(e => e.course.name === t.courseName))
-        .map((t: any, index: number) => ({
-            id: String(index),
-            courseName: t.courseName,
-            tutorName: t.tutorName || 'Tutor',
-            date: new Date().toISOString(), // Placeholder as we don't have exact date calc yet
-            time: `${t.day} ${t.time}`,
-            duration: '60 minutes',
-            type: t.type || 'Class',
-            location: 'Online'
-        }));
+    const timetableSessions = timetable
+      .filter((t: any) => enrollments.some(e => e.course.name === t.courseName))
+      .map((t: any, index: number) => ({
+        id: `timetable-${index}`,
+        courseName: t.courseName,
+        tutorName: t.tutorName || 'Tutor',
+        date: new Date().toISOString(),
+        time: `${t.day} ${t.time}`,
+        duration: '60 minutes',
+        type: t.type || 'Class',
+        location: 'Online',
+        source: 'timetable'
+      }));
+
+    // Add scheduled sessions from database
+    const dbSessions = scheduledSessions.map((s: any) => ({
+      id: s.id,
+      courseName: s.course?.name || s.title,
+      tutorName: s.tutor?.name || 'Tutor',
+      date: s.scheduledAt.toISOString(),
+      time: s.scheduledAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      duration: `${s.duration} minutes`,
+      type: 'Scheduled Session',
+      location: 'Online',
+      sessionId: s.sessionId,
+      status: s.status,
+      source: 'scheduled'
+    }));
+
+    // Combine and sort by date
+    const upcomingSessions = [...dbSessions, ...timetableSessions]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 10);
 
     const dashboardData = {
       student: { id: student.id, name: student.name, email: student.email, avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random` },
@@ -2513,17 +2820,17 @@ app.get('/api/student/dashboard', async (req, res) => {
         completedCourses: enrollments.filter(e => e.status === 'completed').length,
         activeCourses: enrollments.filter(e => e.status === 'enrolled').length,
         averageGrade: Math.round(averageGrade * 100) / 100,
-        totalStudyHours: 0, 
+        totalStudyHours: 0,
         streak: 0
       },
       upcomingSessions: upcomingSessions,
       recentActivities: recentActivities.length > 0 ? recentActivities : [],
       courses,
       assignments,
-      notifications: notifications.map(n => ({ 
-        id: n.id, 
-        message: n.message, 
-        read: n.read, 
+      notifications: notifications.map(n => ({
+        id: n.id,
+        message: n.message,
+        read: n.read,
         date: (n.createdAt as Date).toISOString(),
         type: n.type || 'course'
       })),
@@ -2540,14 +2847,21 @@ app.get('/api/student/dashboard', async (req, res) => {
 // Tutor Dashboard
 app.get('/api/tutor/dashboard', async (req, res) => {
   try {
-    const tutorId = (req.query.tutorId as string) || (req as any).user?.id;
-    if (!tutorId) return res.status(400).json({ success: false, error: 'Tutor ID is required' });
+    const tutorIdParam = (req.query.tutorId as string) || (req as any).user?.id;
+    if (!tutorIdParam) return res.status(400).json({ success: false, error: 'Tutor ID is required' });
 
-    const tutor = await prisma.tutor.findUnique({ where: { id: tutorId } });
-    if (!tutor) return res.status(404).json({ success: false, error: 'Tutor not found' });
+    // Convert to integer since User model uses integer IDs
+    const tutorId = parseInt(tutorIdParam, 10);
+    if (isNaN(tutorId)) return res.status(400).json({ success: false, error: 'Invalid tutor ID' });
+
+    // Look up the tutor in the User model (not the content Tutor model)
+    const tutorUser = await prisma.user.findFirst({
+      where: { id: tutorId, role: 'tutor' }
+    });
+    if (!tutorUser) return res.status(404).json({ success: false, error: 'Tutor not found' });
 
     const courses = await prisma.course.findMany({
-      where: { tutorId: Number(tutorId) },
+      where: { tutorId: tutorId },
       include: {
         courseEnrollments: { include: { user: true } },
         tests: { include: { submissions: true } }
@@ -2573,34 +2887,112 @@ app.get('/api/tutor/dashboard', async (req, res) => {
         }
       });
     });
-    
+
     const students = Array.from(studentMap.values());
 
     const notifications = await prisma.notification.findMany({ where: { userId: tutorId }, orderBy: { createdAt: 'desc' }, take: 10 });
 
+    // Fetch scheduled sessions for this tutor
+    const scheduledSessions = await prisma.scheduledSession.findMany({
+      where: { tutorId: tutorId },
+      include: { course: true },
+      orderBy: { scheduledAt: 'asc' }
+    });
+
     const dashboardData = {
       tutor: {
-        id: tutor.id,
-        name: tutor.name,
-        subjects: (() => { try { return JSON.parse(tutor.subjects || '[]'); } catch { return []; } })(),
-        contactEmail: tutor.contactEmail,
-        contactPhone: tutor.contactPhone,
-        description: tutor.description,
-        image: tutor.image
+        id: tutorUser.id,
+        name: tutorUser.name,
+        email: tutorUser.email,
+        department: tutorUser.department || 'General',
+        subjects: [],
+        contactEmail: tutorUser.email,
+        contactPhone: '',
+        description: '',
+        image: `https://ui-avatars.com/api/?name=${encodeURIComponent(tutorUser.name)}&background=random`
       },
       statistics: {
         totalStudents: students.length,
         totalCourses: courses.length,
-        activeStudents: students.filter(s => s.enrollments.some(e => e.status === 'enrolled')).length,
-        completedSessions: 45,
+        activeStudents: students.length,
+        completedSessions: scheduledSessions.filter(s => s.status === 'completed').length,
         averageRating: 4.8,
-        totalEarnings: 12500
+        totalEarnings: 0
       },
-      upcomingSessions: [ { id: '1', courseName: 'Mathematics Grade 12', studentName: 'John Doe', studentEmail: 'john@example.com', date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), time: '10:00 AM', duration: 60, type: '1-on-1', status: 'scheduled', location: 'Online', notes: 'Focus on calculus problems', materials: [] } ],
-      recentActivities: [ { id: '1', type: 'session_completed', message: 'Completed session with John Doe - Mathematics', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), studentName: 'John Doe' } ],
-      students: students.map(s => ({ id: s.id, name: s.name, email: s.email, progress: Math.floor(Math.random() * 100), lastActivity: (s.updatedAt as Date).toISOString(), status: 'active', enrolledCourses: s.enrollments.map(e => e.course.title), avatar: `https://ui-avatars.com/api/?name=${s.name}&background=random`, grades: {}, totalSessions: 0, nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })),
-      courses: courses.map(c => ({ id: c.id, name: c.title, description: c.description, students: c.enrollments.length, nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), progress: Math.floor(Math.random() * 100), materials: [], tests: c.tests.map(t => ({ id: t.id, title: t.title, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), submissions: t.submissions.length, totalPoints: 100 })), color: 'blue' })),
-      notifications: notifications.map(n => ({ id: n.id, message: n.message, read: n.read, timestamp: (n.createdAt as Date).toISOString() }))
+      upcomingSessions: scheduledSessions
+        .filter(s => s.status === 'scheduled' && new Date(s.scheduledAt) > new Date())
+        .slice(0, 5)
+        .map(s => ({
+          id: s.id,
+          courseName: s.course?.name || s.title,
+          studentName: 'All Students',
+          studentEmail: '',
+          date: s.scheduledAt.toISOString(),
+          time: s.scheduledAt.toLocaleTimeString(),
+          duration: s.duration,
+          type: 'class',
+          status: s.status,
+          location: 'Online',
+          notes: s.description || '',
+          materials: []
+        })),
+      recentActivities: scheduledSessions
+        .filter(s => s.status === 'completed')
+        .slice(0, 5)
+        .map(s => ({
+          id: s.id,
+          type: 'session_completed',
+          message: `Completed session: ${s.title}`,
+          timestamp: s.updatedAt.toISOString(),
+          studentName: 'Class'
+        })),
+      students: students.map(s => ({
+        id: s.id,
+        name: s.name,
+        email: s.email,
+        progress: Math.floor(Math.random() * 100),
+        lastActivity: s.updatedAt?.toISOString() || new Date().toISOString(),
+        status: 'active',
+        enrolledCourses: s.enrolledCourses.map((c: any) => c.name),
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name)}&background=random`,
+        grades: {},
+        totalSessions: 0,
+        nextSession: null
+      })),
+      courses: courses.map(c => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        students: c.courseEnrollments.length,
+        nextSession: null,
+        progress: Math.floor(Math.random() * 100),
+        materials: [],
+        tests: c.tests.map(t => ({
+          id: t.id,
+          title: t.title,
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          submissions: t.submissions.length,
+          totalPoints: 100
+        })),
+        color: 'blue'
+      })),
+      notifications: notifications.map(n => ({
+        id: n.id,
+        message: n.message,
+        read: n.read,
+        timestamp: n.createdAt.toISOString()
+      })),
+      scheduledSessions: scheduledSessions.map(s => ({
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        courseId: s.courseId,
+        courseName: s.course?.name || 'Unknown Course',
+        scheduledAt: s.scheduledAt.toISOString(),
+        duration: s.duration,
+        status: s.status,
+        sessionId: s.sessionId
+      }))
     };
 
     return res.status(200).json(dashboardData);
@@ -2609,6 +3001,7 @@ app.get('/api/tutor/dashboard', async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch tutor dashboard' });
   }
 });
+
 
 // Optimized statistics endpoint
 app.get('/api/admin/stats', async (req, res) => {
@@ -2638,9 +3031,9 @@ app.get('/api/admin/stats', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching admin stats:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      error: 'Failed to fetch statistics' 
+      error: 'Failed to fetch statistics'
     });
   }
 });
@@ -2654,7 +3047,7 @@ async function initializeDatabase() {
       path.join(baseDir, 'database', 'schema.sql'),
       path.join(baseDir, 'database', 'content-schema.sql')
     ];
-    
+
     for (const file of schemaFiles) {
       try {
         const sql = await fs.readFile(file, 'utf8');
@@ -2662,7 +3055,7 @@ async function initializeDatabase() {
           .split(/;\s*\n/)
           .map(s => s.trim())
           .filter(Boolean);
-        
+
         for (const stmt of statements) {
           try {
             await db.exec(stmt + ';');
@@ -2717,13 +3110,13 @@ process.on('unhandledRejection', (reason, promise) => {
 const startServer = async () => {
   try {
     console.log('🚀 Starting Excellence Akademie API Server...');
-    
+
     // Initialize database schema
     await initializeDatabase();
-    
+
     // Start scheduled session checker
     startScheduledSessionChecker();
-    
+
     // Start server
     const server = httpServer.listen(Number(port), '0.0.0.0', () => {
       console.log(`✓ Server running on port ${port}`);
@@ -2733,7 +3126,7 @@ const startServer = async () => {
       console.log(`✓ Tutors API: http://localhost:${port}/api/tutors`);
       console.log(`✓ Ready for connections!`);
     });
-    
+
     // Handle server errors
     server.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
@@ -2748,7 +3141,7 @@ const startServer = async () => {
     // Prevent server timeout on Render
     server.keepAliveTimeout = 120000; // 2 minutes
     server.headersTimeout = 120000; // 2 minutes
-    
+
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);

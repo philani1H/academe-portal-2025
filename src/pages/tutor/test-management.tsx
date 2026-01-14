@@ -58,6 +58,10 @@ export default function TestManagementPage() {
     explanation: "",
   })
 
+  const [uploadingDoc, setUploadingDoc] = useState(false)
+  const [docSections, setDocSections] = useState<{ title: string; content: string }[]>([])
+  const [generatingQuestions, setGeneratingQuestions] = useState(false)
+
   useEffect(() => {
     loadData()
   }, [])
@@ -112,6 +116,142 @@ export default function TestManagementPage() {
       })
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  const handleUploadDocument = async (file: File | null) => {
+    if (!file) return
+    setUploadingDoc(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const token = (typeof localStorage !== "undefined" && localStorage.getItem("auth_token")) || null
+      const url = new URL("/api/tests/upload", window.location.origin).toString()
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      })
+
+      if (!res.ok) {
+        throw new Error(`Upload failed (${res.status})`)
+      }
+
+      const data = await res.json()
+      const sections = Array.isArray(data?.sections) ? data.sections : []
+      setDocSections(sections)
+
+      toast({
+        title: "Document processed",
+        description: `Found ${sections.length} sections to generate questions from`,
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to process document",
+        variant: "destructive",
+      })
+    } finally {
+      setUploadingDoc(false)
+    }
+  }
+
+  const handleGenerateFromDocument = async () => {
+    if (docSections.length === 0) {
+      toast({
+        title: "No content",
+        description: "Upload a document first",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setGeneratingQuestions(true)
+    try {
+      const res = await fetch("/api/tests/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sections: docSections,
+          options: { count: 20 },
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`Generate failed (${res.status})`)
+      }
+
+      const data = await res.json()
+      const generated = Array.isArray(data?.questions) ? data.questions : []
+
+      const mapped: Question[] = generated.map((q: any, index: number) => {
+        if (q.type === "mcq") {
+          return {
+            id: `g-mcq-${Date.now()}-${index}`,
+            text: q.prompt || "",
+            type: "multiple-choice",
+            options: Array.isArray(q.options) ? q.options : [],
+            correctAnswer: q.answer ?? "",
+            points: 5,
+            explanation: "",
+          }
+        }
+        if (q.type === "true_false") {
+          return {
+            id: `g-tf-${Date.now()}-${index}`,
+            text: q.prompt || "",
+            type: "true-false",
+            options: ["True", "False"],
+            correctAnswer: q.answer ? "True" : "False",
+            points: 3,
+            explanation: "",
+          }
+        }
+        if (q.type === "fill") {
+          return {
+            id: `g-fill-${Date.now()}-${index}`,
+            text: q.prompt || "",
+            type: "short-answer",
+            options: [],
+            correctAnswer: q.answer ?? "",
+            points: 4,
+            explanation: "",
+          }
+        }
+        return {
+          id: `g-short-${Date.now()}-${index}`,
+          text: q.prompt || q.text || "",
+          type: "short-answer",
+          options: [],
+          correctAnswer: "",
+          points: 4,
+          explanation: "",
+        }
+      })
+
+      setNewTest((prev) => ({
+        ...prev,
+        questions: [...prev.questions, ...mapped],
+      }))
+
+      toast({
+        title: "Questions generated",
+        description: `Added ${mapped.length} questions from document`,
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to generate questions",
+        variant: "destructive",
+      })
+    } finally {
+      setGeneratingQuestions(false)
     }
   }
 
@@ -251,9 +391,10 @@ export default function TestManagementPage() {
             </DialogHeader>
 
             <Tabs defaultValue="details" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="details">Test Details</TabsTrigger>
                 <TabsTrigger value="questions">Questions ({newTest.questions.length})</TabsTrigger>
+                <TabsTrigger value="document">From Document</TabsTrigger>
               </TabsList>
 
               <TabsContent value="details" className="space-y-4">
@@ -486,6 +627,41 @@ export default function TestManagementPage() {
                     </div>
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="document" className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Upload Source Document</CardTitle>
+                    <CardDescription>Upload a PDF with the content you want to test</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Document (PDF)</Label>
+                      <Input
+                        type="file"
+                        accept="application/pdf"
+                        disabled={uploadingDoc}
+                        onChange={(e) => handleUploadDocument(e.target.files?.[0] || null)}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-muted-foreground">
+                        {docSections.length > 0
+                          ? `Detected ${docSections.length} sections from the document`
+                          : "No document processed yet"}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={uploadingDoc || generatingQuestions || docSections.length === 0}
+                        onClick={handleGenerateFromDocument}
+                      >
+                        {generatingQuestions ? "Generating..." : "Generate Questions"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
 

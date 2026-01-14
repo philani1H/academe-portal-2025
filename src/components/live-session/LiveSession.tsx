@@ -109,14 +109,19 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
   const handleGoLive = () => {
     setIsLive(true);
     if (socket && user) {
-        socket.emit('announce-session', {
+        console.log('[LiveSession] Go Live clicked', {
             sessionId,
-            userId: user.id,
-            userRole,
-            userName: user.name,
             courseId,
             courseName,
-            category
+            tutorId: user.id,
+            tutorName: user.name,
+            userRole
+        });
+        socket.emit('session-started', {
+            sessionId,
+            courseId,
+            tutorName: user.name,
+            students: []
         });
         toast.success("You are live! Students have been notified.");
     }
@@ -213,18 +218,20 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
       isVideoOn: p.isVideoOn,
       isAudioOn: p.isAudioOn,
       isHandRaised: p.isHandRaised ?? false,
-      canShare: p.userRole === 'tutor'
+      canShare: p.userRole === 'tutor',
+      name: p.name
   }));
   
   // Add self to participants
   if (user) {
       participantsList.push({
-          uid: 'local',
+          uid: user.id,
           role: userRole,
           isVideoOn: isVideoOn,
           isAudioOn: isAudioOn,
           isHandRaised: isHandRaised,
-          canShare: userRole === 'tutor'
+          canShare: userRole === 'tutor',
+          name: user.name
       });
   }
 
@@ -234,16 +241,17 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
     <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
       <div className="flex-1 flex flex-col min-w-0">
         <LiveSessionHeader
-            sessionName={sessionName}
-            sessionTime={sessionTime}
-            isRecording={isRecording}
-            participantCount={peers.length + 1}
-            onLeave={onLeave}
-            userRole={userRole}
-            isJoined={userRole === 'tutor' ? isLive : true}
-            isSidebarOpen={isSidebarOpen}
-            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-            category={category}
+          sessionName={sessionName}
+          sessionTime={sessionTime}
+          isRecording={isRecording}
+          participantCount={peers.length + 1}
+          onLeave={onLeave}
+          userRole={userRole}
+          isJoined={userRole === 'tutor' ? isLive : true}
+          isSidebarOpen={isSidebarOpen}
+          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          category={category}
+          tutorName={userRole === 'tutor' ? user.name : undefined}
         />
         
         <div className="flex-1 relative bg-black overflow-hidden flex flex-col">

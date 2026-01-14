@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import io, { Socket } from 'socket.io-client';
 import SimplePeer, { Instance as PeerInstance } from 'simple-peer';
 
-const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 interface UseWebRTCProps {
   sessionId: string;
@@ -21,6 +21,8 @@ interface PeerData {
   userRole: 'tutor' | 'student';
   isVideoOn: boolean;
   isAudioOn: boolean;
+  isHandRaised?: boolean;
+  name?: string;
 }
 
 export const useWebRTC = ({ sessionId, userId, userRole, userName, courseId, courseName, category }: UseWebRTCProps) => {
@@ -67,11 +69,12 @@ export const useWebRTC = ({ sessionId, userId, userRole, userName, courseId, cou
                     userRole: remoteUserRole,
                     isVideoOn: remoteVideo ?? true,
                     isAudioOn: remoteAudio ?? true,
-                    isHandRaised: remoteHand ?? false
+                    isHandRaised: remoteHand ?? false,
+                    name: remoteName
                 }]);
             });
 
-            socketRef.current.on('signal', ({ signal, from, userRole: remoteRole, isVideoOn: remoteVideo, isAudioOn: remoteAudio, isHandRaised: remoteHand }) => {
+            socketRef.current.on('signal', ({ signal, from, userRole: remoteRole, isVideoOn: remoteVideo, isAudioOn: remoteAudio, isHandRaised: remoteHand, userName: remoteName }) => {
                 const item = peersRef.current.get(from);
                 if (item) {
                     item.signal(signal);
@@ -84,7 +87,8 @@ export const useWebRTC = ({ sessionId, userId, userRole, userName, courseId, cou
                         userRole: remoteRole || 'student',
                         isVideoOn: remoteVideo ?? true,
                         isAudioOn: remoteAudio ?? true,
-                        isHandRaised: remoteHand ?? false
+                        isHandRaised: remoteHand ?? false,
+                        name: remoteName
                     }]); 
                 }
             });

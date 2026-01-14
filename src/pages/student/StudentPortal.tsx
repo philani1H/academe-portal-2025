@@ -194,11 +194,11 @@ export default function StudentPortal() {
 
   useEffect(() => {
     coursesRef.current = courses;
-    
+
     // Join course rooms when courses are loaded
     if (socketRef.current && courses.length > 0) {
-        const courseIds = courses.map(c => c.id);
-        socketRef.current.emit('join-course-room', courseIds);
+      const courseIds = courses.map(c => c.id);
+      socketRef.current.emit('join-course-room', courseIds);
     }
   }, [courses]);
 
@@ -207,21 +207,21 @@ export default function StudentPortal() {
     const params = new URLSearchParams(window.location.search);
     const joinSessionId = params.get('joinSession');
     if (joinSessionId) {
-        const courseId = params.get('courseId');
-        const courseName = params.get('courseName');
-        const category = params.get('category');
-        const tutorName = params.get('tutorName');
-        
-        // Redirect to live session
-        let target = `/live-session/${joinSessionId}?`;
-        const targetParams = new URLSearchParams();
-        if (courseId) targetParams.append('courseId', courseId);
-        if (courseName) targetParams.append('courseName', courseName);
-        if (category) targetParams.append('category', category);
-        if (tutorName) targetParams.append('userName', tutorName);
-        targetParams.append('fromStudent', 'true');
-        
-        window.location.href = target + targetParams.toString();
+      const courseId = params.get('courseId');
+      const courseName = params.get('courseName');
+      const category = params.get('category');
+      const tutorName = params.get('tutorName');
+
+      // Redirect to live session
+      let target = `/live-session/${joinSessionId}?`;
+      const targetParams = new URLSearchParams();
+      if (courseId) targetParams.append('courseId', courseId);
+      if (courseName) targetParams.append('courseName', courseName);
+      if (category) targetParams.append('category', category);
+      if (tutorName) targetParams.append('userName', tutorName);
+      targetParams.append('fromStudent', 'true');
+
+      window.location.href = target + targetParams.toString();
     }
   }, []);
 
@@ -242,7 +242,7 @@ export default function StudentPortal() {
       setLoading(true)
       const studentId = authUser?.id
       const data = await apiFetch<any>(`/student/dashboard${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ''}`)
-      
+
       if (data?.student) setUser(data.student)
       if (data?.courses) setCourses(data.courses)
       if (data?.notifications) setNotifications(data.notifications)
@@ -259,9 +259,14 @@ export default function StudentPortal() {
     try {
       if (!authUser) return;
 
-      const response = await fetch('/api/student/scheduled-sessions', {
+      const studentId = authUser.id;
+      if (!studentId) return;
+
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+
+      const response = await fetch(`/api/student/scheduled-sessions?studentId=${encodeURIComponent(studentId)}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         }
       });
 
@@ -279,44 +284,64 @@ export default function StudentPortal() {
     const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
     socketRef.current = io(SOCKET_SERVER_URL);
     const socket = socketRef.current;
-    
+
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
-        try {
-            const parsed = JSON.parse(storedUser);
-            if(parsed?.id) {
-                socket.emit('join-user-room', parsed.id);
-            }
-        } catch (e) {
-            console.error(e);
+      try {
+        const parsed = JSON.parse(storedUser);
+        if (parsed?.id) {
+          socket.emit('join-user-room', parsed.id);
         }
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     socket.on('session-live', (data: any) => {
-        // Use ref to get latest courses without dependency loop
-        const currentCourses = coursesRef.current; 
-        const isEnrolled = currentCourses.some(c => c.id === data.courseId);
-        
-        if (isEnrolled) {
-            toast.message('Live Session Started', {
-                description: `${data.message} (${data.department || 'General'})`,
-                action: {
-                    label: "Join",
-                    onClick: () => window.location.href = `/live-session/${data.sessionId}?courseId=${data.courseId}&courseName=${encodeURIComponent(data.courseName || data.message.split(' is live')[0])}&category=${encodeURIComponent(data.department || '')}&fromStudent=true`
-                },
-            });
+      console.log('[StudentPortal] session-live received', data);
+      const currentCourses = coursesRef.current;
+      const isEnrolled = currentCourses.some(c => String(c.id) === String(data.courseId));
+
+      if (isEnrolled) {
+        toast.message('Live Session Started', {
+          description: `${data.message} (${data.department || 'General'})`,
+          action: {
+            label: "Join",
+            onClick: () => window.location.href = `/live-session/${data.sessionId}?courseId=${data.courseId}&courseName=${encodeURIComponent(data.courseName || data.message.split(' is live')[0])}&category=${encodeURIComponent(data.department || '')}&fromStudent=true`
+          },
+        });
+      }
+
+      setCourses(prev => prev.map(course => {
+        if (String(course.id) === String(data.courseId)) {
+          return {
+            ...course,
+            isLive: true,
+            liveSessionId: data.sessionId
+          };
         }
-        
-        setCourses(prev => prev.map(course => {
-            if(String(course.id) === String(data.courseId)) {
-                return { ...course, isLive: true, liveSessionId: data.sessionId };
-            }
-            return course;
-        }));
+        return course;
+      }));
+
+      // Also update scheduled sessions
+      setScheduledSessions(prev => prev.map(session => {
+        // Match by courseId AND Tutor Name to avoid updating wrong sessions
+        if (String(session.courseId) === String(data.courseId) &&
+          (session.tutorName === data.tutorName || session.tutor?.name === data.tutorName)) {
+          return {
+            ...session,
+            isLive: true,
+            canJoin: true,
+            sessionId: data.sessionId,
+            status: 'live'
+          };
+        }
+        return session;
+      }));
     });
 
     return () => {
-        socket.disconnect();
+      socket.disconnect();
     }
   }, []);
 
@@ -540,9 +565,8 @@ export default function StudentPortal() {
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <aside
-        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out ${
-          sidebarOpen ? "left-0 w-64" : "-left-64 w-64 md:left-0 md:w-20"
-        }`}
+        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out ${sidebarOpen ? "left-0 w-64" : "-left-64 w-64 md:left-0 md:w-20"
+          }`}
       >
         <div className="flex flex-col h-full">
           <div className="p-4 border-b border-gray-200 flex items-center justify-between">
@@ -562,11 +586,9 @@ export default function StudentPortal() {
             <nav className="space-y-1 px-2">
               <button
                 onClick={() => setActiveTab("dashboard")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Home className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Dashboard</span>}
@@ -574,11 +596,9 @@ export default function StudentPortal() {
 
               <button
                 onClick={() => setActiveTab("courses")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <BookOpen className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>My Courses</span>}
@@ -586,11 +606,9 @@ export default function StudentPortal() {
 
               <button
                 onClick={() => setActiveTab("timetable")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Timetable</span>}
@@ -598,11 +616,9 @@ export default function StudentPortal() {
 
               <button
                 onClick={() => setActiveTab("assignments")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "assignments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "assignments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <CheckSquare className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Assignments</span>}
@@ -610,11 +626,9 @@ export default function StudentPortal() {
 
               <button
                 onClick={() => setActiveTab("tests")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "tests" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "tests" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <FileText className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Tests</span>}
@@ -622,11 +636,9 @@ export default function StudentPortal() {
 
               <button
                 onClick={() => setActiveTab("grades")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "grades" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "grades" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <BarChart className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Grades</span>}
@@ -634,11 +646,9 @@ export default function StudentPortal() {
 
               <button
                 onClick={() => setActiveTab("notifications")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Bell className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && (
@@ -654,11 +664,9 @@ export default function StudentPortal() {
 
               <button
                 onClick={() => setActiveTab("timetable")}
-                className={`flex items-center ${
-                  !sidebarOpen ? "justify-center" : "justify-start"
-                } w-full px-3 py-2 text-sm font-medium rounded-md ${
-                  activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
               >
                 <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Timetable</span>}
@@ -754,9 +762,8 @@ export default function StudentPortal() {
                     setActiveTab("dashboard")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Home className="h-5 w-5 mr-2" />
                   <span>Dashboard</span>
@@ -767,9 +774,8 @@ export default function StudentPortal() {
                     setActiveTab("courses")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <BookOpen className="h-5 w-5 mr-2" />
                   <span>My Courses</span>
@@ -780,9 +786,8 @@ export default function StudentPortal() {
                     setActiveTab("timetable")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Calendar className="h-5 w-5 mr-2" />
                   <span>Timetable</span>
@@ -793,9 +798,8 @@ export default function StudentPortal() {
                     setActiveTab("assignments")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "assignments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "assignments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <CheckSquare className="h-5 w-5 mr-2" />
                   <span>Assignments</span>
@@ -806,9 +810,8 @@ export default function StudentPortal() {
                     setActiveTab("tests")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "tests" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "tests" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <FileText className="h-5 w-5 mr-2" />
                   <span>Tests</span>
@@ -819,9 +822,8 @@ export default function StudentPortal() {
                     setActiveTab("grades")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "grades" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "grades" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <BarChart className="h-5 w-5 mr-2" />
                   <span>Grades</span>
@@ -832,9 +834,8 @@ export default function StudentPortal() {
                     setActiveTab("notifications")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
-                    activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <Bell className="h-5 w-5 mr-2" />
                   <div className="flex justify-between items-center w-full">
@@ -891,21 +892,21 @@ export default function StudentPortal() {
                   />
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="relative">
-                        <Bell className="h-5 w-5" />
-                        {unreadCount > 0 && (
-                          <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
-                            {unreadCount}
-                          </span>
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>You have {unreadCount} unread notifications</p>
-                    </TooltipContent>
-                  </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="relative">
+                      <Bell className="h-5 w-5" />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>You have {unreadCount} unread notifications</p>
+                  </TooltipContent>
+                </Tooltip>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="flex items-center gap-2">
@@ -942,12 +943,12 @@ export default function StudentPortal() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Dashboard Tab */}
           {activeTab === "timetable" && (
-                <div className="space-y-6">
-                    <Timetable userRole="student" />
-                </div>
-            )}
-            
-            {activeTab === "dashboard" && (
+            <div className="space-y-6">
+              <Timetable userRole="student" />
+            </div>
+          )}
+
+          {activeTab === "dashboard" && (
             <div className="space-y-6">
               {/* Live Classes Banner */}
               {liveCourses.length > 0 && (
@@ -967,7 +968,7 @@ export default function StudentPortal() {
                             <span className="ml-2 text-sm text-gray-500">with {course.tutor}</span>
                             {course.category && <Badge variant="outline" className="ml-2">{course.category}</Badge>}
                           </div>
-                          <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => window.location.href = `/live-session/${course.liveSessionId}?courseId=${course.id}&courseName=${encodeURIComponent(course.name)}&category=${encodeURIComponent(course.category || '')}&fromStudent=true` }>
+                          <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => window.location.href = `/live-session/${course.liveSessionId}?courseId=${course.id}&courseName=${encodeURIComponent(course.name)}&category=${encodeURIComponent(course.category || '')}&fromStudent=true`}>
                             Join Class
                           </Button>
                         </div>
@@ -1001,20 +1002,33 @@ export default function StudentPortal() {
                           </div>
                           <div className="text-right">
                             <div className="text-sm text-gray-500">with {session.tutor.name}</div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="mt-1"
-                              onClick={() => {
-                                // For now, just show when it will start
-                                const timeUntil = new Date(session.scheduledAt).getTime() - Date.now();
-                                const hoursUntil = Math.floor(timeUntil / (1000 * 60 * 60));
-                                const minutesUntil = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
-                                alert(`This session will start automatically in ${hoursUntil} hours and ${minutesUntil} minutes. You'll receive a notification when it begins.`);
-                              }}
-                            >
-                              Scheduled
-                            </Button>
+                            {session.canJoin || session.isReady || session.isLive ? (
+                              <Button
+                                size="sm"
+                                className="mt-1 bg-green-600 hover:bg-green-700 text-white"
+                                onClick={() => window.location.href = `/live-session/${session.sessionId}?courseId=${session.courseId}&courseName=${encodeURIComponent(session.courseName)}&tutorName=${encodeURIComponent(session.tutorName)}&fromStudent=true`}
+                              >
+                                Join Now
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="mt-1"
+                                onClick={() => {
+                                  const timeUntil = new Date(session.scheduledAt).getTime() - Date.now();
+                                  const hoursUntil = Math.floor(timeUntil / (1000 * 60 * 60));
+                                  const minutesUntil = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
+                                  if (timeUntil > 0) {
+                                    alert(`This session starts in ${hoursUntil}h ${minutesUntil}m. You can join 15 minutes before the start time.`);
+                                  } else {
+                                    alert(`This session was scheduled for ${new Date(session.scheduledAt).toLocaleTimeString()}.`);
+                                  }
+                                }}
+                              >
+                                Scheduled
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1100,23 +1114,23 @@ export default function StudentPortal() {
                     <CardContent>
                       {(() => {
                         const upcoming = enrolledCourses
-                           .filter(c => c.nextSession && c.nextSession !== 'TBA')
-                           .sort((a, b) => {
-                               if (a.nextSessionDate && b.nextSessionDate) {
-                                   return new Date(a.nextSessionDate).getTime() - new Date(b.nextSessionDate).getTime();
-                               }
-                               return 0;
-                           });
+                          .filter(c => c.nextSession && c.nextSession !== 'TBA')
+                          .sort((a, b) => {
+                            if (a.nextSessionDate && b.nextSessionDate) {
+                              return new Date(a.nextSessionDate).getTime() - new Date(b.nextSessionDate).getTime();
+                            }
+                            return 0;
+                          });
                         const next = upcoming[0];
                         return (
-                            <>
-                                <div className="text-2xl font-bold">
-                                    {next ? (next.nextSession.includes('at') ? next.nextSession.split('at')[1].trim() : next.nextSession) : "N/A"}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    {next ? `${next.name} - ${next.nextSession}` : "No upcoming sessions"}
-                                </p>
-                            </>
+                          <>
+                            <div className="text-2xl font-bold">
+                              {next ? (next.nextSession.includes('at') ? next.nextSession.split('at')[1].trim() : next.nextSession) : "N/A"}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {next ? `${next.name} - ${next.nextSession}` : "No upcoming sessions"}
+                            </p>
+                          </>
                         );
                       })()}
                     </CardContent>
@@ -1137,9 +1151,9 @@ export default function StudentPortal() {
                       <div className="text-2xl font-bold">
                         {enrolledCourses.length > 0
                           ? Math.round(
-                              enrolledCourses.reduce((sum, course) => sum + (course.grade || 0), 0) /
-                                enrolledCourses.filter((c) => c.grade).length,
-                            )
+                            enrolledCourses.reduce((sum, course) => sum + (course.grade || 0), 0) /
+                            enrolledCourses.filter((c) => c.grade).length,
+                          )
                           : "N/A"}
                         %
                       </div>
@@ -1807,9 +1821,9 @@ export default function StudentPortal() {
                       <Badge className="text-lg">
                         {enrolledCourses.length > 0
                           ? Math.round(
-                              enrolledCourses.reduce((sum, course) => sum + (course.grade || 0), 0) /
-                                enrolledCourses.filter((c) => c.grade).length,
-                            )
+                            enrolledCourses.reduce((sum, course) => sum + (course.grade || 0), 0) /
+                            enrolledCourses.filter((c) => c.grade).length,
+                          )
                           : "N/A"}
                         %
                       </Badge>

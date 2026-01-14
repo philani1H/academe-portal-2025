@@ -14,6 +14,7 @@ interface LiveSessionHeaderProps {
   onToggleSidebar: () => void
   category?: string
   onLeave?: () => void
+  tutorName?: string
 }
 
 export function LiveSessionHeader({
@@ -26,7 +27,8 @@ export function LiveSessionHeader({
   isSidebarOpen,
   onToggleSidebar,
   category,
-  onLeave
+  onLeave,
+  tutorName
 }: LiveSessionHeaderProps) {
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600)
@@ -52,7 +54,9 @@ export function LiveSessionHeader({
               <span className="sm:hidden">{participantCount}</span>
             </Badge>
             {userRole === 'tutor' && (
-              <Badge className="bg-indigo-600 text-xs sm:text-sm py-0.5">Host</Badge>
+              <Badge className="bg-indigo-600 text-xs sm:text-sm py-0.5">
+                {tutorName ? `Tutor: ${tutorName}` : 'Tutor'}
+              </Badge>
             )}
             <Badge variant="outline" className="text-white border-white text-xs sm:text-sm py-0.5 flex items-center gap-1">
               <Clock className="h-3 w-3" />

@@ -32,4 +32,7 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: ["simple-peer", "events", "util"],
+  },
 }));

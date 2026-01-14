@@ -1602,6 +1602,101 @@ const ContentManagement = () => {
                 onChange={e => setEditingTutor({ ...editingTutor, subjects: e.target.value.split(',').map(s => s.trim()) })} 
               />
             </div>
+            
+            <div className="border-t pt-4 mt-2">
+              <div className="flex justify-between items-center mb-2">
+                <Label className="font-semibold">Ratings & Reviews</Label>
+                <Button 
+                  type="button"
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    const newRating = {
+                      id: Date.now().toString(),
+                      studentName: 'Student Name',
+                      rating: 5,
+                      comment: 'Great tutor!',
+                      date: new Date().toISOString().split('T')[0]
+                    }
+                    setEditingTutor({
+                      ...editingTutor,
+                      ratings: [...(editingTutor.ratings || []), newRating]
+                    })
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Rating
+                </Button>
+              </div>
+              <ScrollArea className="h-[200px] w-full rounded-md border p-4">
+                <div className="space-y-4">
+                  {(editingTutor.ratings || []).map((rating: any, index: number) => (
+                    <div key={rating.id || index} className="bg-slate-50 p-3 rounded-md border relative group">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute top-2 right-2 h-6 w-6 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => {
+                          const newRatings = [...editingTutor.ratings]
+                          newRatings.splice(index, 1)
+                          setEditingTutor({ ...editingTutor, ratings: newRatings })
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                      
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                          <Label className="text-xs">Student Name</Label>
+                          <Input 
+                            className="h-7 text-xs" 
+                            value={rating.studentName} 
+                            onChange={(e) => {
+                              const newRatings = [...editingTutor.ratings]
+                              newRatings[index] = { ...rating, studentName: e.target.value }
+                              setEditingTutor({ ...editingTutor, ratings: newRatings })
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Rating (1-5)</Label>
+                          <Input 
+                            type="number"
+                            min="1"
+                            max="5"
+                            className="h-7 text-xs" 
+                            value={rating.rating} 
+                            onChange={(e) => {
+                              const newRatings = [...editingTutor.ratings]
+                              newRatings[index] = { ...rating, rating: parseInt(e.target.value) || 0 }
+                              setEditingTutor({ ...editingTutor, ratings: newRatings })
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Comment</Label>
+                        <Textarea 
+                          className="min-h-[60px] text-xs resize-none" 
+                          value={rating.comment} 
+                          onChange={(e) => {
+                            const newRatings = [...editingTutor.ratings]
+                            newRatings[index] = { ...rating, comment: e.target.value }
+                            setEditingTutor({ ...editingTutor, ratings: newRatings })
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {(!editingTutor.ratings || editingTutor.ratings.length === 0) && (
+                    <div className="text-center text-gray-500 text-sm py-4">
+                      No ratings yet
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
           </div>
         )}
         <DialogFooter>
@@ -1656,7 +1751,7 @@ const ContentManagement = () => {
     // Pricing Plan Edit Dialog
   const PricingPlanEditDialog = () => (
     <Dialog open={!!editingPricingPlan} onOpenChange={() => setEditingPricingPlan(null)}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editingPricingPlan?.id ? 'Edit' : 'Add'} Pricing Plan</DialogTitle>
         </DialogHeader>
@@ -1677,16 +1772,45 @@ const ContentManagement = () => {
                 <Label>Period</Label>
                 <Input value={editingPricingPlan.period} onChange={e => setEditingPricingPlan({ ...editingPricingPlan, period: e.target.value })} />
               </div>
-              <div className="flex items-center gap-2 pt-8">
-                <Switch checked={editingPricingPlan.popular} onCheckedChange={checked => setEditingPricingPlan({ ...editingPricingPlan, popular: checked })} />
-                <Label>Popular</Label>
+              <div>
+                <Label>Order</Label>
+                <Input type="number" value={editingPricingPlan.order || 0} onChange={e => setEditingPricingPlan({ ...editingPricingPlan, order: parseInt(e.target.value) || 0 })} />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+               <div>
+                <Label>Color (Hex/Class)</Label>
+                <Input value={editingPricingPlan.color} onChange={e => setEditingPricingPlan({ ...editingPricingPlan, color: e.target.value })} placeholder="bg-blue-500" />
+              </div>
+              <div>
+                <Label>Icon Name</Label>
+                <Input value={editingPricingPlan.icon} onChange={e => setEditingPricingPlan({ ...editingPricingPlan, icon: e.target.value })} placeholder="Star" />
+              </div>
+            </div>
+             <div className="grid grid-cols-2 gap-4 pt-2">
+                <div className="flex items-center gap-2">
+                  <Switch checked={editingPricingPlan.popular} onCheckedChange={checked => setEditingPricingPlan({ ...editingPricingPlan, popular: checked })} />
+                  <Label>Popular Choice</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch checked={editingPricingPlan.isActive} onCheckedChange={checked => setEditingPricingPlan({ ...editingPricingPlan, isActive: checked })} />
+                  <Label>Active</Label>
+                </div>
             </div>
             <div>
               <Label>Features (comma separated)</Label>
               <Textarea 
                 value={editingPricingPlan.features.join(', ')} 
                 onChange={e => setEditingPricingPlan({ ...editingPricingPlan, features: e.target.value.split(',').map(s => s.trim()) })} 
+                placeholder="Feature 1, Feature 2"
+              />
+            </div>
+            <div>
+              <Label>Not Included Features (comma separated)</Label>
+              <Textarea 
+                value={editingPricingPlan.notIncluded?.join(', ')} 
+                onChange={e => setEditingPricingPlan({ ...editingPricingPlan, notIncluded: e.target.value.split(',').map(s => s.trim()) })} 
+                placeholder="Missing Feature 1, Missing Feature 2"
               />
             </div>
           </div>
@@ -2020,13 +2144,45 @@ const ContentManagement = () => {
                         {pricingPlans.map((plan) => (
                           <Card key={plan.id} className="p-4">
                             <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
+                              <div className="flex-1 space-y-2">
+                                <div className="flex items-center gap-2">
                                   <h4 className="font-semibold">{plan.name}</h4>
                                   {plan.popular && <Badge className="bg-yellow-100 text-yellow-800">Popular</Badge>}
+                                  {plan.isActive === false && (
+                                    <Badge className="bg-gray-200 text-gray-700">Inactive</Badge>
+                                  )}
                                 </div>
-                                <p className="text-lg font-bold text-gray-900">{plan.price} {plan.period}</p>
-                                <p className="text-sm text-gray-600 mt-1">{plan.features.length} features included</p>
+                                <p className="text-lg font-bold text-gray-900">
+                                  {plan.price} {plan.period}
+                                </p>
+                                <div className="text-xs text-gray-500 space-x-4">
+                                  <span>Color: {plan.color || "default"}</span>
+                                  <span>Icon: {plan.icon}</span>
+                                </div>
+                                <div className="mt-2">
+                                  <p className="text-xs font-medium text-gray-500">Features</p>
+                                  <ul className="mt-1 text-xs text-gray-600 list-disc list-inside space-y-0.5">
+                                    {plan.features.slice(0, 5).map((feature, index) => (
+                                      <li key={index}>{feature}</li>
+                                    ))}
+                                    {plan.features.length > 5 && (
+                                      <li>+ {plan.features.length - 5} more</li>
+                                    )}
+                                  </ul>
+                                  {plan.notIncluded && plan.notIncluded.length > 0 && (
+                                    <div className="mt-2">
+                                      <p className="text-xs font-medium text-gray-500">Not included</p>
+                                      <ul className="mt-1 text-xs text-red-600 list-disc list-inside space-y-0.5">
+                                        {plan.notIncluded.slice(0, 5).map((item, index) => (
+                                          <li key={index}>{item}</li>
+                                        ))}
+                                        {plan.notIncluded.length > 5 && (
+                                          <li>+ {plan.notIncluded.length - 5} more</li>
+                                        )}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                               <div className="flex gap-2 ml-4">
                                 <Button
