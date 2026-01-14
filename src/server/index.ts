@@ -2134,11 +2134,23 @@ app.post('/api/admin/upload', authenticateJWT, authorizeRoles('admin'), async (r
       return res.status(400).json({ success: false, error: 'file (base64) is required' });
     }
 
-    const match = /^data:(image\/(png|jpeg|jpg|webp|svg\+xml));base64,(.+)$/i.exec(file);
-    if (!match) return res.status(400).json({ success: false, error: 'Invalid image data URL' });
+    const match = /^data:((image\/(png|jpeg|jpg|webp|svg\+xml))|(text\/(html|markdown|plain|x-markdown))|(application\/(json|pdf)));base64,(.+)$/i.exec(file);
+    if (!match) return res.status(400).json({ success: false, error: 'Invalid file data URL. Allowed types: Images, HTML, Markdown, PDF, JSON' });
     const mime = match[1];
-    const ext = mime.includes('svg') ? 'svg' : mime.split('/')[1].replace('jpeg', 'jpg');
-    const base64 = match[3];
+    let ext = 'bin';
+    if (mime.includes('image')) {
+        ext = mime.includes('svg') ? 'svg' : mime.split('/')[1].replace('jpeg', 'jpg');
+    } else if (mime.includes('text/html')) {
+        ext = 'html';
+    } else if (mime.includes('markdown') || mime.includes('text/plain')) {
+        // Fallback to .md if text/plain, or trust filename if available
+        ext = 'md';
+    } else if (mime.includes('pdf')) {
+        ext = 'pdf';
+    } else if (mime.includes('json')) {
+        ext = 'json';
+    }
+    const base64 = match[match.length - 1];
     const buffer = Buffer.from(base64, 'base64');
 
     await fs.mkdir(uploadsDir, { recursive: true });
