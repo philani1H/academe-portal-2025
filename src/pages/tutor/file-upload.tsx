@@ -17,6 +17,8 @@ interface FileUploadProps {
   className?: string
 }
 
+import { api } from "@/lib/api"
+
 export default function FileUploadPage() {
   const [files, setFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
@@ -84,23 +86,27 @@ export default function FileUploadPage() {
     setUploadProgress(0)
 
     try {
-      // Simulate upload progress
-      for (let i = 0; i <= 100; i += 10) {
-        setUploadProgress(i)
-        await new Promise((resolve) => setTimeout(resolve, 100))
+      const totalFiles = files.length
+      let completed = 0
+
+      // Upload files sequentially to track progress
+      for (const file of files) {
+        await api.uploadFile(file)
+        completed++
+        setUploadProgress(Math.round((completed / totalFiles) * 100))
       }
 
-      // onUpload callback removed for page usage
       setFiles([])
 
       toast({
         title: "Success",
-        description: `${files.length} file(s) uploaded successfully`,
+        description: `${totalFiles} file(s) uploaded successfully`,
       })
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Upload error:', error)
       toast({
         title: "Upload failed",
-        description: "Failed to upload files. Please try again.",
+        description: error.message || "Failed to upload files. Please try again.",
         variant: "destructive",
       })
     } finally {

@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import {
   Bell,
@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Timetable } from "@/components/Timetable"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -57,13 +58,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
+import { useAuth } from "@/contexts/AuthContext"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { apiFetch } from "@/lib/api"
 import { MaterialViewer } from "@/components/MaterialViewer"
+import { toast } from "sonner"
+import io from "socket.io-client"
 
 // Types
 interface Course {
@@ -73,12 +77,16 @@ interface Course {
   tutor: string
   tutorEmail: string
   nextSession: string
+  nextSessionDate?: string
   progress: number
   materials: Material[]
   tests: Test[]
   color: string
   announcements: Announcement[]
   grade?: number
+  isLive?: boolean
+  liveSessionId?: string
+  category?: string
 }
 
 interface Material {
@@ -150,333 +158,20 @@ interface UserType {
   avatar?: string
 }
 
-// Mock data
-const mockUser: UserType = {
-  id: "s1",
-  name: "Alex Johnson",
-  email: "alex.johnson@example.com",
-  role: "student",
-  enrolledCourses: ["1", "2", "3"],
-}
+// Mock data removed
 
-const mockCourses: Course[] = [
-  {
-    id: "1",
-    name: "Mathematics 101",
-    description: "Introduction to basic mathematical concepts and principles",
-    tutor: "Dr. Smith",
-    tutorEmail: "dr.smith@university.edu",
-    nextSession: "2024-05-20 10:00",
-    progress: 65,
-    color: "#4f46e5",
-    grade: 85,
-    materials: [
-      {
-        id: "m1",
-        name: "Introduction to Algebra",
-        type: "pdf",
-        url: "/materials/algebra.pdf",
-        dateAdded: "2024-01-15",
-        size: "2.4 MB",
-        description: "Fundamental concepts of algebraic expressions and equations",
-        completed: true,
-      },
-      {
-        id: "m2",
-        name: "Geometry Basics Video",
-        type: "video",
-        url: "/materials/geometry.mp4",
-        dateAdded: "2024-01-20",
-        size: "45 MB",
-        description: "Visual explanation of geometric principles and theorems",
-        completed: false,
-      },
-      {
-        id: "m3",
-        name: "Calculus Introduction",
-        type: "pdf",
-        url: "/materials/calculus.pdf",
-        dateAdded: "2024-02-05",
-        size: "3.1 MB",
-        description: "Introduction to differential and integral calculus",
-        completed: false,
-      },
-    ],
-    tests: [
-      {
-        id: "t1",
-        title: "Midterm Exam",
-        description: "Covers chapters 1-5",
-        dueDate: "2024-06-15",
-        questions: [
-          {
-            id: "q1",
-            text: "What is the derivative of f(x) = x²?",
-            type: "multiple-choice",
-            options: ["f'(x) = x", "f'(x) = 2x", "f'(x) = 2", "f'(x) = x²"],
-            points: 10,
-          },
-          {
-            id: "q2",
-            text: "The integral of f(x) = 2x is F(x) = x² + C",
-            type: "true-false",
-            points: 5,
-          },
-        ],
-        totalPoints: 100,
-        status: "upcoming",
-        timeLimit: 90,
-      },
-      {
-        id: "t2",
-        title: "Quiz 1",
-        description: "Basic algebra concepts",
-        dueDate: "2024-05-10",
-        questions: 10,
-        totalPoints: 50,
-        status: "completed",
-        grade: 45,
-        submittedAt: "2024-05-10 14:30",
-      },
-    ],
-    announcements: [
-      {
-        id: "a1",
-        title: "Office Hours Change",
-        content: "Office hours will be moved to Thursdays 2-4pm starting next week.",
-        date: "2024-05-15",
-        courseId: "1",
-      },
-      {
-        id: "a2",
-        title: "Midterm Preparation",
-        content: "Review session for the midterm will be held on Monday at 5pm in Room 302.",
-        date: "2024-05-12",
-        courseId: "1",
-      },
-    ],
-  },
-  {
-    id: "2",
-    name: "Physics Advanced",
-    description: "Advanced concepts in physics including mechanics and thermodynamics",
-    tutor: "Prof. Johnson",
-    tutorEmail: "prof.johnson@university.edu",
-    nextSession: "2024-05-21 14:00",
-    progress: 45,
-    color: "#0ea5e9",
-    grade: 78,
-    materials: [
-      {
-        id: "m4",
-        name: "Mechanics Lecture Notes",
-        type: "pdf",
-        url: "/materials/mechanics.pdf",
-        dateAdded: "2024-01-25",
-        size: "3.1 MB",
-        description: "Comprehensive notes on Newtonian mechanics",
-        completed: true,
-      },
-      {
-        id: "m5",
-        name: "Thermodynamics Overview",
-        type: "document",
-        url: "/materials/thermo.docx",
-        dateAdded: "2024-02-01",
-        size: "1.8 MB",
-        description: "Introduction to the laws of thermodynamics",
-        completed: false,
-      },
-      {
-        id: "m6",
-        name: "Wave Motion Video Lecture",
-        type: "video",
-        url: "/materials/waves.mp4",
-        dateAdded: "2024-02-15",
-        size: "120 MB",
-        description: "Visual explanation of wave properties and behaviors",
-        completed: false,
-      },
-    ],
-    tests: [
-      {
-        id: "t3",
-        title: "Quiz 1",
-        description: "Mechanics basics",
-        dueDate: "2024-05-28",
-        questions: 10,
-        totalPoints: 50,
-        status: "upcoming",
-        timeLimit: 45,
-      },
-    ],
-    announcements: [
-      {
-        id: "a3",
-        title: "Lab Equipment Update",
-        content: "New lab equipment has arrived. We will be using it in next week's session.",
-        date: "2024-05-16",
-        courseId: "2",
-      },
-    ],
-  },
-  {
-    id: "3",
-    name: "Computer Science Fundamentals",
-    description: "Introduction to programming concepts, algorithms, and data structures",
-    tutor: "Dr. Williams",
-    tutorEmail: "dr.williams@university.edu",
-    nextSession: "2024-05-22 09:00",
-    progress: 30,
-    color: "#10b981",
-    grade: 92,
-    materials: [
-      {
-        id: "m7",
-        name: "Introduction to Programming",
-        type: "pdf",
-        url: "/materials/programming.pdf",
-        dateAdded: "2024-02-10",
-        size: "4.2 MB",
-        description: "Basics of programming logic and syntax",
-        completed: true,
-      },
-      {
-        id: "m8",
-        name: "Data Structures Tutorial",
-        type: "video",
-        url: "/materials/data-structures.mp4",
-        dateAdded: "2024-02-15",
-        size: "120 MB",
-        description: "Visual guide to common data structures",
-        completed: true,
-      },
-      {
-        id: "m9",
-        name: "Algorithm Design Principles",
-        type: "document",
-        url: "/materials/algorithms.docx",
-        dateAdded: "2024-03-01",
-        size: "2.5 MB",
-        description: "Guide to designing efficient algorithms",
-        completed: false,
-      },
-    ],
-    tests: [
-      {
-        id: "t4",
-        title: "Programming Assignment 1",
-        description: "Basic programming concepts",
-        dueDate: "2024-06-05",
-        questions: 5,
-        totalPoints: 100,
-        status: "in-progress",
-      },
-      {
-        id: "t5",
-        title: "Midterm Exam",
-        description: "Covers programming fundamentals and basic algorithms",
-        dueDate: "2024-06-25",
-        questions: 30,
-        totalPoints: 150,
-        status: "upcoming",
-        timeLimit: 120,
-      },
-    ],
-    announcements: [
-      {
-        id: "a4",
-        title: "Programming Contest",
-        content: "Sign up for the upcoming programming contest by Friday. Great opportunity to practice your skills!",
-        date: "2024-05-14",
-        courseId: "3",
-      },
-      {
-        id: "a5",
-        title: "Project Groups",
-        content: "Project groups have been assigned. Check the course page for your team members.",
-        date: "2024-05-10",
-        courseId: "3",
-      },
-    ],
-  },
-]
 
-const mockNotifications: Notification[] = [
-  {
-    id: "1",
-    message: "New announcement in Mathematics 101",
-    date: "2024-05-19",
-    type: "course",
-    read: false,
-    courseId: "1",
-  },
-  {
-    id: "2",
-    message: "Upcoming test: Midterm Exam in Mathematics 101",
-    date: "2024-05-18",
-    type: "test",
-    read: false,
-    courseId: "1",
-  },
-  {
-    id: "3",
-    message: "Your Quiz 1 has been graded in Mathematics 101",
-    date: "2024-05-11",
-    type: "grade",
-    read: true,
-    courseId: "1",
-  },
-  {
-    id: "4",
-    message: "New material added to Computer Science Fundamentals",
-    date: "2024-05-10",
-    type: "course",
-    read: true,
-    courseId: "3",
-  },
-]
 
-const mockAssignments: Assignment[] = [
-  {
-    id: "a1",
-    title: "Problem Set 3",
-    description: "Complete problems 15-30 in Chapter 4",
-    dueDate: "2024-05-25",
-    courseId: "1",
-    status: "pending",
-  },
-  {
-    id: "a2",
-    title: "Lab Report: Wave Motion",
-    description: "Write up your findings from the wave motion experiment",
-    dueDate: "2024-05-30",
-    courseId: "2",
-    status: "pending",
-  },
-  {
-    id: "a3",
-    title: "Programming Exercise 2",
-    description: "Implement a linked list in your language of choice",
-    dueDate: "2024-05-22",
-    courseId: "3",
-    status: "submitted",
-  },
-  {
-    id: "a4",
-    title: "Problem Set 2",
-    description: "Complete problems 10-20 in Chapter 3",
-    dueDate: "2024-05-10",
-    courseId: "1",
-    status: "graded",
-    grade: 85,
-  },
-]
+
+
+
+
 
 // Main component
 export default function StudentPortal() {
+  const { user: authUser } = useAuth();
   // State
-  const [user, setUser] = useState<UserType>(mockUser)
+  const [user, setUser] = useState<UserType | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
@@ -493,10 +188,47 @@ export default function StudentPortal() {
   const [currentTestAnswers, setCurrentTestAnswers] = useState<Record<string, string>>({})
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
   const [filterCourseId, setFilterCourseId] = useState<string | null>(null)
+  const [scheduledSessions, setScheduledSessions] = useState<any[]>([])
+  const coursesRef = useRef(courses);
+  const socketRef = useRef<any>(null);
+
+  useEffect(() => {
+    coursesRef.current = courses;
+    
+    // Join course rooms when courses are loaded
+    if (socketRef.current && courses.length > 0) {
+        const courseIds = courses.map(c => c.id);
+        socketRef.current.emit('join-course-room', courseIds);
+    }
+  }, [courses]);
+
+  useEffect(() => {
+    // Check for joinSession param in URL (from email links)
+    const params = new URLSearchParams(window.location.search);
+    const joinSessionId = params.get('joinSession');
+    if (joinSessionId) {
+        const courseId = params.get('courseId');
+        const courseName = params.get('courseName');
+        const category = params.get('category');
+        const tutorName = params.get('tutorName');
+        
+        // Redirect to live session
+        let target = `/live-session/${joinSessionId}?`;
+        const targetParams = new URLSearchParams();
+        if (courseId) targetParams.append('courseId', courseId);
+        if (courseName) targetParams.append('courseName', courseName);
+        if (category) targetParams.append('category', category);
+        if (tutorName) targetParams.append('userName', tutorName);
+        targetParams.append('fromStudent', 'true');
+        
+        window.location.href = target + targetParams.toString();
+    }
+  }, []);
 
   // Derived state
   // user.enrolledCourses may be undefined if loaded from API; use safe fallback
-  const enrolledCourses = courses.filter((course) => (user.enrolledCourses || []).includes(course.id))
+  const enrolledCourses = courses.filter((course) => (user?.enrolledCourses || []).includes(course.id) || true) // Fallback to showing all fetched courses as they are filtered by backend
+  const liveCourses = enrolledCourses.filter((course) => course.isLive)
   const upcomingTests = enrolledCourses.flatMap((course) =>
     course.tests
       .filter((test) => test.status === "upcoming")
@@ -508,9 +240,7 @@ export default function StudentPortal() {
   const fetchStudentData = async () => {
     try {
       setLoading(true)
-      const storedUser = localStorage.getItem('user')
-      const parsed = storedUser ? JSON.parse(storedUser) : null
-      const studentId = parsed?.id
+      const studentId = authUser?.id
       const data = await apiFetch<any>(`/student/dashboard${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ''}`)
       
       if (data?.student) setUser(data.student)
@@ -519,19 +249,83 @@ export default function StudentPortal() {
       if (data?.assignments) setAssignments(data.assignments)
     } catch (e) {
       console.error('Failed to fetch student data:', e)
-      // Fallback to mock data on error
-      setCourses(mockCourses)
-      setNotifications(mockNotifications)
-      setAssignments(mockAssignments)
+      toast.error("Failed to load dashboard data. Please try again.")
     } finally {
       setLoading(false)
     }
   }
 
+  const fetchScheduledSessions = async () => {
+    try {
+      if (!authUser) return;
+
+      const response = await fetch('/api/student/scheduled-sessions', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setScheduledSessions(data.sessions || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch scheduled sessions:', error);
+    }
+  }
+
   // Effects
   useEffect(() => {
-    fetchStudentData()
-  }, [])
+    const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    socketRef.current = io(SOCKET_SERVER_URL);
+    const socket = socketRef.current;
+    
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+        try {
+            const parsed = JSON.parse(storedUser);
+            if(parsed?.id) {
+                socket.emit('join-user-room', parsed.id);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    socket.on('session-live', (data: any) => {
+        // Use ref to get latest courses without dependency loop
+        const currentCourses = coursesRef.current; 
+        const isEnrolled = currentCourses.some(c => c.id === data.courseId);
+        
+        if (isEnrolled) {
+            toast.message('Live Session Started', {
+                description: `${data.message} (${data.department || 'General'})`,
+                action: {
+                    label: "Join",
+                    onClick: () => window.location.href = `/live-session/${data.sessionId}?courseId=${data.courseId}&courseName=${encodeURIComponent(data.courseName || data.message.split(' is live')[0])}&category=${encodeURIComponent(data.department || '')}&fromStudent=true`
+                },
+            });
+        }
+        
+        setCourses(prev => prev.map(course => {
+            if(String(course.id) === String(data.courseId)) {
+                return { ...course, isLive: true, liveSessionId: data.sessionId };
+            }
+            return course;
+        }));
+    });
+
+    return () => {
+        socket.disconnect();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authUser) {
+      fetchStudentData()
+      fetchScheduledSessions()
+    }
+  }, [authUser])
 
   useEffect(() => {
     // Calculate unread notifications
@@ -726,6 +520,22 @@ export default function StudentPortal() {
     )
   }
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Failed to load profile</h2>
+          <p className="text-gray-600 mb-6">We couldn't load your student profile data.</p>
+          <div className="flex gap-4 justify-center">
+            <Button onClick={() => window.location.reload()} variant="outline">Retry</Button>
+            <Button onClick={() => window.location.href = '/student-login'}>Login</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
@@ -772,6 +582,18 @@ export default function StudentPortal() {
               >
                 <BookOpen className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>My Courses</span>}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("timetable")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Timetable</span>}
               </button>
 
               <button
@@ -828,6 +650,18 @@ export default function StudentPortal() {
                 {!sidebarOpen && unreadCount > 0 && (
                   <Badge className="absolute top-0 right-0 -mt-1 -mr-1 bg-red-500 text-white">{unreadCount}</Badge>
                 )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("timetable")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Timetable</span>}
               </button>
 
               {sidebarOpen && (
@@ -943,6 +777,19 @@ export default function StudentPortal() {
 
                 <button
                   onClick={() => {
+                    setActiveTab("timetable")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
+                    activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <Calendar className="h-5 w-5 mr-2" />
+                  <span>Timetable</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setActiveTab("assignments")
                     setMobileMenuOpen(false)
                   }}
@@ -1044,7 +891,6 @@ export default function StudentPortal() {
                   />
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 </div>
-                <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button variant="ghost" size="icon" className="relative">
@@ -1060,7 +906,6 @@ export default function StudentPortal() {
                       <p>You have {unreadCount} unread notifications</p>
                     </TooltipContent>
                   </Tooltip>
-                </TooltipProvider>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="flex items-center gap-2">
@@ -1096,8 +941,95 @@ export default function StudentPortal() {
         {/* Page content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Dashboard Tab */}
-          {activeTab === "dashboard" && (
+          {activeTab === "timetable" && (
+                <div className="space-y-6">
+                    <Timetable userRole="student" />
+                </div>
+            )}
+            
+            {activeTab === "dashboard" && (
             <div className="space-y-6">
+              {/* Live Classes Banner */}
+              {liveCourses.length > 0 && (
+                <Card className="bg-red-50 border-l-4 border-red-500">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-red-700 flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-red-600 animate-pulse" />
+                      Live Classes Happening Now
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {liveCourses.map((course) => (
+                        <div key={course.id} className="flex justify-between items-center bg-white p-3 rounded-md shadow-sm">
+                          <div>
+                            <span className="font-bold text-gray-900">{course.name}</span>
+                            <span className="ml-2 text-sm text-gray-500">with {course.tutor}</span>
+                            {course.category && <Badge variant="outline" className="ml-2">{course.category}</Badge>}
+                          </div>
+                          <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white" onClick={() => window.location.href = `/live-session/${course.liveSessionId}?courseId=${course.id}&courseName=${encodeURIComponent(course.name)}&category=${encodeURIComponent(course.category || '')}&fromStudent=true` }>
+                            Join Class
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Scheduled Sessions Banner */}
+              {scheduledSessions.length > 0 && (
+                <Card className="bg-blue-50 border-l-4 border-blue-500">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-blue-700 flex items-center gap-2">
+                      <Clock className="h-5 w-5" />
+                      Upcoming Scheduled Sessions
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {scheduledSessions.slice(0, 3).map((session) => (
+                        <div key={session.id} className="flex justify-between items-center bg-white p-3 rounded-md shadow-sm">
+                          <div>
+                            <span className="font-bold text-gray-900">{session.title}</span>
+                            <span className="ml-2 text-sm text-gray-500">in {session.course.name}</span>
+                            {session.course.category && <Badge variant="outline" className="ml-2">{session.course.category}</Badge>}
+                            <div className="text-sm text-gray-600 mt-1">
+                              {new Date(session.scheduledAt).toLocaleDateString()} at {new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              ({session.duration} minutes)
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm text-gray-500">with {session.tutor.name}</div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-1"
+                              onClick={() => {
+                                // For now, just show when it will start
+                                const timeUntil = new Date(session.scheduledAt).getTime() - Date.now();
+                                const hoursUntil = Math.floor(timeUntil / (1000 * 60 * 60));
+                                const minutesUntil = Math.floor((timeUntil % (1000 * 60 * 60)) / (1000 * 60));
+                                alert(`This session will start automatically in ${hoursUntil} hours and ${minutesUntil} minutes. You'll receive a notification when it begins.`);
+                              }}
+                            >
+                              Scheduled
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {scheduledSessions.length > 3 && (
+                        <div className="text-center pt-2">
+                          <Button variant="link" onClick={() => setActiveTab("schedule")}>
+                            View all {scheduledSessions.length} scheduled sessions
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Welcome Banner */}
               <Card className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white">
                 <CardContent className="p-6">
@@ -1166,21 +1098,27 @@ export default function StudentPortal() {
                       <Calendar className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
-                        {enrolledCourses.length > 0
-                          ? new Date(enrolledCourses[0]?.nextSession).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "N/A"}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {enrolledCourses.length > 0
-                          ? `${enrolledCourses[0]?.name} - ${new Date(
-                              enrolledCourses[0]?.nextSession,
-                            ).toLocaleDateString()}`
-                          : "No upcoming sessions"}
-                      </p>
+                      {(() => {
+                        const upcoming = enrolledCourses
+                           .filter(c => c.nextSession && c.nextSession !== 'TBA')
+                           .sort((a, b) => {
+                               if (a.nextSessionDate && b.nextSessionDate) {
+                                   return new Date(a.nextSessionDate).getTime() - new Date(b.nextSessionDate).getTime();
+                               }
+                               return 0;
+                           });
+                        const next = upcoming[0];
+                        return (
+                            <>
+                                <div className="text-2xl font-bold">
+                                    {next ? (next.nextSession.includes('at') ? next.nextSession.split('at')[1].trim() : next.nextSession) : "N/A"}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {next ? `${next.name} - ${next.nextSession}` : "No upcoming sessions"}
+                                </p>
+                            </>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 </motion.div>
@@ -1352,6 +1290,13 @@ export default function StudentPortal() {
             </div>
           )}
 
+          {/* Timetable Tab */}
+          {activeTab === "timetable" && (
+            <div className="space-y-6">
+              <Timetable userRole="student" />
+            </div>
+          )}
+
           {/* Courses Tab */}
           {activeTab === "courses" && (
             <div className="space-y-6">
@@ -1378,7 +1323,10 @@ export default function StudentPortal() {
                   >
                     <Card className={`border-t-4`} style={{ borderTopColor: course.color }}>
                       <CardHeader>
-                        <CardTitle>{course.name}</CardTitle>
+                        <div className="flex justify-between items-start">
+                          <CardTitle>{course.name}</CardTitle>
+                          {course.isLive && <Badge variant="destructive" className="animate-pulse">LIVE</Badge>}
+                        </div>
                         <CardDescription>{course.description}</CardDescription>
                       </CardHeader>
                       <CardContent>
@@ -1418,10 +1366,15 @@ export default function StudentPortal() {
                           )}
                         </div>
                       </CardContent>
-                      <CardFooter>
-                        <Button className="w-full" onClick={() => handleCourseSelect(course.id)}>
+                      <CardFooter className="flex gap-2">
+                        <Button className="flex-1" onClick={() => handleCourseSelect(course.id)}>
                           View Course
                         </Button>
+                        {course.isLive && (
+                          <Button className="flex-1 bg-red-600 hover:bg-red-700" onClick={() => window.location.href = `/live-session/${course.liveSessionId}?courseId=${course.id}&courseName=${encodeURIComponent(course.name)}&fromStudent=true`}>
+                            Join Live
+                          </Button>
+                        )}
                       </CardFooter>
                     </Card>
                   </motion.div>

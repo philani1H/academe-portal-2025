@@ -4,7 +4,7 @@ import { apiFetch } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, role?: string) => Promise<void>;
   signup: (email: string, password: string, name: string, role: 'student' | 'tutor' | 'admin') => Promise<void>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
@@ -41,11 +41,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true };
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, role?: string) => {
     try {
-      // Using mock authentication for testing
-      const { mockLogin } = await import('../mocks/auth');
-      const userData = await mockLogin(email, password);
+      const response = await apiFetch<{ success: boolean; user: User; error?: string }>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, role }),
+      });
+
+      if (!response || !response.success || !response.user) {
+        throw new Error(response?.error || 'Login failed');
+      }
+
+      const userData = response.user;
       setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('user', JSON.stringify(userData));

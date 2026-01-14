@@ -2,11 +2,14 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
-import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckCircle, AlertCircle, MoreHorizontal, Send, ChevronDown, Mail, Check, X, Edit, User, Settings, LogOut, Menu, Home, Shield, BarChart4, UserPlus, Trash2, Building, GraduationCap, UserCheck, Filter, RefreshCw, Eye, Download, Layout } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckCircle, AlertCircle, MoreHorizontal, Send, ChevronDown, Mail, Check, X, Edit, User, Settings, LogOut, Menu, Home, Shield, BarChart4, UserPlus, Trash2, Building, GraduationCap, UserCheck, Filter, RefreshCw, Eye, Download, Layout, DollarSign, Server, Database, Globe } from 'lucide-react'
 
 import ContentManagement from './ContentManagement'
+
+import { Timetable } from "@/components/Timetable"
 
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
@@ -43,7 +46,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 
@@ -169,6 +172,7 @@ export default function AdminDashboard() {
     tutorId: "",
     startDate: "",
     endDate: "",
+    section: "",
   })
   
   const [newNotification, setNewNotification] = useState({
@@ -211,7 +215,43 @@ export default function AdminDashboard() {
   const [inviteTutorName, setInviteTutorName] = useState('')
   const [inviteDepartment, setInviteDepartment] = useState('')
   const [inviteSubmitting, setInviteSubmitting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        const extractedEmails = data
+          .map((row: any) => row.Email || row.email || row.EMAIL)
+          .filter((email: any) => email && typeof email === 'string' && email.includes('@'));
+
+        if (extractedEmails.length > 0) {
+          setInviteEmails(prev => {
+            const existing = prev ? prev.split(/[,\n]/).map(e => e.trim()).filter(Boolean) : [];
+            const unique = Array.from(new Set([...existing, ...extractedEmails]));
+            return unique.join(', ');
+          });
+          toast({ title: 'Emails Imported', description: `Found ${extractedEmails.length} emails from file.` });
+        } else {
+          toast({ title: 'No Emails Found', description: 'Could not find an "email" column or valid emails.', variant: 'destructive' });
+        }
+      } catch (error) {
+        console.error('Excel parse error:', error);
+        toast({ title: 'Import Failed', description: 'Could not parse the Excel file.', variant: 'destructive' });
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
   
   const [filterRole, setFilterRole] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
@@ -586,7 +626,8 @@ export default function AdminDashboard() {
           tutorId: newCourse.tutorId,
           startDate: newCourse.startDate,
           endDate: newCourse.endDate,
-          category: newCourse.department
+          category: newCourse.department,
+          section: newCourse.section
         })
       })
 
@@ -1239,6 +1280,18 @@ export default function AdminDashboard() {
               </button>
 
               <button
+                onClick={() => setActiveTab("timetable")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Timetable</span>}
+              </button>
+
+              <button
                 onClick={() => setActiveTab("content")}
                 className={`flex items-center ${
                   !sidebarOpen ? "justify-center" : "justify-start"
@@ -1248,6 +1301,30 @@ export default function AdminDashboard() {
               >
                 <Layout className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Content</span>}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("finance")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "finance" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <DollarSign className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Finance</span>}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("it_management")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "it_management" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <Server className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>IT Management</span>}
               </button>
 
               <button
@@ -1422,6 +1499,45 @@ export default function AdminDashboard() {
 
                 <button
                   onClick={() => {
+                    setActiveTab("timetable")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
+                    activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <Calendar className="h-5 w-5 mr-2" />
+                  <span>Timetable</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("finance")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
+                    activeTab === "finance" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <DollarSign className="h-5 w-5 mr-2" />
+                  <span>Finance</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("it_management")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
+                    activeTab === "it_management" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <Server className="h-5 w-5 mr-2" />
+                  <span>IT Management</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setActiveTab("settings")
                     setMobileMenuOpen(false)
                   }}
@@ -1453,9 +1569,8 @@ export default function AdminDashboard() {
       {/* Main content */}
       <main className={`flex-1 transition-all duration-300 ease-in-out ${sidebarOpen ? "md:ml-64" : "md:ml-20"}`}>
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <header className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-            <div className="flex items-center justify-between px-4 py-3">
+        <header className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
+          <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-4">
                 <Button variant="ghost" size="sm" onClick={() => setMobileMenuOpen(true)} className="lg:hidden">
                   <Menu className="h-4 w-4" />
@@ -1466,6 +1581,7 @@ export default function AdminDashboard() {
                     {activeTab === "dashboard" && "Overview of your teaching activities"}
                     {activeTab === "courses" && "Manage your courses and content"}
                     {activeTab === "students" && "Track student progress and enrollment"}
+                    {activeTab === "timetable" && "Manage class schedules and events"}
                     {activeTab === "tests" && "Create and manage assessments"}
                     {activeTab === "notifications" && "Communication and alerts"}
                     {activeTab === "analytics" && "Performance insights and metrics"}
@@ -1486,7 +1602,6 @@ export default function AdminDashboard() {
                     </Badge>
                   )}
                 </Button>
-                <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button variant="ghost" size="sm" className="relative">
@@ -1502,7 +1617,6 @@ export default function AdminDashboard() {
                       <p>You have {unreadCount} unread notifications</p>
                     </TooltipContent>
                   </Tooltip>
-                </TooltipProvider>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="flex items-center gap-2">
@@ -1533,8 +1647,6 @@ export default function AdminDashboard() {
               </div>
             </div>
           </header>
-        </header>
-
           {/* Invite Dialog */}
           <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
             <DialogContent className="sm:max-w-lg">
@@ -1549,25 +1661,76 @@ export default function AdminDashboard() {
                   <Button variant={inviteTarget === 'students' ? 'default' : 'outline'} onClick={() => setInviteTarget('students')}>Students</Button>
                   <Button variant={inviteTarget === 'tutors' ? 'default' : 'outline'} onClick={() => setInviteTarget('tutors')}>Tutors</Button>
                 </div>
-                <div className="space-y-2">
+                
+                <div className="flex justify-between items-center">
                   <Label>Emails</Label>
+                  <div>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept=".xlsx,.xls,.csv" 
+                      onChange={handleFileUpload}
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="h-8 gap-2"
+                    >
+                      <Upload className="h-3 w-3" />
+                      Import Excel
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
                   <Textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} placeholder="one@example.com, two@example.com" rows={3} />
                 </div>
                 {inviteTarget === 'students' && (
                   <>
                     <div className="space-y-2">
                       <Label>Course Name</Label>
-                      <Input value={inviteCourseName} onChange={(e) => setInviteCourseName(e.target.value)} placeholder="e.g., Advanced Mathematics" />
+                      <Select value={inviteCourseName} onValueChange={(v) => {
+                        setInviteCourseName(v);
+                        const course = courses.find(c => c.name === v);
+                        if (course) {
+                          setInviteDepartment(course.department);
+                          const tutor = tutors.find(t => t.id === course.tutorId);
+                          if (tutor) setInviteTutorName(tutor.name);
+                        }
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Course" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {courses.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Tutor Name</Label>
-                      <Input value={inviteTutorName} onChange={(e) => setInviteTutorName(e.target.value)} placeholder="e.g., Ms. Smith" />
+                      <Select value={inviteTutorName} onValueChange={setInviteTutorName}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select Tutor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tutors.map(t => <SelectItem key={t.id} value={t.name}>{t.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </>
                 )}
                 <div className="space-y-2">
                   <Label>Department</Label>
-                  <Input value={inviteDepartment} onChange={(e) => setInviteDepartment(e.target.value)} placeholder="e.g., Mathematics" />
+                  <Select value={inviteDepartment} onValueChange={setInviteDepartment}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departments.map(d => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
@@ -1614,6 +1777,13 @@ export default function AdminDashboard() {
 
         {/* Page content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Timetable Tab */}
+          {activeTab === "timetable" && (
+            <div className="space-y-6">
+              <Timetable userRole="admin" />
+            </div>
+          )}
+
           {/* Dashboard Tab */}
           {activeTab === "dashboard" && (
             <div className="space-y-6">
@@ -1933,14 +2103,25 @@ export default function AdminDashboard() {
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="course-name">Course Name</Label>
-                            <Input
-                              id="course-name"
-                              placeholder="e.g., Advanced Physics"
-                              value={newCourse.name}
-                              onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })}
-                            />
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="course-name">Course Name</Label>
+                              <Input
+                                id="course-name"
+                                placeholder="e.g., Advanced Physics"
+                                value={newCourse.name}
+                                onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="course-section">Section / Group</Label>
+                              <Input
+                                id="course-section"
+                                placeholder="e.g., Group A, 2024-Q1"
+                                value={newCourse.section}
+                                onChange={(e) => setNewCourse({ ...newCourse, section: e.target.value })}
+                              />
+                            </div>
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="course-description">Description</Label>
@@ -1974,7 +2155,14 @@ export default function AdminDashboard() {
                             <div className="space-y-2">
                               <Label htmlFor="course-tutor">Tutor</Label>
                               <Select
-                                onValueChange={(value) => setNewCourse({ ...newCourse, tutorId: value })}
+                                onValueChange={(value) => {
+                                  const tutor = tutors.find(t => t.id === value);
+                                  setNewCourse({ 
+                                    ...newCourse, 
+                                    tutorId: value,
+                                    department: tutor?.department || newCourse.department
+                                  });
+                                }}
                                 value={newCourse.tutorId}
                               >
                                 <SelectTrigger id="course-tutor">
@@ -3276,6 +3464,240 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {/* Finance Management Tab */}
+          {activeTab === "finance" && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Finance Management</h2>
+                <div className="flex gap-2">
+                   <Button variant="outline">
+                    <Download className="mr-2 h-4 w-4" /> Export Report
+                   </Button>
+                   <Button>
+                    <Plus className="mr-2 h-4 w-4" /> New Transaction
+                   </Button>
+                </div>
+              </div>
+
+              {/* Finance Overview Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">$45,231.89</div>
+                    <p className="text-xs text-muted-foreground">+20.1% from last month</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Expenses</CardTitle>
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">$12,340.00</div>
+                    <p className="text-xs text-muted-foreground">+4.5% from last month</p>
+                  </CardContent>
+                </Card>
+                 <Card>
+                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">$32,891.89</div>
+                    <p className="text-xs text-muted-foreground">+28.4% from last month</p>
+                  </CardContent>
+                </Card>
+                 <Card>
+                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Pending Payouts</CardTitle>
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">$2,340.00</div>
+                    <p className="text-xs text-muted-foreground">12 tutors pending</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Tabs defaultValue="transactions" className="w-full">
+                <TabsList>
+                  <TabsTrigger value="transactions">Transactions</TabsTrigger>
+                  <TabsTrigger value="invoices">Invoices</TabsTrigger>
+                  <TabsTrigger value="payroll">Payroll</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="transactions" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Recent Transactions</CardTitle>
+                      <CardDescription>All financial activity in the system</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                       <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Transaction ID</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Description</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                           {[1, 2, 3, 4, 5].map((i) => (
+                            <TableRow key={i}>
+                              <TableCell className="font-medium">TRX-{1000 + i}</TableCell>
+                              <TableCell>{new Date().toLocaleDateString()}</TableCell>
+                              <TableCell>Course Enrollment - Advanced Math</TableCell>
+                              <TableCell className="text-green-600">+$199.00</TableCell>
+                              <TableCell><Badge variant="outline" className="bg-green-50 text-green-700">Completed</Badge></TableCell>
+                            </TableRow>
+                           ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                
+                <TabsContent value="invoices">
+                   <Card>
+                    <CardHeader>
+                      <CardTitle>Invoices</CardTitle>
+                      <CardDescription>Manage student invoices</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-center py-8 text-muted-foreground">No pending invoices</div>
+                    </CardContent>
+                   </Card>
+                </TabsContent>
+
+                <TabsContent value="payroll">
+                   <Card>
+                    <CardHeader>
+                      <CardTitle>Tutor Payroll</CardTitle>
+                      <CardDescription>Manage tutor payments and history</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-center py-8 text-muted-foreground">Payroll system ready</div>
+                    </CardContent>
+                   </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+
+          {/* IT Management Tab */}
+          {activeTab === "it_management" && (
+            <div className="space-y-6">
+               <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">IT Management</h2>
+                <Button variant="destructive">
+                  <AlertCircle className="mr-2 h-4 w-4" /> System Lockdown
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Server className="h-5 w-5" /> Server Status
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                      <span className="font-medium">Operational</span>
+                    </div>
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <div className="flex justify-between">
+                        <span>CPU Usage</span>
+                        <span>12%</span>
+                      </div>
+                      <Progress value={12} className="h-1" />
+                       <div className="flex justify-between">
+                        <span>Memory Usage</span>
+                        <span>45%</span>
+                      </div>
+                      <Progress value={45} className="h-1" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                 <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Database className="h-5 w-5" /> Database
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                     <div className="flex items-center gap-2 mb-2">
+                      <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                      <span className="font-medium">Connected</span>
+                    </div>
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                       <div className="flex justify-between">
+                        <span>Connections</span>
+                        <span>24/100</span>
+                      </div>
+                       <div className="flex justify-between">
+                        <span>Size</span>
+                        <span>1.2 GB</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                 <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Globe className="h-5 w-5" /> Network
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                     <div className="flex items-center gap-2 mb-2">
+                      <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                      <span className="font-medium">Online</span>
+                    </div>
+                     <div className="space-y-2 text-sm text-muted-foreground">
+                       <div className="flex justify-between">
+                        <span>Latency</span>
+                        <span>24ms</span>
+                      </div>
+                       <div className="flex justify-between">
+                        <span>Requests/min</span>
+                        <span>340</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>System Logs</CardTitle>
+                  <CardDescription>Recent system events and errors</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                        <AlertCircle className="h-5 w-5 text-yellow-500 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium">High memory usage detected</p>
+                          <p className="text-xs text-muted-foreground">{new Date().toLocaleString()}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* Settings Tab */}
           {activeTab === "settings" && (
             <div className="space-y-6">
@@ -3424,8 +3846,6 @@ export default function AdminDashboard() {
           )}
         </div>
       </main>
-
-      {/* Tutor Detail Dialog */}
       {selectedTutor && (
         <Dialog open={!!selectedTutor} onOpenChange={() => setSelectedTutor(null)}>
           <DialogContent className="max-w-4xl">

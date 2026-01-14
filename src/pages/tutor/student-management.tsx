@@ -37,8 +37,10 @@ import {
   Trash2,
 } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { useAuth } from "@/contexts/AuthContext"
 
 export default function StudentManagementPage() {
+  const { user } = useAuth()
   const [students, setStudents] = useState<Student[]>([])
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,15 +52,23 @@ export default function StudentManagementPage() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [emailsToUpload, setEmailsToUpload] = useState("")
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("")
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (user) {
+      loadData()
+    }
+  }, [user])
 
   const loadData = async () => {
     try {
       setLoading(true)
-      const [studentsData, coursesData] = await Promise.all([api.getStudents(), api.getCourses()])
+      // Pass tutor ID to filter students
+      const userId = user?.id ? String(user.id) : undefined
+      const [studentsData, coursesData] = await Promise.all([
+        api.getStudents(userId), 
+        api.getCourses()
+      ])
       setStudents(studentsData)
       setCourses(coursesData)
     } catch (error) {
@@ -82,6 +92,25 @@ export default function StudentManagementPage() {
       return
     }
 
+    if (!selectedCourseId) {
+      toast({
+        title: "Error",
+        description: "Please select a course",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const selectedCourse = courses.find(c => c.id === selectedCourseId)
+    if (!selectedCourse) {
+       toast({
+        title: "Error",
+        description: "Invalid course selected",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsUploading(true)
     try {
       const emails = emailsToUpload
@@ -93,18 +122,28 @@ export default function StudentManagementPage() {
         throw new Error("No valid emails found")
       }
 
-      const newStudents = await api.addStudents(emails)
-      setStudents((prev) => [...prev, ...newStudents])
-      setEmailsToUpload("")
-
-      toast({
-        title: "Success",
-        description: `${emails.length} student email(s) uploaded successfully`,
+      // Use tutor invite endpoint instead of admin addStudents
+      const response = await api.tutorInviteStudents({
+        emails,
+        courseName: selectedCourse.name
       })
-    } catch (error) {
+
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: `${response.invited.length} student(s) invited successfully`,
+        })
+        setEmailsToUpload("")
+        setSelectedCourseId("")
+        // Reload data to show updated list
+        await loadData()
+      } else {
+         throw new Error("Failed to invite students")
+      }
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "Failed to upload emails",
+        description: error.message || "Failed to upload emails",
         variant: "destructive",
       })
     } finally {
@@ -231,6 +270,21 @@ export default function StudentManagementPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="course">Select Course</Label>
+                <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a course..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((course) => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="emails">Student Emails</Label>
                 <Textarea

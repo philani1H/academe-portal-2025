@@ -1,5 +1,3 @@
-// This is your Prisma schema file
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,146 +8,132 @@ datasource db {
 }
 
 model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
-  name            String
-  role            String    // "student", "teacher", "admin"
-  last_active     DateTime? @map("last_active")
-  status          String?   @default("active")
-  department_id   String?
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
-  enrollments     CourseEnrollment[]
-  testSubmissions TestSubmission[]
-  
+  id               Int                @id @default(autoincrement())
+  name             String
+  email            String             @unique(map: "sqlite_autoindex_users_1")
+  password_hash    String
+  role             String
+  createdAt        DateTime?          @default(now()) @map("created_at")
+  updatedAt        DateTime?          @default(now()) @updatedAt @map("updated_at")
+  courses          Course[]
+  enrollments      enrollments[]
+  notifications    Notification[]
+  courseEnrollments CourseEnrollment[]
+  testSubmissions  TestSubmission[]
+  scheduledSessions ScheduledSession[]
+
   @@map("users")
 }
 
 model Course {
-  id          String             @id @default(uuid())
-  title       String
-  description String?
-  category    String?
-  status      String?            @default("draft")
-  startDate   DateTime?          @map("start_date")
-  endDate     DateTime?          @map("end_date")
-  color       String?
-  createdAt   DateTime           @default(now()) @map("created_at")
-  updatedAt   DateTime           @updatedAt @map("updated_at")
-  enrollments CourseEnrollment[]
-  tests       Test[]
-  materials   CourseMaterial[]
+  id                Int                @id @default(autoincrement())
+  name              String
+  description       String?
+  category          String?
+  tutorId           Int?               @map("tutor_id")
+  createdAt         DateTime?          @default(now()) @map("created_at")
+  updatedAt         DateTime?          @default(now()) @updatedAt @map("updated_at")
+  tutor             User?              @relation(fields: [tutorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  enrollments       enrollments[]
+  courseEnrollments CourseEnrollment[]
+  tests             Test[]
+  materials         CourseMaterial[]
+  announcements     CourseAnnouncement[]
+  scheduledSessions ScheduledSession[]
 
   @@map("courses")
 }
 
 model CourseMaterial {
   id          String   @id @default(uuid())
-  courseId    String
-  title       String
-  description String?
-  type        String   // "pdf", "video", "document", "link"
+  courseId    Int
+  name        String
+  type        String   // pdf, video, document
   url         String
-  size        String?
-  order       Int      @default(0)
+  description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   course      Course   @relation(fields: [courseId], references: [id])
 }
 
-model CourseEnrollment {
+model CourseAnnouncement {
   id        String   @id @default(uuid())
-  userId    String
-  courseId  String
-  status    String   // "enrolled", "completed", "dropped"
+  courseId  Int
+  title     String
+  content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id])
   course    Course   @relation(fields: [courseId], references: [id])
+}
+
+model CourseEnrollment {
+  id        String   @id @default(uuid())
+  userId    Int
+  courseId  Int
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  course    Course   @relation(fields: [courseId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Test {
   id          String           @id @default(uuid())
   title       String
-  courseId    String
+  courseId    Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   course      Course           @relation(fields: [courseId], references: [id])
   questions   TestQuestion[]
   submissions TestSubmission[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
 }
 
 model TestQuestion {
-  id       String   @id @default(uuid())
+  id       String @id @default(uuid())
   testId   String
   question String
-  options  String   // JSON string of array of possible answers
-  answer   String   // Correct answer
-  test     Test     @relation(fields: [testId], references: [id])
+  options  String
+  answer   String
+  test     Test   @relation(fields: [testId], references: [id])
 }
 
 model TestSubmission {
   id        String   @id @default(uuid())
-  userId    String
+  userId    Int
   testId    String
-  answers   String   // JSON string of answers
+  answers   String
   score     Float
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
   test      Test     @relation(fields: [testId], references: [id])
-}
-
-model Assignment {
-  id          String                 @id @default(uuid())
-  title       String
-  description String
-  courseId    String
-  dueDate     DateTime
-  maxPoints   Int                    @default(100)
-  attachments String?                // JSON string of array of file URLs
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-  submissions AssignmentSubmission[]
-}
-
-model AssignmentSubmission {
-  id           String     @id @default(uuid())
-  assignmentId String
-  userId       String
-  content      String     // Student's submission text
-  attachments  String?    // JSON string of array of uploaded file URLs
-  score        Float?
-  feedback     String?
-  status       String     @default("submitted") // "submitted", "graded", "late"
-  submittedAt  DateTime   @default(now())
-  gradedAt     DateTime?
-  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Notification {
   id        String   @id @default(uuid())
-  userId    String
+  userId    Int
+  title     String?
   message   String
+  type      String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
 }
 
-// Content Management Models
 model HeroContent {
-  id                 String   @id @default(uuid())
-  title              String
-  subtitle           String
-  description        String
-  buttonText         String
+  id                  String   @id @default(uuid())
+  title               String
+  subtitle            String
+  description         String
+  buttonText          String
   secondaryButtonText String
-  trustIndicatorText String
-  universities       String   // JSON string of array of university names
-  features           String   // JSON string of array of feature objects
-  backgroundGradient String
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  trustIndicatorText  String
+  universities        String
+  features            String
+  backgroundGradient  String
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model Feature {
@@ -157,7 +141,7 @@ model Feature {
   title       String
   description String
   icon        String
-  benefits    String   // JSON string of array of benefit strings
+  benefits    String
   isActive    Boolean  @default(true)
   order       Int      @default(0)
   createdAt   DateTime @default(now())
@@ -167,7 +151,7 @@ model Feature {
 model Announcement {
   id        String   @id @default(uuid())
   content   String
-  type      String   // "info", "warning", "success"
+  type      String
   pinned    Boolean  @default(false)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -179,8 +163,8 @@ model PricingPlan {
   name        String
   price       String
   period      String
-  features    String   // JSON string of array of included features
-  notIncluded String   // JSON string of array of not included features
+  features    String
+  notIncluded String
   color       String
   icon        String
   popular     Boolean  @default(false)
@@ -218,56 +202,54 @@ model TeamMember {
 }
 
 model AboutUsContent {
-  id                 String   @id @default(uuid())
-  goal               String
-  mission            String
-  rolesResponsibilities String // JSON string of complex structure for roles and responsibilities
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  goal                  String
+  mission               String
+  rolesResponsibilities String
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model ContactInfo {
-  id          String   @id @default(uuid())
-  type        String   // "email", "phone", "address", "social"
-  label       String
-  value       String
-  icon        String?
-  isActive    Boolean  @default(true)
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  type      String
+  label     String
+  value     String
+  icon      String?
+  isActive  Boolean  @default(true)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SiteSettings {
   id        String   @id @default(uuid())
   key       String   @unique
-  value     String   // JSON string for complex values
-  type      String   // "string", "number", "boolean", "json", "image"
+  value     String
+  type      String
   label     String
-  category  String   // "general", "appearance", "seo", "integrations"
+  category  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// Tutors Management
 model Tutor {
   id           String   @id @default(uuid())
   name         String
-  subjects     String   // JSON array of subjects
+  subjects     String
   image        String
   contactName  String
   contactPhone String
   contactEmail String
   description  String
-  ratings      String   // JSON array of ratings
+  ratings      String
   isActive     Boolean  @default(true)
   order        Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
 
-// Subjects Management
 model Subject {
   id            String   @id @default(uuid())
   name          String
@@ -275,51 +257,48 @@ model Subject {
   image         String
   category      String
   tutorsCount   Int      @default(0)
-  popularTopics String   // JSON array of topics
-  difficulty    String   // JSON array of difficulty levels
+  popularTopics String
+  difficulty    String
   isActive      Boolean  @default(true)
   order         Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
 
-// Footer Content Management
 model FooterContent {
-  id               String   @id @default(uuid())
-  companyName      String
-  tagline          String
-  contactPhone     String
-  contactEmail     String
-  contactPerson    String
-  whatsappLink     String
-  socialLinks      String   // JSON object with social media links
-  quickLinks       String   // JSON array of quick links
-  resourceLinks    String   // JSON array of resource links
-  copyrightText    String
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id            String   @id @default(uuid())
+  companyName   String
+  tagline       String
+  contactPhone  String
+  contactEmail  String
+  contactPerson String
+  whatsappLink  String
+  socialLinks   String
+  quickLinks    String
+  resourceLinks String
+  copyrightText String
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
-// Navigation Management
 model NavigationItem {
   id        String   @id @default(uuid())
   path      String
   label     String
-  type      String   // "main", "mobile", "footer"
+  type      String
   isActive  Boolean  @default(true)
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// Become Tutor Page Content
 model BecomeTutorContent {
   id             String   @id @default(uuid())
   title          String
   description    String
-  requirements   String   // JSON array of requirements
-  benefits       String   // JSON array of benefits
+  requirements   String
+  benefits       String
   applicationUrl String
   formEmbedCode  String?
   isActive       Boolean  @default(true)
@@ -327,49 +306,285 @@ model BecomeTutorContent {
   updatedAt      DateTime @updatedAt
 }
 
-// Exam Rewrite Content
 model ExamRewriteContent {
-  id                    String   @id @default(uuid())
-  title                 String
-  description           String
-  heroTitle             String
-  heroDescription       String
-  benefits              String   // JSON array of benefits
-  process               String   // JSON array of process steps
-  subjects              String   // JSON array of subjects
-  applicationFormUrl    String
-  grade11FormUrl        String?
-  grade12FormUrl        String?
-  pricingInfo           String   // JSON object with pricing
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  title              String
+  description        String
+  heroTitle          String
+  heroDescription    String
+  benefits           String
+  process            String
+  subjects           String
+  applicationFormUrl String
+  grade11FormUrl     String?
+  grade12FormUrl     String?
+  pricingInfo        String
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
-// Contact Us Content
 model ContactUsContent {
-  id            String   @id @default(uuid())
-  title         String
-  description   String
-  logo          String
-  formEndpoint  String
-  contactInfo   String   // JSON object with contact details
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  title        String
+  description  String
+  logo         String
+  formEndpoint String
+  contactInfo  String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
-// University Application Content
 model UniversityApplicationContent {
-  id            String   @id @default(uuid())
+  id           String   @id @default(uuid())
+  title        String
+  description  String
+  services     String
+  process      String
+  requirements String
+  pricing      String
+  formUrl      String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model about_us_content {
+  id                     String?   @id
+  goal                   String
+  mission                String
+  roles_responsibilities String?
+  is_active              Boolean?  @default(true)
+  created_at             DateTime? @default(now())
+  updated_at             DateTime? @default(now())
+
+  @@ignore
+}
+
+model announcements {
+  id         Int       @id @default(autoincrement())
+  content    String
+  type       String?
+  pinned     Boolean?  @default(false)
+  created_at DateTime? @default(now())
+  updated_at DateTime? @default(now())
+}
+
+model enrollments {
+  id                Int       @id @default(autoincrement())
+  student_id        Int
+  course_id         Int
+  progress          Int?      @default(0)
+  enrollment_status String?
+  last_updated      DateTime? @default(now())
+  created_at        DateTime? @default(now())
+  courses           Course    @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users             User      @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model events {
+  id            String?   @id
   title         String
-  description   String
-  services      String   // JSON array of services
-  process       String   // JSON array of process steps
-  requirements  String   // JSON array of requirements
-  pricing       String   // JSON object with pricing
-  formUrl       String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  description   String?
+  date          String
+  time          String?
+  location      String?
+  type          String?
+  attendees     Int?      @default(0)
+  max_attendees Int?      @default(0)
+  status        String?   @default("upcoming")
+  created_at    DateTime? @default(now())
+  updated_at    DateTime? @default(now())
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model exam_rewrite_content {
+  id                 String?   @id
+  title              String?
+  description        String?
+  heroTitle          String?
+  heroDescription    String?
+  benefits           String?
+  process            String?
+  subjects           String?
+  applicationFormUrl String?
+  grade11FormUrl     String?
+  grade12FormUrl     String?
+  pricingInfo        String?
+  is_active          Boolean?  @default(true)
+  created_at         DateTime? @default(now())
+  updated_at         DateTime? @default(now())
+
+  @@ignore
+}
+
+model features {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String
+  icon        String
+  benefits    String?
+  created_at  DateTime? @default(now())
+  updated_at  DateTime? @default(now())
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model footer_content {
+  id          String?   @id
+  companyInfo String?
+  socialLinks String?
+  quickLinks  String?
+  contactInfo String?
+  updated_at  DateTime? @default(now())
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model hero_content {
+  id         String?   @id
+  title      String
+  subtitle   String?
+  buttonText String?
+  buttonLink String?
+  imageUrl   String?
+  updated_at DateTime? @default(now())
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model navigation_items {
+  id         String?   @id
+  path       String
+  label      String
+  type       String    @default("main")
+  order      Int?      @default(0)
+  is_active  Boolean?  @default(true)
+  created_at DateTime? @default(now())
+  updated_at DateTime? @default(now())
+
+  @@ignore
+}
+
+
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model pricing_plans {
+  id         String?   @id
+  name       String
+  price      Decimal
+  interval   String?
+  features   String
+  isPopular  Boolean?  @default(false)
+  created_at DateTime? @default(now())
+
+  @@ignore
+}
+
+model subjects {
+  id          String    @id
+  name        String    @unique(map: "sqlite_autoindex_subjects_2")
+  description String?
+  icon        String?
+  created_at  DateTime? @default(now())
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model team_members {
+  id         String?   @id
+  name       String
+  role       String
+  bio        String?
+  image      String?
+  is_active  Boolean?  @default(true)
+  order      Int?      @default(0)
+  created_at DateTime? @default(now())
+  updated_at DateTime? @default(now())
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model testimonials {
+  id         String?   @id
+  name       String
+  role       String?
+  content    String
+  image      String?
+  rating     Int?
+  created_at DateTime? @default(now())
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model tutor_ratings {
+  id          String?   @id
+  tutor_id    String
+  studentName String
+  rating      Int
+  comment     String?
+  date        DateTime? @default(now())
+  tutors      tutors    @relation(fields: [tutor_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@ignore
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model tutors {
+  id            String?         @id
+  name          String
+  subjects      String
+  image         String?
+  contactName   String?
+  contactPhone  String?
+  contactEmail  String?
+  description   String?
+  created_at    DateTime?       @default(now())
+  tutor_ratings tutor_ratings[]
+
+  @@ignore
+}
+
+model ScheduledSession {
+  id          String   @id @default(uuid())
+  courseId    Int
+  tutorId     Int
+  title       String
+  description String?
+  scheduledAt DateTime
+  duration    Int      // Duration in minutes
+  status      String   @default("scheduled") // scheduled, active, completed, cancelled
+  sessionId   String?  // Will be set when session actually starts
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  course      Course   @relation(fields: [courseId], references: [id])
+  tutor       User     @relation(fields: [tutorId], references: [id])
+
+  @@map("scheduled_sessions")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model university_application_content {
+  id           String?   @id
+  title        String?
+  description  String?
+  services     String?
+  process      String?
+  requirements String?
+  pricing      String?
+  formUrl      String?
+  is_active    Boolean?  @default(true)
+  created_at   DateTime? @default(now())
+  updated_at   DateTime? @default(now())
+
+  @@ignore
 }

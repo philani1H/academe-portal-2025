@@ -775,6 +775,105 @@ const ContentManagement = () => {
     }
   }
 
+  // Missing Save Functions
+  const savePricingPlan = async (plan: PricingPlan) => {
+    try {
+      const method = plan.id ? 'PUT' : 'POST'
+      const data = await apiFetch<PricingPlan>('/api/admin/content/pricing', { method, body: JSON.stringify(plan) })
+      if (plan.id) setPricingPlans(pricingPlans.map(p => p.id === plan.id ? data : p))
+      else setPricingPlans([...pricingPlans, data])
+      setEditingPricingPlan(null)
+      toast({ title: 'Success', description: 'Pricing plan saved successfully' })
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save pricing plan', variant: 'destructive' })
+    }
+  }
+
+  const saveNavigationItem = async (item: NavigationItem) => {
+    try {
+      const method = item.id ? 'PUT' : 'POST'
+      const data = await apiFetch<NavigationItem>('/api/admin/content/navigation', { method, body: JSON.stringify(item) })
+      if (item.id) setNavigationItems(navigationItems.map(n => n.id === item.id ? data : n))
+      else setNavigationItems([...navigationItems, data])
+      setEditingNavigation(null)
+      toast({ title: 'Success', description: 'Navigation item saved successfully' })
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save navigation item', variant: 'destructive' })
+    }
+  }
+
+  const saveFooterContent = async (content: FooterContent) => {
+    try {
+      const method = content.id ? 'PUT' : 'POST'
+      const data = await apiFetch<FooterContent>('/api/admin/content/footer', { method, body: JSON.stringify(content) })
+      setFooterContent(data)
+      setEditingFooter(null)
+      toast({ title: 'Success', description: 'Footer content saved successfully' })
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save footer content', variant: 'destructive' })
+    }
+  }
+
+  const saveContactUsContent = async (content: ContactUsContent) => {
+    try {
+      const method = content.id ? 'PUT' : 'POST'
+      const data = await apiFetch<ContactUsContent>('/api/admin/content/contact-us', { method, body: JSON.stringify(content) })
+      setContactUsContent(data)
+      setEditingContactUs(null)
+      toast({ title: 'Success', description: 'Contact Us content saved successfully' })
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save contact us content', variant: 'destructive' })
+    }
+  }
+
+  const saveBecomeTutorContent = async (content: BecomeTutorContent) => {
+    try {
+      const method = content.id ? 'PUT' : 'POST'
+      const data = await apiFetch<BecomeTutorContent>('/api/admin/content/become-tutor', { method, body: JSON.stringify(content) })
+      setBecomeTutorContent(data)
+      setEditingBecomeTutor(null)
+      toast({ title: 'Success', description: 'Become Tutor content saved successfully' })
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save become tutor content', variant: 'destructive' })
+    }
+  }
+
+  const saveExamRewriteContent = async (content: ExamRewriteContent) => {
+    try {
+      const method = content.id ? 'PUT' : 'POST'
+      const data = await apiFetch<ExamRewriteContent>('/api/admin/content/exam-rewrite', { method, body: JSON.stringify(content) })
+      setExamRewriteContent(data)
+      setEditingExamRewrite(null)
+      toast({ title: 'Success', description: 'Exam Rewrite content saved successfully' })
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save exam rewrite content', variant: 'destructive' })
+    }
+  }
+
+  const saveUniversityApplicationContent = async (content: UniversityApplicationContent) => {
+    try {
+      const method = content.id ? 'PUT' : 'POST'
+      const data = await apiFetch<UniversityApplicationContent>('/api/admin/content/university-application', { method, body: JSON.stringify(content) })
+      setUniversityApplicationContent(data)
+      setEditingUniversityApplication(null)
+      toast({ title: 'Success', description: 'University Application content saved successfully' })
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save university application content', variant: 'destructive' })
+    }
+  }
+
+  const saveAboutUsContent = async (content: AboutUsContent) => {
+    try {
+      const method = content.id ? 'PUT' : 'POST'
+      const data = await apiFetch<AboutUsContent>('/api/admin/content/about-us', { method, body: JSON.stringify(content) })
+      setAboutUsContent(data)
+      setEditingAboutUs(null)
+      toast({ title: 'Success', description: 'About Us content saved successfully' })
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to save about us content', variant: 'destructive' })
+    }
+  }
+
   const saveAnnouncement = async (announcement: Announcement) => {
     try {
       const method = announcement.id ? 'PUT' : 'POST'
@@ -1295,6 +1394,11 @@ const ContentManagement = () => {
               <div>
                 <Label>Image URL</Label>
                 <Input value={editingTestimonial.image} onChange={e => setEditingTestimonial({ ...editingTestimonial, image: e.target.value })} placeholder="/uploads/.. or https://" />
+                {editingTestimonial.image && (
+                  <div className="mt-2">
+                    <img src={editingTestimonial.image} alt="Preview" className="h-20 w-20 object-cover rounded-md border" />
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Upload Image</Label>
@@ -1346,6 +1450,11 @@ const ContentManagement = () => {
               <div>
                 <Label>Image URL</Label>
                 <Input value={editingTeamMember.image} onChange={e => setEditingTeamMember({ ...editingTeamMember, image: e.target.value })} placeholder="/uploads/..." />
+                {editingTeamMember.image && (
+                  <div className="mt-2">
+                    <img src={editingTeamMember.image} alt="Preview" className="h-20 w-20 object-cover rounded-md border" />
+                  </div>
+                )}
               </div>
               <div>
                 <Label>Upload Image</Label>
@@ -1369,6 +1478,390 @@ const ContentManagement = () => {
     </Dialog>
   )
 
+  // Subject Edit Dialog
+  const SubjectEditDialog = () => (
+    <Dialog open={!!editingSubject} onOpenChange={() => setEditingSubject(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{editingSubject?.id ? 'Edit' : 'Add'} Subject</DialogTitle>
+          <DialogDescription>Manage subject details and image</DialogDescription>
+        </DialogHeader>
+        {editingSubject && (
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Name</Label>
+                <Input value={editingSubject.name} onChange={e => setEditingSubject({ ...editingSubject, name: e.target.value })} />
+              </div>
+              <div>
+                <Label>Category</Label>
+                <Input value={editingSubject.category} onChange={e => setEditingSubject({ ...editingSubject, category: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea rows={3} value={editingSubject.description} onChange={e => setEditingSubject({ ...editingSubject, description: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4 items-end">
+              <div>
+                <Label>Image URL</Label>
+                <Input value={editingSubject.image} onChange={e => setEditingSubject({ ...editingSubject, image: e.target.value })} placeholder="/uploads/..." />
+                {editingSubject.image && (
+                  <div className="mt-2">
+                    <img src={editingSubject.image} alt="Preview" className="h-20 w-20 object-cover rounded-md border" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label>Upload Image</Label>
+                <Input type="file" accept="image/*" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const url = await uploadImage(file)
+                  setEditingSubject({ ...editingSubject, image: url })
+                }} />
+              </div>
+            </div>
+            <div>
+              <Label>Popular Topics (comma separated)</Label>
+              <Input 
+                value={editingSubject.popularTopics.join(', ')} 
+                onChange={e => setEditingSubject({ ...editingSubject, popularTopics: e.target.value.split(',').map(s => s.trim()) })} 
+              />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingSubject(null)}>Cancel</Button>
+          <Button onClick={() => editingSubject && saveSubject(editingSubject)}>
+            {editingSubject?.id ? 'Update' : 'Create'} Subject
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Tutor Edit Dialog
+  const TutorEditDialog = () => (
+    <Dialog open={!!editingTutor} onOpenChange={() => setEditingTutor(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{editingTutor?.id ? 'Edit' : 'Add'} Tutor</DialogTitle>
+          <DialogDescription>Manage tutor profile and details</DialogDescription>
+        </DialogHeader>
+        {editingTutor && (
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Name</Label>
+                <Input value={editingTutor.name} onChange={e => setEditingTutor({ ...editingTutor, name: e.target.value })} />
+              </div>
+              <div>
+                <Label>Contact Email</Label>
+                <Input value={editingTutor.contactEmail} onChange={e => setEditingTutor({ ...editingTutor, contactEmail: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Contact Phone</Label>
+                <Input value={editingTutor.contactPhone} onChange={e => setEditingTutor({ ...editingTutor, contactPhone: e.target.value })} />
+              </div>
+              <div>
+                <Label>Contact Person Name</Label>
+                <Input value={editingTutor.contactName} onChange={e => setEditingTutor({ ...editingTutor, contactName: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea rows={3} value={editingTutor.description} onChange={e => setEditingTutor({ ...editingTutor, description: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4 items-end">
+              <div>
+                <Label>Image URL</Label>
+                <Input value={editingTutor.image} onChange={e => setEditingTutor({ ...editingTutor, image: e.target.value })} placeholder="/uploads/..." />
+                {editingTutor.image && (
+                  <div className="mt-2">
+                    <img src={editingTutor.image} alt="Preview" className="h-20 w-20 object-cover rounded-md border" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label>Upload Image</Label>
+                <Input type="file" accept="image/*" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const url = await uploadImage(file)
+                  setEditingTutor({ ...editingTutor, image: url })
+                }} />
+              </div>
+            </div>
+            <div>
+              <Label>Subjects (comma separated)</Label>
+              <Input 
+                value={editingTutor.subjects.join(', ')} 
+                onChange={e => setEditingTutor({ ...editingTutor, subjects: e.target.value.split(',').map(s => s.trim()) })} 
+              />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingTutor(null)}>Cancel</Button>
+          <Button onClick={() => editingTutor && saveTutor(editingTutor)}>
+            {editingTutor?.id ? 'Update' : 'Create'} Tutor
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Announcement Edit Dialog
+  const AnnouncementEditDialog = () => (
+    <Dialog open={!!editingAnnouncement} onOpenChange={() => setEditingAnnouncement(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editingAnnouncement?.id ? 'Edit' : 'Add'} Announcement</DialogTitle>
+        </DialogHeader>
+        {editingAnnouncement && (
+          <div className="grid gap-4 py-4">
+            <div>
+              <Label>Content</Label>
+              <Textarea value={editingAnnouncement.content} onChange={e => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Type</Label>
+                <Select value={editingAnnouncement.type} onValueChange={(val: any) => setEditingAnnouncement({ ...editingAnnouncement, type: val })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="info">Info</SelectItem>
+                    <SelectItem value="warning">Warning</SelectItem>
+                    <SelectItem value="success">Success</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={editingAnnouncement.pinned} onCheckedChange={checked => setEditingAnnouncement({ ...editingAnnouncement, pinned: checked })} />
+                <Label>Pinned</Label>
+              </div>
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingAnnouncement(null)}>Cancel</Button>
+          <Button onClick={() => editingAnnouncement && saveAnnouncement(editingAnnouncement)}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+    // Pricing Plan Edit Dialog
+  const PricingPlanEditDialog = () => (
+    <Dialog open={!!editingPricingPlan} onOpenChange={() => setEditingPricingPlan(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{editingPricingPlan?.id ? 'Edit' : 'Add'} Pricing Plan</DialogTitle>
+        </DialogHeader>
+        {editingPricingPlan && (
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Name</Label>
+                <Input value={editingPricingPlan.name} onChange={e => setEditingPricingPlan({ ...editingPricingPlan, name: e.target.value })} />
+              </div>
+              <div>
+                <Label>Price</Label>
+                <Input value={editingPricingPlan.price} onChange={e => setEditingPricingPlan({ ...editingPricingPlan, price: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Period</Label>
+                <Input value={editingPricingPlan.period} onChange={e => setEditingPricingPlan({ ...editingPricingPlan, period: e.target.value })} />
+              </div>
+              <div className="flex items-center gap-2 pt-8">
+                <Switch checked={editingPricingPlan.popular} onCheckedChange={checked => setEditingPricingPlan({ ...editingPricingPlan, popular: checked })} />
+                <Label>Popular</Label>
+              </div>
+            </div>
+            <div>
+              <Label>Features (comma separated)</Label>
+              <Textarea 
+                value={editingPricingPlan.features.join(', ')} 
+                onChange={e => setEditingPricingPlan({ ...editingPricingPlan, features: e.target.value.split(',').map(s => s.trim()) })} 
+              />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingPricingPlan(null)}>Cancel</Button>
+          <Button onClick={() => editingPricingPlan && savePricingPlan(editingPricingPlan)}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Navigation Edit Dialog
+  const NavigationEditDialog = () => (
+    <Dialog open={!!editingNavigation} onOpenChange={() => setEditingNavigation(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editingNavigation?.id ? 'Edit' : 'Add'} Navigation Item</DialogTitle>
+        </DialogHeader>
+        {editingNavigation && (
+          <div className="grid gap-4 py-4">
+            <div>
+              <Label>Label</Label>
+              <Input value={editingNavigation.label} onChange={e => setEditingNavigation({ ...editingNavigation, label: e.target.value })} />
+            </div>
+            <div>
+              <Label>Path</Label>
+              <Input value={editingNavigation.path} onChange={e => setEditingNavigation({ ...editingNavigation, path: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Type</Label>
+                <Select value={editingNavigation.type} onValueChange={(val: any) => setEditingNavigation({ ...editingNavigation, type: val })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="main">Main</SelectItem>
+                    <SelectItem value="footer">Footer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 pt-8">
+                <Switch checked={editingNavigation.isActive} onCheckedChange={checked => setEditingNavigation({ ...editingNavigation, isActive: checked })} />
+                <Label>Active</Label>
+              </div>
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingNavigation(null)}>Cancel</Button>
+          <Button onClick={() => editingNavigation && saveNavigationItem(editingNavigation)}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Footer Edit Dialog
+  const FooterEditDialog = () => (
+    <Dialog open={!!editingFooter} onOpenChange={() => setEditingFooter(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit Footer Content</DialogTitle>
+        </DialogHeader>
+        {editingFooter && (
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Company Name</Label>
+                <Input value={editingFooter.companyName} onChange={e => setEditingFooter({ ...editingFooter, companyName: e.target.value })} />
+              </div>
+              <div>
+                <Label>Tagline</Label>
+                <Input value={editingFooter.tagline} onChange={e => setEditingFooter({ ...editingFooter, tagline: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Contact Email</Label>
+                <Input value={editingFooter.contactEmail} onChange={e => setEditingFooter({ ...editingFooter, contactEmail: e.target.value })} />
+              </div>
+              <div>
+                <Label>Contact Phone</Label>
+                <Input value={editingFooter.contactPhone} onChange={e => setEditingFooter({ ...editingFooter, contactPhone: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <Label>Copyright Text</Label>
+              <Input value={editingFooter.copyrightText} onChange={e => setEditingFooter({ ...editingFooter, copyrightText: e.target.value })} />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingFooter(null)}>Cancel</Button>
+          <Button onClick={() => editingFooter && saveFooterContent(editingFooter)}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // Contact Us Edit Dialog
+  const ContactUsEditDialog = () => (
+    <Dialog open={!!editingContactUs} onOpenChange={() => setEditingContactUs(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit Contact Us Page</DialogTitle>
+        </DialogHeader>
+        {editingContactUs && (
+          <div className="grid gap-4 py-4">
+            <div>
+              <Label>Title</Label>
+              <Input value={editingContactUs.title} onChange={e => setEditingContactUs({ ...editingContactUs, title: e.target.value })} />
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea value={editingContactUs.description} onChange={e => setEditingContactUs({ ...editingContactUs, description: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4 items-end">
+              <div>
+                <Label>Logo URL</Label>
+                <Input value={editingContactUs.logo} onChange={e => setEditingContactUs({ ...editingContactUs, logo: e.target.value })} placeholder="/uploads/..." />
+                {editingContactUs.logo && (
+                  <div className="mt-2">
+                    <img src={editingContactUs.logo} alt="Preview" className="h-20 w-20 object-cover rounded-md border" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <Label>Upload Logo</Label>
+                <Input type="file" accept="image/*" onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const url = await uploadImage(file)
+                  setEditingContactUs({ ...editingContactUs, logo: url })
+                }} />
+              </div>
+            </div>
+            <div>
+              <Label>Form Endpoint</Label>
+              <Input value={editingContactUs.formEndpoint} onChange={e => setEditingContactUs({ ...editingContactUs, formEndpoint: e.target.value })} />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingContactUs(null)}>Cancel</Button>
+          <Button onClick={() => editingContactUs && saveContactUsContent(editingContactUs)}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
+  // About Us Edit Dialog
+  const AboutUsEditDialog = () => (
+    <Dialog open={!!editingAboutUs} onOpenChange={() => setEditingAboutUs(null)}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Edit About Us Page</DialogTitle>
+        </DialogHeader>
+        {editingAboutUs && (
+          <div className="grid gap-4 py-4">
+            <div>
+              <Label>Mission</Label>
+              <Textarea value={editingAboutUs.mission} onChange={e => setEditingAboutUs({ ...editingAboutUs, mission: e.target.value })} />
+            </div>
+            <div>
+              <Label>Goal</Label>
+              <Textarea value={editingAboutUs.goal} onChange={e => setEditingAboutUs({ ...editingAboutUs, goal: e.target.value })} />
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setEditingAboutUs(null)}>Cancel</Button>
+          <Button onClick={() => editingAboutUs && saveAboutUsContent(editingAboutUs)}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1607,9 +2100,14 @@ const ContentManagement = () => {
                                   </div>
                                 </div>
                                 <p className="text-sm text-gray-600 mt-1">{testimonial.content}</p>
-                                <p className="text-xs text-gray-500 mt-2">{testimonial.role} - {testimonial.subject}</p>
+                              <p className="text-xs text-gray-500 mt-2">{testimonial.role} - {testimonial.subject}</p>
+                            </div>
+                            {testimonial.image && (
+                              <div className="ml-4">
+                                <img src={testimonial.image} alt={testimonial.author} className="h-16 w-16 object-cover rounded-md border" />
                               </div>
-                              <div className="flex gap-2 ml-4">
+                            )}
+                            <div className="flex gap-2 ml-4">
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1745,10 +2243,15 @@ const ContentManagement = () => {
                           <div className="mt-2 flex gap-4 text-xs text-gray-500">
                             <span>Subjects: {tutor.subjects.join(', ')}</span>
                             <span>Contact: {tutor.contactEmail}</span>
-                            <span>Phone: {tutor.contactPhone}</span>
-                          </div>
+                          <span>Phone: {tutor.contactPhone}</span>
                         </div>
-                        <div className="flex gap-2 ml-4">
+                      </div>
+                      {tutor.image && (
+                        <div className="ml-4">
+                          <img src={tutor.image} alt={tutor.name} className="h-16 w-16 object-cover rounded-md border" />
+                        </div>
+                      )}
+                      <div className="flex gap-2 ml-4">
                           <Button
                             variant="outline"
                             size="sm"
@@ -2282,6 +2785,16 @@ const ContentManagement = () => {
       {/* Edit Dialogs */}
       <HeroEditDialog />
       <FeatureEditDialog />
+      <SubjectEditDialog />
+      <TutorEditDialog />
+      <AnnouncementEditDialog />
+      <PricingPlanEditDialog />
+      <NavigationEditDialog />
+      <FooterEditDialog />
+      <ContactUsEditDialog />
+      <AboutUsEditDialog />
+      <TestimonialEditDialog />
+      <TeamMemberEditDialog />
     </div>
   )
 }

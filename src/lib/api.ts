@@ -144,8 +144,9 @@ export const api = {
     });
   },
   // Tutor/student management APIs
-  async getStudents(): Promise<Student[]> {
-    const data = await apiFetch<any>('/api/users'); // fallback if implemented; otherwise map via query
+  async getStudents(tutorId?: string): Promise<Student[]> {
+    const url = tutorId ? `/api/tutor/${tutorId}/students` : '/api/users';
+    const data = await apiFetch<any>(url); // fallback if implemented; otherwise map via query
     // If /api/users (list) not available, try to query a few by other endpoints; for now, coerce arrays safely
     const rows = Array.isArray((data as any)?.data) ? (data as any).data : (Array.isArray(data) ? data : []);
     return rows.map((s: any) => ({
@@ -217,11 +218,48 @@ export const api = {
       duration: r.duration ?? '',
       color: '#4f46e5',
       students: Number(r.students ?? 0),
-      tests: [],
+      tests: Array.isArray(r.tests) ? r.tests : [],
       nextSession: r.nextSession ?? new Date().toISOString(),
       progress: Number(r.progress ?? 0),
-      materials: [],
+      materials: Array.isArray(r.materials) ? r.materials : [],
     }));
+  },
+
+  async createCourse(course: Partial<Course>): Promise<Course> {
+    let tutorId = 1;
+    try {
+      const u = localStorage.getItem('user');
+      if (u) tutorId = JSON.parse(u).id;
+    } catch {}
+
+    const payload = {
+      title: course.name,
+      description: course.description,
+      department: course.category || 'General',
+      category: course.category,
+      tutorId,
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + 5184000000).toISOString(), // 60 days
+      duration: course.duration
+    };
+
+    const res = await apiFetch<any>('/api/courses', { method: 'POST', body: JSON.stringify(payload) });
+    const c = res?.data ?? res;
+    
+    return {
+      id: String(c.id ?? c.ID),
+      name: c.title ?? c.name,
+      description: c.description,
+      category: c.category ?? c.department,
+      level: 'Beginner',
+      duration: c.duration,
+      color: '#4f46e5',
+      students: 0,
+      tests: [],
+      nextSession: new Date().toISOString(),
+      progress: 0,
+      materials: []
+    };
   },
   
   // Admin helpers
@@ -245,10 +283,128 @@ export const api = {
       { method: 'POST', body: JSON.stringify(payload) }
     );
   },
+
+  // Test Management
+  async getTests(): Promise<Test[]> {
+    const data = await apiFetch<any>('/api/tests');
+    const rows = Array.isArray((data as any)?.data) ? (data as any).data : (Array.isArray(data) ? data : []);
+    return rows.map((t: any) => ({
+      id: String(t.id ?? t.ID ?? crypto.randomUUID()),
+      title: t.title ?? t.name ?? 'Untitled Test',
+      description: t.description ?? '',
+      courseId: String(t.courseId ?? ''),
+      dueDate: t.dueDate ?? new Date().toISOString(),
+      status: (t.status as any) ?? 'draft',
+      questions: Array.isArray(t.questions) ? t.questions : [],
+      totalPoints: Number(t.totalPoints ?? 100),
+      submissions: Number(t.submissions ?? 0),
+      averageScore: Number(t.averageScore ?? 0),
+    }));
+  },
+
+  async createTest(test: Partial<Test>): Promise<Test> {
+    const res = await apiFetch<any>('/api/tests', { method: 'POST', body: JSON.stringify(test) });
+    const t = res?.data ?? res;
+    return {
+      id: String(t.id ?? t.ID ?? crypto.randomUUID()),
+      title: t.title,
+      description: t.description,
+      courseId: t.courseId,
+      dueDate: t.dueDate,
+      status: t.status ?? 'draft',
+      questions: t.questions ?? [],
+      totalPoints: t.totalPoints ?? 0,
+      submissions: 0,
+      averageScore: 0
+    };
+  },
+
+  async updateTest(testId: string, updates: Partial<Test>): Promise<Test> {
+    const res = await apiFetch<any>(`/api/tests/${encodeURIComponent(testId)}`, { method: 'PUT', body: JSON.stringify(updates) });
+    const t = res?.data ?? res;
+    return {
+      id: String(t.id ?? t.ID ?? testId),
+      title: t.title ?? updates.title,
+      description: t.description ?? updates.description,
+      courseId: t.courseId ?? updates.courseId,
+      dueDate: t.dueDate ?? updates.dueDate,
+      status: t.status ?? updates.status,
+      questions: t.questions ?? updates.questions,
+      totalPoints: t.totalPoints ?? updates.totalPoints,
+      submissions: t.submissions ?? updates.submissions,
+      averageScore: t.averageScore ?? updates.averageScore
+    };
+  },
+
+  // File Upload
+  async uploadFile(file: File, courseId?: string): Promise<{ url: string; id: string; name: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (courseId) {
+      formData.append('courseId', courseId);
+    }
+
+    const token = getAuthToken();
+    const url = withBase('/api/upload');
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.statusText}`);
+    }
+
+    const json = await response.json();
+    const data = json.data || json;
+    return {
+      url: data.url,
+      id: data.id || crypto.randomUUID(),
+      name: data.name || file.name
+    };
+  },
+
+  async deleteMaterial(materialId: string): Promise<void> {
+    await apiFetch<any>(`/api/materials/${encodeURIComponent(materialId)}`, { method: 'DELETE' });
+  },
+
+  async tutorInviteStudents(payload: { emails: string[]; courseName: string }): Promise<{ success: boolean; invited: any[] }> {
+    return apiFetch<{ success: boolean; invited: any[] }>(
+      '/api/tutor/students/invite',
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+  },
 };
 
 // Types used by tutor pages
 export type CourseLevel = 'Beginner' | 'Intermediate' | 'Advanced';
+
+export interface Question {
+  id: string;
+  text: string;
+  type: "multiple-choice" | "true-false" | "short-answer" | "essay";
+  options?: string[];
+  correctAnswer: string;
+  points: number;
+  explanation?: string;
+}
+
+export interface Test {
+  id: string;
+  title: string;
+  description: string;
+  courseId: string;
+  dueDate: string;
+  status: "draft" | "published" | "closed";
+  questions: Question[];
+  totalPoints: number;
+  submissions: number;
+  averageScore: number;
+}
 
 export interface Course {
   id: string;

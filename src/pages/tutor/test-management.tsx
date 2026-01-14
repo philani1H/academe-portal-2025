@@ -164,7 +164,7 @@ export default function TestManagementPage() {
 
   const handlePublishTest = async (testId: string) => {
     try {
-      // In real app, make API call to publish test
+      await api.updateTest(testId, { status: "published" })
       setTests((prev) => prev.map((test) => (test.id === testId ? { ...test, status: "published" as const } : test)))
       toast({
         title: "Success",
@@ -181,6 +181,7 @@ export default function TestManagementPage() {
 
   const handleCloseTest = async (testId: string) => {
     try {
+      await api.updateTest(testId, { status: "closed" })
       setTests((prev) => prev.map((test) => (test.id === testId ? { ...test, status: "closed" as const } : test)))
       toast({
         title: "Success",

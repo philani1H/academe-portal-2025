@@ -1,0 +1,18 @@
+[
+  {
+    "id": "1",
+    "courseName": "Mathematics 101",
+    "day": "Monday",
+    "time": "10:00 AM",
+    "type": "Lecture",
+    "tutorName": "Test Tutor"
+  },
+  {
+    "id": "2",
+    "courseName": "Mathematics 101",
+    "day": "Wednesday",
+    "time": "02:00 PM",
+    "type": "Tutorial",
+    "tutorName": "Test Tutor"
+  }
+]

@@ -11,7 +11,6 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
-import { TooltipProvider } from "@/components/ui/tooltip"
 import { apiFetch } from "@/lib/api"
 import { Loading } from "@/components/ui/loading"
 import {
@@ -36,7 +35,10 @@ import {
   MoreHorizontal,
   Download,
   UserPlus,
+  Calendar,
+  Video,
 } from "lucide-react"
+import { Timetable } from "@/components/Timetable"
 
 // Import page components
 import AnalyticsDashboardPage from "./analytics-dashboard"
@@ -297,100 +299,123 @@ export default function TutorDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      // Resolve current user from backend (preferred), fallback to localStorage if needed
+      let tutorId: string | undefined
+      try {
+        const me = await apiFetch<any>('/api/auth/me')
+        
+        const role = (me?.user?.role || me?.role || '').toString().toLowerCase()
+        
+        if (role !== 'tutor' && role !== 'admin') {
+          setError('Access Denied: Tutor or Admin privileges required.')
+          setLoading(false)
+          return
+        }
+
+        if (role === 'tutor') {
+          tutorId = me?.user?.id || me?.id
+        }
+      
+      } catch (e) {
+        console.warn('Auth check failed, falling back to storage', e)
+      }
+      
+      if (!tutorId) {
+        const storedUser = localStorage.getItem('user')
+        const parsed = storedUser ? JSON.parse(storedUser) : null
+        
+        if (parsed) {
+            const storedRole = (parsed?.role || '').toLowerCase()
+            // If we have a stored user but they are not tutor/admin, deny access
+            if (storedRole !== 'tutor' && storedRole !== 'admin') {
+               setError('Access Denied: Tutor or Admin privileges required.')
+               setLoading(false)
+               return
+            }
+            tutorId = parsed.id
+        }
+      }
+      const data = await apiFetch<any>(`/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
+      
+      // Normalize
+      const stats: Analytics = {
+        totalStudents: data?.statistics?.totalStudents ?? 0,
+        activeStudents: data?.statistics?.activeStudents ?? 0,
+        totalCourses: data?.statistics?.totalCourses ?? 0,
+        completionRate: Math.round((data?.statistics?.completionRate ?? 0) * 10) / 10,
+        averageGrade: Math.round((data?.statistics?.averageRating ?? 0) * 10) / 10,
+        monthlyGrowth: 0,
+      }
+      setAnalytics(stats)
+      const rawName = data?.tutor?.name;
+      const name = (rawName && rawName !== 'Tutor' && rawName !== 'Student') ? rawName : (data?.tutor?.email?.split('@')[0] ?? 'Instructor');
+      setUser({
+        id: data?.tutor?.id ?? 'tutor',
+        name: name,
+        email: data?.tutor?.contactEmail ?? '',
+        role: 'Tutor',
+        avatar: data?.tutor?.image ?? undefined,
+        department: (data?.tutor?.subjects?.[0] ?? 'Education'),
+      })
+      setCourses((data?.courses || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        students: c.students ?? (c.enrollments?.length ?? 0),
+        nextSession: c.nextSession,
+        progress: Math.min(100, Math.max(0, Math.round(c.progress ?? 0))),
+        materials: c.materials ?? [],
+        tests: c.tests ?? [],
+        color: c.color ?? '#4f46e5',
+        category: c.category ?? 'General',
+        duration: c.duration ?? '',
+        level: 'Beginner',
+        rating: 0,
+        totalLessons: 0,
+        completedLessons: 0,
+      })))
+      setStudents((data?.students || []).map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        email: s.email,
+        progress: Math.min(100, Math.max(0, Math.round(s.progress ?? 0))),
+        lastActivity: s.lastActivity ?? new Date().toISOString(),
+        status: (s.status as any) ?? 'active',
+        enrolledCourses: s.enrolledCourses ?? [],
+        joinDate: new Date().toISOString(),
+        totalAssignments: 0,
+        completedAssignments: 0,
+        avatar: s.avatar,
+      })))
+      setNotifications((data?.notifications || []).map((n: any) => ({
+        id: n.id,
+        message: n.message,
+        type: (n.type as any) ?? 'info',
+        read: !!n.read,
+        timestamp: n.timestamp,
+        priority: 'low',
+      })))
+    } catch (e: any) {
+      console.error('Failed to load tutor dashboard:', e)
+      setError(e?.message || 'Failed to load tutor dashboard')
+      // Fallback to mock so UI stays useful
+      setUser({ id: 'tutor-1', name: 'Dr. Sarah Wilson', email: 'dr.wilson@university.edu', role: 'Tutor', avatar: '/placeholder.svg?height=64&width=64', department: 'Mathematics & Science' })
+      setCourses(mockCourses)
+      setStudents(mockStudents)
+      setNotifications(mockNotifications)
+      setAnalytics({ totalStudents: 74, activeStudents: 68, totalCourses: 8, completionRate: 87.5, averageGrade: 84.2, monthlyGrowth: 12.5 })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Fetch data
   useEffect(() => {
-    let canceled = false
-    const load = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-        // Resolve current user from backend (preferred), fallback to localStorage if needed
-        let tutorId: string | undefined
-        try {
-          const me = await apiFetch<any>('/api/auth/me')
-          const role = (me?.user?.role || me?.role || '').toString().toLowerCase()
-          if (role === 'tutor') {
-            tutorId = me?.user?.id || me?.id
-          }
-        } catch {}
-        if (!tutorId) {
-          const storedUser = localStorage.getItem('user')
-          const parsed = storedUser ? JSON.parse(storedUser) : null
-          tutorId = parsed?.id
-        }
-        const data = await apiFetch<any>(`/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
-        if (canceled) return
-        // Normalize
-        const stats: Analytics = {
-          totalStudents: data?.statistics?.totalStudents ?? 0,
-          activeStudents: data?.statistics?.activeStudents ?? 0,
-          totalCourses: data?.statistics?.totalCourses ?? 0,
-          completionRate: Math.round((data?.statistics?.completionRate ?? 0) * 10) / 10,
-          averageGrade: Math.round((data?.statistics?.averageRating ?? 0) * 10) / 10,
-          monthlyGrowth: 0,
-        }
-        setAnalytics(stats)
-        setUser({
-          id: data?.tutor?.id ?? 'tutor',
-          name: data?.tutor?.name ?? 'Tutor',
-          email: data?.tutor?.contactEmail ?? '',
-          role: 'Tutor',
-          avatar: data?.tutor?.image ?? undefined,
-          department: (data?.tutor?.subjects?.[0] ?? 'Education'),
-        })
-        setCourses((data?.courses || []).map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          description: c.description,
-          students: c.students ?? (c.enrollments?.length ?? 0),
-          nextSession: c.nextSession,
-          progress: Math.min(100, Math.max(0, Math.round(c.progress ?? 0))),
-          materials: c.materials ?? [],
-          tests: c.tests ?? [],
-          color: c.color ?? '#4f46e5',
-          category: c.category ?? 'General',
-          duration: c.duration ?? '',
-          level: 'Beginner',
-          rating: 0,
-          totalLessons: 0,
-          completedLessons: 0,
-        })))
-        setStudents((data?.students || []).map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          email: s.email,
-          progress: Math.min(100, Math.max(0, Math.round(s.progress ?? 0))),
-          lastActivity: s.lastActivity ?? new Date().toISOString(),
-          status: (s.status as any) ?? 'active',
-          enrolledCourses: s.enrolledCourses ?? [],
-          joinDate: new Date().toISOString(),
-          totalAssignments: 0,
-          completedAssignments: 0,
-          avatar: s.avatar,
-        })))
-        setNotifications((data?.notifications || []).map((n: any) => ({
-          id: n.id,
-          message: n.message,
-          type: (n.type as any) ?? 'info',
-          read: !!n.read,
-          timestamp: n.timestamp,
-          priority: 'low',
-        })))
-      } catch (e: any) {
-        console.error('Failed to load tutor dashboard:', e)
-        setError(e?.message || 'Failed to load tutor dashboard')
-        // Fallback to mock so UI stays useful
-        setUser({ id: 'tutor-1', name: 'Dr. Sarah Wilson', email: 'dr.wilson@university.edu', role: 'Tutor', avatar: '/placeholder.svg?height=64&width=64', department: 'Mathematics & Science' })
-        setCourses(mockCourses)
-        setStudents(mockStudents)
-        setNotifications(mockNotifications)
-        setAnalytics({ totalStudents: 74, activeStudents: 68, totalCourses: 8, completionRate: 87.5, averageGrade: 84.2, monthlyGrowth: 12.5 })
-      } finally {
-        if (!canceled) setLoading(false)
-      }
-    }
-    load()
-    return () => { canceled = true }
+    loadData()
   }, [])
 
   // Effects
@@ -418,9 +443,39 @@ export default function TutorDashboard() {
     })
   }
 
+  const handleDeleteMaterial = async (materialId: string) => {
+    try {
+      await api.deleteMaterial(materialId)
+      toast({
+        title: "Success",
+        description: "Material deleted successfully",
+      })
+      await loadData()
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete material",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDownloadMaterial = (url?: string) => {
+    if (url) {
+      window.open(url, '_blank')
+    } else {
+      toast({
+        title: "Error",
+        description: "File URL not available",
+        variant: "destructive",
+      })
+    }
+  }
+
   const sidebarItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "courses", label: "Courses", icon: BookOpen },
+    { id: "timetable", label: "Timetable", icon: Calendar },
     { id: "students", label: "Students", icon: Users },
     { id: "tests", label: "Tests", icon: FileText },
     { id: "notifications", label: "Notifications", icon: Bell, badge: unreadCount },
@@ -433,9 +488,42 @@ export default function TutorDashboard() {
     return <Loading message="Loading tutor dashboard..." className="min-h-[60vh]" />
   }
 
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+        <Card className="w-full max-w-md border-destructive/50">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-destructive mb-2">
+              <AlertCircle className="h-6 w-6" />
+              <CardTitle>Access Error</CardTitle>
+            </div>
+            <CardDescription>
+              We encountered an issue loading your dashboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm font-medium mb-4">{error}</p>
+            <div className="flex gap-2">
+              <Button onClick={() => window.location.reload()} variant="outline" className="w-full">
+                Retry
+              </Button>
+              <Button onClick={() => window.location.href = '/'} variant="default" className="w-full">
+                Go Home
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Ensure user exists before rendering
+  if (!user) {
+    return null
+  }
+
   return (
-    <TooltipProvider>
-      <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
         {/* Mobile Menu Overlay */}
         {mobileMenuOpen && (
           <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileMenuOpen(false)} />
@@ -563,6 +651,13 @@ export default function TutorDashboard() {
 
           {/* Content Area */}
           <div className="p-6">
+            {/* Timetable Tab */}
+            {activeTab === "timetable" && (
+              <div className="space-y-6">
+                <Timetable userRole="tutor" />
+              </div>
+            )}
+
             {/* Dashboard Tab */}
             {activeTab === "dashboard" && (
               <div className="space-y-6">
@@ -586,7 +681,44 @@ export default function TutorDashboard() {
                   </div>
                 </div>
 
-                {/* Stats Cards */}
+                {/* Quick Actions */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card className="bg-primary/5 border-primary/20 cursor-pointer hover:bg-primary/10 transition-colors" onClick={() => setActiveTab('courses')}>
+                    <CardContent className="p-6 flex items-center gap-4">
+                      <div className="p-3 bg-primary/20 rounded-full text-primary">
+                        <Video className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">Start Live Class</h3>
+                        <p className="text-sm text-muted-foreground">Go to courses to launch a session</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-accent/5 border-accent/20 cursor-pointer hover:bg-accent/10 transition-colors" onClick={() => setActiveTab('students')}>
+                     <CardContent className="p-6 flex items-center gap-4">
+                      <div className="p-3 bg-accent/20 rounded-full text-accent-foreground">
+                        <Users className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">Manage Students</h3>
+                        <p className="text-sm text-muted-foreground">View and manage enrollments</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-secondary/20 border-secondary/20 cursor-pointer hover:bg-secondary/30 transition-colors" onClick={() => setActiveTab('timetable')}>
+                     <CardContent className="p-6 flex items-center gap-4">
+                      <div className="p-3 bg-secondary/30 rounded-full text-secondary-foreground">
+                        <Calendar className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">View Timetable</h3>
+                        <p className="text-sm text-muted-foreground">Check your teaching schedule</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Stats Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -709,15 +841,6 @@ export default function TutorDashboard() {
                       >
                         <UserPlus className="h-4 w-4 mr-2" />
                         Add Students
-                      </Button>
-
-                      <Button
-                        className="w-full justify-start bg-transparent"
-                        variant="outline"
-                        onClick={() => setActiveTab("courses")}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create Course
                       </Button>
 
                       <Button
@@ -898,13 +1021,13 @@ export default function TutorDashboard() {
                                 </div>
                               </div>
                               <div className="flex gap-1">
-                                <Button variant="ghost" size="sm">
+                                <Button variant="ghost" size="sm" onClick={() => handleDownloadMaterial(material.url)}>
                                   <Eye className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm">
+                                <Button variant="ghost" size="sm" onClick={() => handleDownloadMaterial(material.url)}>
                                   <Download className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="sm">
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteMaterial(material.id)}>
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -1033,8 +1156,7 @@ export default function TutorDashboard() {
           </div>
         </main>
 
-        <Toaster />
-      </div>
-    </TooltipProvider>
+      <Toaster />
+    </div>
   )
 }

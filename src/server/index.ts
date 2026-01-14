@@ -1,13 +1,16 @@
 import express from 'express';
 import cors from 'cors';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import { getConnection } from '../lib/db';
 import prisma from '../lib/prisma';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
-import { sendEmail, renderBrandedEmail, renderInvitationEmail, renderBrandedEmailPreview } from '../lib/email';
+import { sendEmail, renderBrandedEmail, renderInvitationEmail, renderBrandedEmailPreview, renderStudentCredentialsEmail } from '../lib/email';
 import crypto from 'crypto';
+import multer from 'multer';
 
 // Resolve base path in both ESM and CJS
 const resolvedDir = (typeof __dirname !== 'undefined')
@@ -16,14 +19,141 @@ const resolvedDir = (typeof __dirname !== 'undefined')
 const baseDir = path.resolve(resolvedDir, '..');
 const uploadsDir = path.resolve(baseDir, '..', 'public', 'uploads');
 
+// Ensure uploads directory exists
+fs.mkdir(uploadsDir, { recursive: true }).catch(console.error);
+
+// Store active live sessions in memory (courseId -> sessionData)
+const activeSessions = new Map<string, any>();
+
+// Scheduled session checker
+let scheduledSessionChecker: NodeJS.Timeout;
+
+const startScheduledSessionChecker = () => {
+  console.log('✓ Starting scheduled session checker...');
+
+  scheduledSessionChecker = setInterval(async () => {
+    try {
+      const now = new Date();
+      const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000); // Check sessions starting in next 5 minutes
+
+      const scheduledSessions = await prisma.scheduledSession.findMany({
+        where: {
+          status: 'scheduled',
+          scheduledAt: {
+            gte: now,
+            lte: fiveMinutesFromNow
+          }
+        },
+        include: {
+          course: true,
+          tutor: true
+        }
+      });
+
+      for (const session of scheduledSessions) {
+        console.log(`Auto-starting scheduled session: ${session.title} for course ${session.course.name}`);
+
+        // Generate session ID
+        const sessionId = `${session.courseId}-${Date.now()}`;
+
+        // Update session status and set sessionId
+        await prisma.scheduledSession.update({
+          where: { id: session.id },
+          data: {
+            status: 'active',
+            sessionId: sessionId
+          }
+        });
+
+        // Start the session (same logic as session-started handler)
+        activeSessions.set(String(session.courseId), {
+          sessionId,
+          courseId: session.courseId,
+          tutorName: session.tutor.name,
+          message: `${session.tutor.name} started a scheduled live session!`
+        });
+
+        // Broadcast to all students enrolled in the course
+        io.to(`course:${session.courseId}`).emit('session-live', {
+          sessionId,
+          courseId: session.courseId,
+          tutorName: session.tutor.name,
+          message: `${session.tutor.name} started a scheduled live session!`
+        });
+
+        // Send emails to enrolled students
+        try {
+          const course = await prisma.course.findUnique({
+            where: { id: session.courseId },
+            include: {
+              courseEnrollments: {
+                include: { user: true }
+              }
+            }
+          });
+
+          if (course && course.courseEnrollments.length > 0) {
+            const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+            const sessionLink = `${frontendBase}/student/dashboard?joinSession=${sessionId}&courseId=${session.courseId}&tutorName=${encodeURIComponent(session.tutor.name)}`;
+
+            console.log(`Sending scheduled session emails to ${course.courseEnrollments.length} students...`);
+
+            await Promise.all(course.courseEnrollments.map(async (enrollment) => {
+              const student = enrollment.user;
+              if (student.email) {
+                const content = `
+                  <div style="font-family: sans-serif; color: #333;">
+                    <h2>Scheduled Live Session Started!</h2>
+                    <p>Hi ${student.name},</p>
+                    <p>The scheduled live session "<strong>${session.title}</strong>" for <strong>${course.name}</strong> has started.</p>
+                    <p><strong>Tutor:</strong> ${session.tutor.name}</p>
+                    <p><strong>Duration:</strong> ${session.duration} minutes</p>
+                    <br/>
+                    <a href="${sessionLink}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Join Live Session</a>
+                    <br/><br/>
+                    <p>See you there!</p>
+                  </div>
+                `;
+                try {
+                  await sendEmail({
+                    to: student.email,
+                    subject: `🔴 Scheduled Session Live: ${session.title}`,
+                    content
+                  });
+                } catch (e) {
+                  console.error(`Failed to send email to ${student.email}`, e);
+                }
+              }
+            }));
+          }
+        } catch (error) {
+          console.error('Error sending scheduled session emails:', error);
+        }
+
+        console.log(`Scheduled session ${session.title} started successfully`);
+      }
+    } catch (error) {
+      console.error('Error checking scheduled sessions:', error);
+    }
+  }, 60000); // Check every minute
+};
+
+const stopScheduledSessionChecker = () => {
+  if (scheduledSessionChecker) {
+    clearInterval(scheduledSessionChecker);
+    console.log('✓ Stopped scheduled session checker');
+  }
+};
+
 const app = express();
+const httpServer = createServer(app);
 const port = process.env.PORT || 3000;
 
 // Enhanced CORS configuration
 const isProd = process.env.NODE_ENV === 'production';
-app.use(cors({
+const corsOptions = {
   origin: isProd
-    ? (origin, callback) => {
+    ? (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
         // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
 
@@ -56,7 +186,316 @@ app.use(cors({
   optionsSuccessStatus: 200,
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS']
-}));
+};
+
+app.use(cors(corsOptions as any));
+app.use(express.json());
+
+// Timetable API
+const timetableFile = path.resolve(resolvedDir, 'data', 'timetable.json');
+
+// Ensure data directory exists
+fs.mkdir(path.dirname(timetableFile), { recursive: true }).catch(console.error);
+
+app.get('/api/timetable', async (req, res) => {
+    try {
+        const data = await fs.readFile(timetableFile, 'utf-8');
+        res.json({ data: JSON.parse(data) });
+    } catch (error) {
+        // If file doesn't exist, return empty array
+        res.json({ data: [] });
+    }
+});
+
+app.post('/api/timetable', async (req, res) => {
+    try {
+        const { timetable } = req.body;
+        
+        // Read existing for diffing
+        let existing: any[] = [];
+        try {
+            const fileData = await fs.readFile(timetableFile, 'utf-8');
+            existing = JSON.parse(fileData);
+        } catch (e) {
+            // ignore
+        }
+
+        // Find new entries
+        const existingIds = new Set(existing.map((e: any) => e.id));
+        const newEntries = Array.isArray(timetable) ? timetable.filter((e: any) => !existingIds.has(e.id)) : [];
+
+        // Save updated timetable
+        await fs.writeFile(timetableFile, JSON.stringify(timetable, null, 2));
+        res.json({ success: true });
+
+        // Send emails for new entries asynchronously
+        if (newEntries.length > 0) {
+            console.log(`Found ${newEntries.length} new timetable entries. Sending emails...`);
+            (async () => {
+                for (const entry of newEntries) {
+                    try {
+                        // Find course by name (fuzzy match)
+                        if (!entry.courseName) continue;
+                        
+                        const course = await prisma.course.findFirst({
+                            where: { name: { contains: entry.courseName } },
+                            include: {
+                                courseEnrollments: {
+                                    include: { user: true }
+                                }
+                            }
+                        });
+
+                        if (course && course.courseEnrollments.length > 0) {
+                             const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+                             
+                             await Promise.all(course.courseEnrollments.map(async (enrollment) => {
+                                const student = enrollment.user;
+                                if (student.email) {
+                                    const content = `
+                                        <div style="font-family: sans-serif; color: #333;">
+                                            <h2>New Class Scheduled</h2>
+                                            <p>Hi ${student.name},</p>
+                                            <p>A new class has been scheduled for <strong>${course.name}</strong>.</p>
+                                            <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                                                <p><strong>Topic:</strong> ${entry.type} - ${entry.courseName}</p>
+                                                <p><strong>Time:</strong> ${entry.day}, ${entry.time}</p>
+                                                <p><strong>Tutor:</strong> ${entry.tutorName}</p>
+                                            </div>
+                                            <a href="${frontendBase}/student/dashboard?tab=timetable" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Timetable</a>
+                                        </div>
+                                    `;
+                                    await sendEmail({
+                                        to: student.email,
+                                        subject: `📅 New Class: ${entry.courseName}`,
+                                        content
+                                    });
+                                }
+                             }));
+                        }
+                    } catch (err) {
+                        console.error('Error processing timetable email:', err);
+                    }
+                }
+            })();
+        }
+
+    } catch (error) {
+        console.error('Error saving timetable:', error);
+        res.status(500).json({ error: 'Failed to save timetable' });
+    }
+});
+
+// Configure Multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    // Generate unique filename to avoid collisions and invalid characters
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname) || '.webm';
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({ 
+    storage: storage,
+    limits: {
+        fileSize: 500 * 1024 * 1024 // Limit file size to 500MB
+    }
+});
+
+// Upload endpoint for course materials
+app.post('/api/upload/material', upload.single('file'), async (req, res) => {
+    try {
+        const file = req.file;
+        const { courseId, type, name, description } = req.body;
+
+        if (!file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+        if (!courseId) {
+            // Clean up file if no courseId
+            await fs.unlink(file.path).catch(console.error);
+            return res.status(400).json({ error: 'Course ID is required' });
+        }
+
+        // Create URL (relative path)
+        const fileUrl = `/uploads/${file.filename}`;
+
+        console.log(`File uploaded: ${file.filename} for course ${courseId}`);
+
+        // Save to database
+        const material = await prisma.courseMaterial.create({
+            data: {
+                courseId: parseInt(courseId),
+                name: name || file.originalname,
+                type: type || 'video',
+                url: fileUrl,
+                description: description || 'Live session recording'
+            }
+        });
+
+        res.json({ success: true, material });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({ error: 'Failed to upload material' });
+    }
+});
+
+// Socket.IO Setup
+const io = new Server(httpServer, {
+  cors: {
+    origin: isProd ? undefined : "*", // Allow all in dev
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  socket.on('join-user-room', (userId) => {
+    socket.join(`user:${userId}`);
+    console.log(`User ${userId} joined their notification room`);
+  });
+
+  socket.on('join-course-room', async (courseIds) => {
+    if (Array.isArray(courseIds)) {
+        // Optional: verify enrollment if possible
+        // For now, we trust the client's enrollment list
+        courseIds.forEach(id => socket.join(`course:${id}`));
+        console.log(`Socket ${socket.id} joined course rooms: ${courseIds.join(', ')}`);
+    }
+  });
+
+  socket.on('join-session', ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
+    socket.join(sessionId);
+    console.log(`User ${userId} (${userRole}) joined session ${sessionId}`);
+    
+    // Notify others in the session
+    socket.to(sessionId).emit('user-joined', { userId, userRole, socketId: socket.id, userName, isVideoOn, isAudioOn });
+  });
+
+  socket.on('stream-state-change', ({ sessionId, isVideoOn, isAudioOn }) => {
+      socket.to(sessionId).emit('stream-state-changed', { socketId: socket.id, isVideoOn, isAudioOn });
+  });
+
+  // Explicit session start handler with student list verification
+  socket.on('session-started', async ({ sessionId, courseId, tutorName, students }) => {
+     console.log(`Session started for course ${courseId} by ${tutorName}`);
+     
+     // Track active session
+     if (courseId) {
+         activeSessions.set(String(courseId), {
+             sessionId,
+             courseId,
+             tutorName,
+             message: `${tutorName} started a live session!`
+         });
+         
+         // Broadcast to all students enrolled in the course
+         io.to(`course:${courseId}`).emit('session-live', {
+           sessionId,
+           courseId,
+           tutorName,
+           message: `${tutorName} started a live session!`
+         });
+         console.log(`Broadcasted live session to all students in course:${courseId}`);
+     }
+
+     // Send emails to enrolled students in the course
+     try {
+        const cId = parseInt(String(courseId));
+        if (!isNaN(cId)) {
+            const course = await prisma.course.findUnique({
+                where: { id: cId },
+                include: {
+                    courseEnrollments: {
+                        include: { user: true }
+                    }
+                }
+            });
+
+            if (course && course.courseEnrollments.length > 0) {
+                const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+                const sessionLink = `${frontendBase}/student/dashboard?joinSession=${sessionId}&courseId=${courseId}&tutorName=${encodeURIComponent(tutorName)}`;
+                
+                console.log(`Sending live session emails to ${course.courseEnrollments.length} students...`);
+                
+                // Send emails in parallel
+                await Promise.all(course.courseEnrollments.map(async (enrollment) => {
+                    const student = enrollment.user;
+                    if (student.email) {
+                        const content = `
+                            <div style="font-family: sans-serif; color: #333;">
+                                <h2>Live Session Started!</h2>
+                                <p>Hi ${student.name},</p>
+                                <p><strong>${tutorName}</strong> has started a live session for <strong>${course.title || 'your course'}</strong>.</p>
+                                <br/>
+                                <a href="${sessionLink}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Join Live Session</a>
+                                <br/><br/>
+                                <p>See you there!</p>
+                            </div>
+                        `;
+                        try {
+                            await sendEmail({
+                                to: student.email,
+                                subject: `🔴 Live Now: ${course.title || 'Class'}`,
+                                content
+                            });
+                        } catch (e) {
+                            console.error(`Failed to send email to ${student.email}`, e);
+                        }
+                    }
+                }));
+                console.log(`Sent emails to ${course.courseEnrollments.length} students`);
+            }
+        }
+     } catch (error) {
+         console.error('Error sending live session emails:', error);
+     }
+  });
+
+  socket.on('end-session', ({ courseId, sessionId }) => {
+      console.log(`Session ended for course ${courseId}`);
+      if (courseId) {
+          activeSessions.delete(String(courseId));
+      }
+      // Optionally notify students that session ended
+      io.to(`course:${courseId}`).emit('session-ended', { courseId, sessionId });
+  });
+
+  socket.on('signal', ({ to, signal, from, userRole, isVideoOn, isAudioOn }) => {
+    io.to(to).emit('signal', { signal, from, userRole, isVideoOn, isAudioOn });
+  });
+
+  socket.on('whiteboard-draw', ({ sessionId, data }) => {
+    socket.to(sessionId).emit('whiteboard-draw', data);
+  });
+
+  socket.on('whiteboard-clear', ({ sessionId }) => {
+    socket.to(sessionId).emit('whiteboard-clear');
+  });
+  
+  socket.on('whiteboard-image', ({ sessionId, imageUrl }) => {
+    socket.to(sessionId).emit('whiteboard-image', imageUrl);
+  });
+
+  socket.on('chat-message', ({ sessionId, message }) => {
+    socket.to(sessionId).emit('chat-message', message);
+  });
+
+  socket.on('shared-notes-update', ({ sessionId, notes }) => {
+      socket.to(sessionId).emit('shared-notes-update', notes);
+  });
+  
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
 
 // Preflight handler to avoid framework default errors
 app.options('*', cors({
@@ -179,7 +618,40 @@ app.post('/api/auth/login', async (req, res) => {
     await ensureCredentialsTable();
     const db = await getConnection();
     try {
-      const row = await db.get('SELECT * FROM user_credentials WHERE email = ?', [String(email).toLowerCase()]);
+      const userEmail = String(email).toLowerCase();
+      let row = await db.get('SELECT * FROM user_credentials WHERE email = ?', [userEmail]);
+
+      // Auto-register if no credentials exist (Dev/Test convenience)
+      if (!row) {
+        console.log(`[Auth] Auto-registering new user: ${userEmail}`);
+        const role = req.body.role || 'student';
+        
+        // Ensure Prisma user exists
+        let user = await prisma.user.findUnique({ where: { email: userEmail } });
+        if (!user) {
+          user = await prisma.user.create({ 
+            data: { email: userEmail, name: userEmail.split('@')[0], role } 
+          });
+        }
+
+        // Create credentials
+        const hash = await hashPassword(String(password));
+        const now = new Date().toISOString();
+        await db.run(
+          'INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          [userEmail, user.id, hash, now, now]
+        );
+        
+        // Set row for subsequent verification
+        row = { 
+          email: userEmail, 
+          user_id: user.id, 
+          password_hash: hash,
+          created_at: now,
+          updated_at: now
+        };
+      }
+
       if (!row || !row.password_hash) return res.status(401).json({ success: false, error: 'Invalid credentials' });
       const [scheme, salt, stored] = String(row.password_hash).split(':');
       if (scheme !== 'scrypt' || !salt || !stored) return res.status(500).json({ success: false, error: 'Invalid credential record' });
@@ -188,13 +660,16 @@ app.post('/api/auth/login', async (req, res) => {
       });
       if (derived !== stored) return res.status(401).json({ success: false, error: 'Invalid credentials' });
       // load or create user
-      const userEmail = String(email).toLowerCase();
       let user = await prisma.user.findUnique({ where: { email: userEmail } });
-      if (!user) user = await prisma.user.create({ data: { email: userEmail, name: userEmail.split('@')[0], role: 'student' } });
-      const token = jwt.sign({ id: user.id, email: user.email, role: 'student' }, JWT_SECRET, { expiresIn: '7d' });
+      
+      // Allow role to be passed in body, default to student
+      const role = req.body.role || 'student';
+      
+      if (!user) user = await prisma.user.create({ data: { email: userEmail, name: userEmail.split('@')[0], role } });
+      const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
       const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
       res.setHeader('Set-Cookie', `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax;${secure}`);
-      return res.json({ success: true, user: { id: user.id, email: user.email, role: 'student' } });
+      return res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
     } finally {
       await db.close();
     }
@@ -224,6 +699,55 @@ app.get('/api/users', async (req, res) => {
   } catch (error) {
     console.error('List users error:', error);
     return res.status(500).json({ success: false, error: 'Failed to list users' });
+  }
+});
+
+// List students for a specific tutor
+app.get('/api/tutor/:tutorId/students', async (req, res) => {
+  try {
+    const tutorId = parseInt(req.params.tutorId);
+    if (isNaN(tutorId)) {
+      return res.status(400).json({ success: false, error: 'Invalid tutor ID' });
+    }
+
+    // Find courses taught by this tutor
+    const courses = await prisma.course.findMany({
+      where: { tutorId },
+      include: {
+        courseEnrollments: {
+          include: { user: true }
+        }
+      }
+    });
+
+    // Extract unique students
+    const studentMap = new Map();
+    courses.forEach(course => {
+      course.courseEnrollments.forEach(enrollment => {
+        const student = enrollment.user;
+        if (student && student.role === 'student') {
+          if (!studentMap.has(student.id)) {
+            // Initialize student entry
+            studentMap.set(student.id, {
+              ...student,
+              enrolledCourses: [course] 
+            });
+          } else {
+            // Add course to existing student entry if not already there
+            const existing = studentMap.get(student.id);
+            if (!existing.enrolledCourses.find(c => c.id === course.id)) {
+              existing.enrolledCourses.push(course);
+            }
+          }
+        }
+      });
+    });
+
+    const students = Array.from(studentMap.values());
+    return res.json({ success: true, data: students });
+  } catch (error) {
+    console.error('List tutor students error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to list tutor students' });
   }
 });
 
@@ -277,8 +801,8 @@ function hashPassword(password: string): Promise<string> {
   });
 }
 
-// Invite students (admin only)
-app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
+// Invite students (admin only) - Generates Student ID and sends credentials
+app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin', 'tutor'), async (req, res) => {
   try {
     const { emails, courseName, tutorName, department } = req.body || {};
     if (!Array.isArray(emails) || emails.length === 0) {
@@ -286,14 +810,136 @@ app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin'),
     }
     const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
     const results: any[] = [];
+    const year = new Date().getFullYear();
+
+    // Look up course if provided
+    let courseId: string | null = null;
+    if (courseName) {
+      const course = await prisma.course.findFirst({ where: { title: courseName } });
+      if (course) courseId = course.id;
+    }
+
     for (const email of emails) {
       const clean = String(email || '').trim().toLowerCase();
       if (!clean || !clean.includes('@')) continue;
-      const token = jwt.sign({ email: clean, purpose: 'invite' }, JWT_SECRET, { expiresIn: '7d' });
-      const link = `${frontendBase.replace(/\/$/, '')}/set-password?token=${encodeURIComponent(token)}`;
-      const content = renderInvitationEmail({ recipientName: clean.split('@')[0], actionUrl: link, courseName, tutorName, department });
-      const send = await sendEmail({ to: clean, subject: 'You are invited to Excellence Academia', content });
-      results.push({ email: clean, sent: !!send.success });
+
+      let user = await prisma.user.findUnique({ where: { email: clean } });
+      let studentNumber = '';
+      let studentEmail = clean; // Use personal email if user exists, or create new student email? 
+      // The previous logic forced creating a new student email.
+      // User requirement: "get users personal emails"
+      // If user exists with personal email, we use that.
+      // If not, do we create a new one with student number email?
+      // The previous logic was creating student number email.
+      // Let's stick to the previous logic for NEW users, but handle existing users gracefully.
+      
+      let isNewUser = false;
+      let tempPassword = '';
+
+      if (!user) {
+        isNewUser = true;
+        // 1. Generate unique Student Number and Email
+        let isUnique = false;
+        let attempts = 0;
+
+        while (!isUnique && attempts < 10) {
+          const randomSuffix = Math.floor(1000 + Math.random() * 9000).toString();
+          studentNumber = `${year}${randomSuffix}`;
+          studentEmail = `${studentNumber}@excellenceakademie.co.za`; // Official email
+          
+          const existing = await prisma.user.findUnique({ where: { email: studentEmail } });
+          if (!existing) isUnique = true;
+          attempts++;
+        }
+
+        if (!isUnique) {
+            results.push({ email: clean, error: 'Failed to generate unique Student ID' });
+            continue;
+        }
+
+        // 2. Generate Temporary Password
+        tempPassword = crypto.randomBytes(4).toString('hex') + Math.floor(Math.random() * 100);
+
+        // 3. Create User
+        const name = clean.split('@')[0];
+        
+        // We store the official email in the User table?
+        // Or do we store the personal email?
+        // The schema has `email` unique.
+        // If we store official email, we lose the link to personal email unless we store it elsewhere.
+        // But we are sending credentials TO the personal email (`clean`).
+        
+        user = await prisma.user.create({ 
+          data: { 
+            email: studentEmail, // Official email
+            name: name, 
+            role: 'student',
+            department_id: department || null 
+          } 
+        });
+
+        // 4. Save Credentials
+        const hash = await hashPassword(tempPassword);
+        const db = await getConnection();
+        try {
+          const now = new Date().toISOString();
+          await db.run(
+            `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
+            [studentEmail, user.id, hash, now, now]
+          );
+        } finally {
+          await db.close();
+        }
+      } else {
+        // User exists
+        studentEmail = user.email;
+        // If user exists, we don't generate new credentials?
+        // Or should we?
+        // Maybe just notify them they are enrolled.
+      }
+
+      // Enrollment
+      if (courseId && user) {
+        const enrollment = await prisma.courseEnrollment.findFirst({
+            where: { userId: user.id, courseId: courseId }
+        });
+        if (!enrollment) {
+            await prisma.courseEnrollment.create({
+                data: { userId: user.id, courseId: courseId, status: 'enrolled' }
+            });
+        }
+      }
+
+      // 5. Send Email
+      if (isNewUser) {
+          const link = `${frontendBase.replace(/\/$/, '')}/login`;
+          const content = renderStudentCredentialsEmail({ 
+            recipientName: user.name, 
+            studentNumber, 
+            studentEmail, 
+            tempPassword, 
+            loginUrl: link, 
+            courseName 
+          });
+          
+          const send = await sendEmail({ to: clean, subject: 'Your Student Login Credentials - Excellence Academia', content });
+          results.push({ email: clean, studentNumber, studentEmail, sent: !!send.success });
+      } else {
+          // Send enrollment notification?
+          // For now, only if invited to course
+          if (courseName) {
+              const content = renderBrandedEmail({
+                  title: 'Course Enrollment',
+                  message: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`
+              });
+              const send = await sendEmail({ to: clean, subject: 'Course Enrollment - Excellence Academia', content });
+              results.push({ email: clean, enrolled: true, sent: !!send.success });
+          } else {
+              results.push({ email: clean, error: 'User already exists' });
+          }
+      }
     }
     return res.json({ success: true, invited: results });
   } catch (error) {
@@ -525,25 +1171,7 @@ app.post('/api/notifications', async (req, res) => {
   }
 });
 
-app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { emails, courseName, tutorName, department } = req.body || {};
-    const list = Array.isArray(emails) ? emails.filter((e: any) => typeof e === 'string').map((e: string) => e.trim()).filter(Boolean) : [];
-    if (list.length === 0) return res.status(400).json({ success: false, error: 'emails array required' });
-    const base = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-    const results: any[] = [];
-    for (const email of list.slice(0, 200)) {
-      const actionUrl = `${base}/welcome?email=${encodeURIComponent(email)}`;
-      const html = renderInvitationEmail({ recipientName: email.split('@')[0], actionUrl, courseName, tutorName, department });
-      const r = await sendEmail({ to: email, subject: 'Invitation to Excellence Academia', content: html });
-      results.push({ email, sent: !!r?.success });
-    }
-    return res.json({ success: true, invited: results });
-  } catch (error) {
-    console.error('Student invite error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send invitations' });
-  }
-});
+
 
 app.post('/api/admin/tutors/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
   try {
@@ -620,6 +1248,45 @@ app.post('/api/admin/email/preview', authenticateJWT, authorizeRoles('admin'), a
   } catch (error) {
     console.error('Email preview error:', error);
     return res.status(500).json({ success: false, error: 'Failed to render preview' });
+  }
+});
+
+// Tutor invite endpoint - restrict recipients to tutor's own students or new emails
+app.post('/api/tutor/students/invite', authenticateJWT, authorizeRoles('tutor'), async (req, res) => {
+  try {
+    const { emails, courseName } = req.body || {};
+    const tutorId = req.user?.id;
+    
+    // Basic validation
+    if (!courseName) return res.status(400).json({ success: false, error: 'courseName is required' });
+    
+    const list = Array.isArray(emails) ? emails.filter((e: any) => typeof e === 'string').map((e: string) => e.trim()).filter(Boolean) : [];
+    if (list.length === 0) return res.status(400).json({ success: false, error: 'emails array required' });
+    
+    // Verify course belongs to tutor
+    const db = await getConnection();
+    const course = await db.get('SELECT * FROM courses WHERE name = ? AND tutor_id = ?', [courseName, tutorId]);
+    await db.close();
+    
+    if (!course) {
+        return res.status(403).json({ success: false, error: 'Course not found or access denied' });
+    }
+
+    const base = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
+    const results: any[] = [];
+    const tutorName = req.user?.username || 'Tutor';
+    const department = course.department || 'General';
+
+    for (const email of list.slice(0, 200)) {
+      const actionUrl = `${base}/welcome?email=${encodeURIComponent(email)}`;
+      const html = renderInvitationEmail({ recipientName: email.split('@')[0], actionUrl, courseName, tutorName, department });
+      const r = await sendEmail({ to: email, subject: 'Invitation to Excellence Academia', content: html });
+      results.push({ email, sent: !!r?.success });
+    }
+    return res.json({ success: true, invited: results });
+  } catch (error) {
+    console.error('Tutor student invite error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to send invitations' });
   }
 });
 
@@ -899,8 +1566,8 @@ app.post('/api/courses', async (req, res) => {
 
     const db = await getConnection();
     const result = await db.run(
-      'INSERT INTO courses (title, description, department, tutor_id, start_date, end_date, category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [title, description, department, tutorId, startDate, endDate, category || department, new Date().toISOString()]
+      'INSERT INTO courses (title, description, department, tutor_id, start_date, end_date, category, section, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, description, department, tutorId, startDate, endDate, category || department, req.body.section || null, new Date().toISOString()]
     );
     await db.close();
 
@@ -913,6 +1580,7 @@ app.post('/api/courses', async (req, res) => {
       startDate,
       endDate,
       category: category || department,
+      section: req.body.section || null,
       createdAt: new Date().toISOString()
     };
 
@@ -1305,7 +1973,7 @@ app.put('/api/admin/content/:type', authenticateJWT, authorizeRoles('admin'), as
     const cfg = contentConfig[type];
     if (!cfg) return res.status(404).json({ success: false, error: 'Content type not found' });
     const model = cfg.model();
-    const { id, ...rest } = req.body || {};
+    const { id, createdAt, updatedAt, averageRating, totalReviews, ...rest } = req.body || {};
     if (!id) return res.status(400).json({ success: false, error: 'ID is required' });
     const data = stringifyJsonFields(rest, cfg.jsonFields);
     const updated = await model.update({ where: { id }, data });
@@ -1642,8 +2310,13 @@ app.get('/api/students', async (req, res) => {
 // Student Dashboard
 app.get('/api/student/dashboard', async (req, res) => {
   try {
-    const studentId = (req.query.studentId as string) || (req as any).user?.id;
-    if (!studentId) return res.status(400).json({ success: false, error: 'Student ID is required' });
+    const rawStudentId = (req.query.studentId as string) || (req as any).user?.id;
+    if (!rawStudentId) return res.status(400).json({ success: false, error: 'Student ID is required' });
+
+    const studentId = parseInt(String(rawStudentId), 10);
+    if (isNaN(studentId)) {
+       return res.status(400).json({ success: false, error: 'Invalid Student ID format' });
+    }
 
     const student = await prisma.user.findUnique({ where: { id: studentId } });
     if (!student) return res.status(404).json({ success: false, error: 'Student not found' });
@@ -1653,6 +2326,12 @@ app.get('/api/student/dashboard', async (req, res) => {
       include: {
         course: {
           include: {
+            tutor: true,
+            materials: true,
+            announcements: {
+              orderBy: { createdAt: 'desc' },
+              take: 5
+            },
             tests: {
               include: {
                 submissions: { where: { userId: studentId } }
@@ -1679,30 +2358,153 @@ app.get('/api/student/dashboard', async (req, res) => {
       ? testSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / testSubmissions.length
       : 0;
 
+    // Read timetable for real schedule
+    let timetable: any[] = [];
+    try {
+        const timetableData = await fs.readFile(timetableFile, 'utf-8');
+        timetable = JSON.parse(timetableData);
+    } catch (e) {
+        // ignore
+    }
+
+    // Helper to find next session for a course
+    const getNextSession = (courseName: string) => {
+        if (!courseName || timetable.length === 0) return null;
+        
+        const courseEntries = timetable.filter((t: any) => t.courseName === courseName);
+        if (courseEntries.length === 0) return null;
+
+        const daysMap: {[key: string]: number} = {
+            'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6
+        };
+
+        const now = new Date();
+        
+        const upcomingSessions = courseEntries.map((entry: any) => {
+            const dayIndex = daysMap[entry.day.toLowerCase().trim()];
+            if (dayIndex === undefined) return null;
+
+            // Parse time (assuming HH:MM or HH:MM AM/PM)
+            let [time, modifier] = entry.time.split(' ');
+            let [hours, minutes] = time.split(':').map(Number);
+            
+            if (modifier) {
+                if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;
+                if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
+            }
+
+            const sessionDate = new Date(now);
+            sessionDate.setHours(hours, minutes, 0, 0);
+
+            // Calculate day difference
+            let dayDiff = dayIndex - now.getDay();
+            if (dayDiff < 0) dayDiff += 7;
+            
+            // If today but passed, move to next week
+            if (dayDiff === 0 && now > sessionDate) {
+                dayDiff = 7;
+            }
+            
+            sessionDate.setDate(now.getDate() + dayDiff);
+            return { date: sessionDate, ...entry };
+        }).filter(Boolean).sort((a: any, b: any) => a.date.getTime() - b.date.getTime());
+
+        if (upcomingSessions.length === 0) return null;
+
+        const next = upcomingSessions[0];
+        // Format: "Mon, 14 Oct at 10:00"
+        const formatted = next.date.toLocaleDateString('en-GB', { 
+            weekday: 'short', 
+            day: 'numeric', 
+            month: 'short',
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: false
+        }).replace(',', '') + (next.type ? ` (${next.type})` : '');
+        
+        return { formatted, date: next.date };
+    };
+
     const courses = enrollments.map(e => {
       const course = e.course as any;
       const courseTests = (course.tests || []) as any[];
       const completedTests = courseTests.filter(t => t.submissions && t.submissions.length > 0);
+      
+      // Check for active live session
+      const activeSession = activeSessions.get(String(course.id));
+      
+      const nextSessionData = getNextSession(course.name);
+
       return {
         id: course.id,
-        name: course.title,
+        name: course.name || course.title,
         description: course.description,
-        tutor: 'Dr. Smith',
-        tutorEmail: 'dr.smith@example.com',
-        nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        tutor: course.tutor?.name || 'Tutor',
+        tutorEmail: course.tutor?.email || '',
+        nextSession: nextSessionData?.formatted || 'TBA', 
+        nextSessionDate: nextSessionData?.date || null,
         progress: courseTests.length > 0 ? (completedTests.length / courseTests.length) * 100 : 0,
-        materials: [
-          { id: '1', name: 'Course Syllabus', type: 'pdf', url: '/materials/syllabus.pdf', dateAdded: new Date().toISOString(), completed: true },
-          { id: '2', name: 'Lecture Notes - Chapter 1', type: 'pdf', url: '/materials/lecture-1.pdf', dateAdded: new Date().toISOString(), completed: false }
-        ],
+        isLive: !!activeSession,
+        liveSessionId: activeSession?.sessionId,
+        category: activeSession?.department,
+        materials: (course.materials || []).map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            type: m.type,
+            url: m.url,
+            dateAdded: m.createdAt,
+            completed: false // Todo: Track completion
+        })),
         tests: courseTests.map(t => ({ id: t.id, title: t.title, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), questions: 10, totalPoints: 100, status: (t.submissions && t.submissions.length > 0) ? 'completed' : 'upcoming', score: (t.submissions && t.submissions.length > 0) ? t.submissions[0].score : null })),
         color: 'blue',
-        announcements: [ { id: '1', title: 'Important: Midterm Exam Next Week', content: 'Please prepare for the midterm exam scheduled for next Tuesday.', date: new Date().toISOString(), type: 'info' } ],
+        announcements: (course.announcements || []).map((a: any) => ({
+            id: a.id,
+            title: a.title,
+            content: a.content,
+            date: a.createdAt,
+            type: 'info'
+        })),
         grade: averageGrade,
-        enrollmentDate: new Date().toISOString(),
+        enrollmentDate: e.createdAt,
         status: e.status
       };
     });
+
+    const assignments = enrollments.flatMap(e => {
+        const course = e.course as any;
+        return (course.tests || [])
+            .filter((t: any) => !t.submissions || t.submissions.length === 0)
+            .map((t: any) => ({
+                id: t.id,
+                title: t.title,
+                description: t.description || 'Test/Assignment',
+                dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Todo: Real due date
+                courseId: course.id,
+                status: 'pending'
+            }));
+    });
+
+    const recentActivities = testSubmissions.map(s => ({
+        id: s.id,
+        type: 'assignment_submitted',
+        message: `Submitted ${s.test?.title || 'Test'}`,
+        timestamp: s.createdAt,
+        courseName: s.test?.course?.name || 'Course'
+    }));
+
+    // Generate upcoming sessions from timetable
+    const upcomingSessions = timetable
+        .filter((t: any) => enrollments.some(e => e.course.name === t.courseName))
+        .map((t: any, index: number) => ({
+            id: String(index),
+            courseName: t.courseName,
+            tutorName: t.tutorName || 'Tutor',
+            date: new Date().toISOString(), // Placeholder as we don't have exact date calc yet
+            time: `${t.day} ${t.time}`,
+            duration: '60 minutes',
+            type: t.type || 'Class',
+            location: 'Online'
+        }));
 
     const dashboardData = {
       student: { id: student.id, name: student.name, email: student.email, avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random` },
@@ -1711,18 +2513,21 @@ app.get('/api/student/dashboard', async (req, res) => {
         completedCourses: enrollments.filter(e => e.status === 'completed').length,
         activeCourses: enrollments.filter(e => e.status === 'enrolled').length,
         averageGrade: Math.round(averageGrade * 100) / 100,
-        totalStudyHours: 45,
-        streak: 7
+        totalStudyHours: 0, 
+        streak: 0
       },
-      upcomingSessions: [
-        { id: '1', courseName: 'Mathematics Grade 12', tutorName: 'Dr. Smith', date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), time: '10:00 AM', duration: '60 minutes', type: '1-on-1', location: 'Online' }
-      ],
-      recentActivities: [
-        { id: '1', type: 'assignment_submitted', message: 'Submitted Mathematics assignment', timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), courseName: 'Mathematics Grade 12' }
-      ],
+      upcomingSessions: upcomingSessions,
+      recentActivities: recentActivities.length > 0 ? recentActivities : [],
       courses,
-      notifications: notifications.map(n => ({ id: n.id, message: n.message, read: n.read, timestamp: (n.createdAt as Date).toISOString() })),
-      achievements: [ { id: '1', title: 'First Assignment', description: 'Completed your first assignment', icon: '🎯', unlocked: true, date: new Date().toISOString() } ]
+      assignments,
+      notifications: notifications.map(n => ({ 
+        id: n.id, 
+        message: n.message, 
+        read: n.read, 
+        date: (n.createdAt as Date).toISOString(),
+        type: n.type || 'course'
+      })),
+      achievements: []
     };
 
     return res.status(200).json(dashboardData);
@@ -1741,17 +2546,35 @@ app.get('/api/tutor/dashboard', async (req, res) => {
     const tutor = await prisma.tutor.findUnique({ where: { id: tutorId } });
     if (!tutor) return res.status(404).json({ success: false, error: 'Tutor not found' });
 
-    const students = await prisma.user.findMany({
-      where: { role: 'student' },
-      include: { enrollments: { include: { course: true } } }
-    });
-
     const courses = await prisma.course.findMany({
+      where: { tutorId: Number(tutorId) },
       include: {
-        enrollments: { include: { user: true } },
+        courseEnrollments: { include: { user: true } },
         tests: { include: { submissions: true } }
       }
     });
+
+    const studentMap = new Map();
+    courses.forEach(course => {
+      course.courseEnrollments.forEach(enrollment => {
+        const student = enrollment.user;
+        if (student && student.role === 'student') {
+          if (!studentMap.has(student.id)) {
+            studentMap.set(student.id, {
+              ...student,
+              enrolledCourses: [course]
+            });
+          } else {
+            const existing = studentMap.get(student.id);
+            if (!existing.enrolledCourses.find((c: any) => c.id === course.id)) {
+              existing.enrolledCourses.push(course);
+            }
+          }
+        }
+      });
+    });
+    
+    const students = Array.from(studentMap.values());
 
     const notifications = await prisma.notification.findMany({ where: { userId: tutorId }, orderBy: { createdAt: 'desc' }, take: 10 });
 
@@ -1898,10 +2721,14 @@ const startServer = async () => {
     // Initialize database schema
     await initializeDatabase();
     
+    // Start scheduled session checker
+    startScheduledSessionChecker();
+    
     // Start server
-    const server = app.listen(port, '0.0.0.0', () => {
+    const server = httpServer.listen(Number(port), '0.0.0.0', () => {
       console.log(`✓ Server running on port ${port}`);
       console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`✓ Socket.IO: Enabled`);
       console.log(`✓ Health check: http://localhost:${port}/api/health`);
       console.log(`✓ Tutors API: http://localhost:${port}/api/tutors`);
       console.log(`✓ Ready for connections!`);

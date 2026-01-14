@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { apiFetch } from '@/lib/api';
 
 const StudentLogin = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,32 +20,23 @@ const StudentLogin = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await apiFetch<any>('/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
-      if (!(res as any)?.success) {
-        setError((res as any)?.error || 'Invalid credentials');
-        return;
-      }
-      // Load current user and route by role
-      try {
-        const me = await apiFetch<any>('/api/auth/me');
-        const role = (me?.user?.role || me?.role || '').toString().toLowerCase();
-        if (role === 'student') {
-          navigate('/student');
-        } else if (role === 'tutor') {
-          navigate('/tutor');
-        } else if (role === 'admin') {
-          navigate('/admin');
-        } else {
-          navigate('/');
-        }
-      } catch {
+      await login(email, password, 'student');
+      
+      // Check user role from local storage since state update might be pending
+      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const role = (storedUser.role || '').toLowerCase();
+
+      if (role === 'student') {
+        navigate('/student-portal');
+      } else if (role === 'tutor') {
+        navigate('/tutors-dashboard');
+      } else if (role === 'admin') {
+        navigate('/admin');
+      } else {
         navigate('/');
       }
     } catch (err: any) {
-      setError('Login failed. Please check your credentials.');
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -70,6 +62,7 @@ const StudentLogin = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
               />
             </div>
             <div className="space-y-2">
@@ -81,6 +74,7 @@ const StudentLogin = () => {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>

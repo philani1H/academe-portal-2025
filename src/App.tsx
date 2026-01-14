@@ -34,6 +34,9 @@ import { useAuth, AuthProvider } from "./contexts/AuthContext";
 import UniversityApplication from "./components/UniversityApplication";
 import ExamRewrite from "./components/ExamRewrite";
 import DashboardNavigation from "./components/DashboardNavigation";
+import LiveClass from "./pages/LiveClass";
+import FinanceDashboard from "./pages/finance/FinanceDashboard";
+import ITDashboard from "./pages/it/ITDashboard";
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) => {
   const { user } = useAuth();
@@ -56,9 +59,9 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
-        <AuthProvider>
-          <TooltipProvider>
-        {isMaintenanceMode && <MaintenanceModal />}
+        <TooltipProvider>
+          <AuthProvider>
+            {isMaintenanceMode && <MaintenanceModal />}
         {!isAgreementMet && !isMaintenanceMode && <AgreementBlockModal />}
         <Toaster />
         <Sonner />
@@ -86,17 +89,25 @@ const App = () => {
             {/* Dashboard Routes */}
             <Route path="/students" element={<StudentPortal />} />
             <Route path="/students/*" element={<StudentPortal />} />
+            <Route path="/student-portal" element={<StudentPortal />} />
+            <Route path="/student/dashboard" element={<StudentPortal />} />
             <Route path="/admin" element={<AdminWrapper><AdminDashboard /></AdminWrapper>} />
             <Route path="/admin/content" element={<AdminWrapper><ContentManagement /></AdminWrapper>} />
             <Route path="/admin/*" element={<AdminWrapper><AdminDashboard /></AdminWrapper>} />
             <Route path="/tutors-dashboard" element={<TutorDashboard />} />
             <Route path="/tutors-dashboard/*" element={<TutorDashboard />} />
+            <Route path="/live-session/:sessionId" element={<LiveClass />} />
+            
+            {/* Department Routes */}
+            <Route path="/financemanagement" element={<AdminWrapper><FinanceDashboard /></AdminWrapper>} />
+            <Route path="/IT management" element={<AdminWrapper><ITDashboard /></AdminWrapper>} />
+            
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Analytics />
         </BrowserRouter>
-          </TooltipProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </TooltipProvider>
       </ErrorBoundary>
     </QueryClientProvider>
   );

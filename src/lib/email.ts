@@ -152,6 +152,81 @@ export function renderInvitationEmail({
   });
 }
 
+export function renderStudentCredentialsEmail({
+  recipientName,
+  studentNumber,
+  studentEmail,
+  tempPassword,
+  loginUrl,
+  courseName
+}: {
+  recipientName: string;
+  studentNumber: string;
+  studentEmail: string;
+  tempPassword: string;
+  loginUrl: string;
+  courseName?: string;
+}) {
+  const title = "Your Student Login Credentials";
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: #334155; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: #0F172A;">${recipientName || 'Student'}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: #334155; margin: 0 0 20px;">
+        Welcome to <strong style="color: #0EA5E9;">Excellence Academia</strong>! Your student account has been created successfully.
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: #334155; margin: 0;">
+        Below are your official login credentials. Please keep them safe.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(79, 70, 229, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(14, 165, 233, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: #0EA5E9; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        🔑 Your Credentials
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Student Number</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A; font-family: monospace;">${studentNumber}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Student Email</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${studentEmail}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Temporary Password</div>
+            <div style="font-size: 18px; font-weight: 700; color: #4F46E5; font-family: monospace; letter-spacing: 1px;">${tempPassword}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${loginUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, #0EA5E9 0%, #4F46E5 100%); color: #FFFFFF; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            🚀 Login to Portal
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <div style="margin: 32px 0; padding: 20px; background: #F1F5F9; border-radius: 12px; border: 1px dashed #64748B20;">
+      <p style="margin: 0; font-size: 13px; color: #64748B;">
+        <strong>Security Tip:</strong> We strongly recommend changing your password immediately after your first login.
+      </p>
+    </div>
+  `;
+
+  return renderBrandedEmail({ title, message });
+}
+
 export function renderGenericActionEmail({ 
   title, 
   intro, 
