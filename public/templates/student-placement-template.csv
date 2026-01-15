@@ -1,0 +1,4 @@
+name,email,courses,department,grade
+John Doe,john.doe@example.com,"Mathematics 101; Physics 101",Science,Grade 10
+Jane Smith,jane.smith@example.com,"English Literature; History",Social Sciences,Grade 11
+Mike Johnson,mike.j@example.com,"Chemistry; Biology",Natural Sciences,Grade 12

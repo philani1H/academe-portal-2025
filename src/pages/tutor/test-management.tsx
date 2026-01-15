@@ -69,7 +69,21 @@ export default function TestManagementPage() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [testsData, coursesData] = await Promise.all([api.getTests(), api.getCourses()])
+      // Get tutor ID from localStorage to filter courses and tests
+      let tutorId: string | undefined
+      try {
+        const storedUser = localStorage.getItem('user')
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser)
+          if (parsed.role === 'tutor') {
+            tutorId = String(parsed.id)
+          }
+        }
+      } catch {}
+      const [testsData, coursesData] = await Promise.all([
+        api.getTests(tutorId), 
+        api.getCourses(tutorId)
+      ])
       setTests(testsData)
       setCourses(coursesData)
     } catch (error) {

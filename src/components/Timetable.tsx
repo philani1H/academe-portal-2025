@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Clock, User, Book, Plus, Trash2, Save, X, Download, Grid, Printer, AlertCircle, Wand2, Settings } from 'lucide-react';
 import { apiFetch } from "@/lib/api";
+import io from "socket.io-client";
 
 const TutorTimetableManager = ({ userRole = 'admin' }) => {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -24,30 +25,68 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
     startTime: '08:00', endTime: '09:00', day: ''
   });
 
+  const socketRef = useRef<any>(null);
+
   useEffect(() => {
     loadData();
+  }, []);
+
+  useEffect(() => {
+    const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || window.location.origin;
+    socketRef.current = io(SOCKET_SERVER_URL);
+    const socket = socketRef.current;
+    socket.on('timetable-updated', () => {
+      loadData();
+    });
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   const loadData = async () => {
     try {
       setLoading(true);
       const [tutorsRes, coursesRes, timetableRes] = await Promise.all([
-        apiFetch('/api/admin/content/tutors'),
+        apiFetch('/api/admin/users?role=tutor'),
         apiFetch('/api/courses'),
         apiFetch('/api/timetable')
       ]);
       
-      // Handle tutors response
+      // Handle tutors response (now fetching system users with role='tutor')
       const tutorsData = tutorsRes?.data || tutorsRes || [];
-      const tutorsList = Array.isArray(tutorsData) ? tutorsData.map((t: any) => ({
-        id: String(t.id),
-        name: t.name || 'Unknown Tutor',
-        email: t.email || '',
-        subjects: Array.isArray(t.subjects) ? t.subjects : 
-                  typeof t.subjects === 'string' ? t.subjects.split(',').map((s: string) => s.trim()) : 
-                  [],
-        department: t.department || '',
-      })) : [];
+      const tutorsList = Array.isArray(tutorsData) ? tutorsData.map((t: any) => {
+        let subjects: string[] = [];
+
+        if (Array.isArray(t.subjects)) {
+          subjects = t.subjects;
+        } else if (typeof t.subjects === 'string') {
+          try {
+            const parsed = JSON.parse(t.subjects);
+            if (Array.isArray(parsed)) {
+              subjects = parsed;
+            } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.subjects)) {
+              subjects = parsed.subjects;
+            } else {
+              subjects = t.subjects.split(/[|;,]/).map((s: string) => s.trim()).filter(Boolean);
+            }
+          } catch {
+            subjects = t.subjects.split(/[|;,]/).map((s: string) => s.trim()).filter(Boolean);
+          }
+        }
+
+        const departments = Array.isArray(t.departments) ? t.departments.filter(Boolean) : [];
+
+        return {
+          id: String(t.id), // System User ID (e.g., "8")
+          name: t.name || 'Unknown Tutor',
+          email: t.contactEmail || t.email || '',
+          subjects,
+          department: departments.length > 0 ? departments.join(', ') : (t.department || ''),
+          order: typeof t.order === 'number' ? t.order : 0, // Users don't have order usually, default to 0
+          systemUserId: String(t.id), // Same as ID since we are using system users
+          hasSystemAccount: true,
+        };
+      }) : [];
       
       // Handle courses response
       const coursesData = Array.isArray(coursesRes) ? coursesRes : (coursesRes?.data || []);
@@ -67,7 +106,7 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
         tutorName: entry.tutorName || '',
         courseName: entry.courseName || '',
         subject: entry.subject || '',
-        grade: entry.grade || 'Grade 10',
+        grade: entry.grade || 'Grade 12',
         type: entry.type || 'Group',
         students: entry.students || '',
         day: entry.day || '',
@@ -173,7 +212,7 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
     setNewClass({
       tutorId: viewMode === 'individual' ? selectedTutor : '',
       tutorName: '', subject: '', courseName: '',
-      grade: 'Grade 10', type: 'Group', students: '',
+      grade: 'Grade 12', type: 'Group', students: '',
       startTime: '08:00', endTime: '09:00', day: ''
     });
   };
@@ -184,7 +223,7 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
     setEditingSlot(`${day}-${startTime}-${tutorId}`);
     setNewClass({
       tutorId, tutorName: tutor?.name || '', subject: '', courseName: '',
-      grade: 'Grade 10', type: 'Group', students: '',
+      grade: 'Grade 12', type: 'Group', students: '',
       startTime, endTime: addMinutesToTime(startTime, 60), day
     });
   };
@@ -220,11 +259,36 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
     let slotIdx = 0;
     let dayIdx = 0;
     
+    const normalize = (v: string) => v.trim().toLowerCase();
+
+    const findTutorForCourse = (course: any) => {
+      const rawTutorId = String(course.tutorId || '').trim();
+      const subject = course.subject || course.department || 'General';
+
+      if (rawTutorId) {
+        const byUuid = tutors.find((t: any) => String(t.id) === rawTutorId);
+        if (byUuid) return byUuid;
+
+        const bySystemUserId = tutors.find((t: any) => t.systemUserId && String(t.systemUserId) === rawTutorId);
+        if (bySystemUserId) return bySystemUserId;
+
+        const byOrder = tutors.find((t: any) => String(t.order) === rawTutorId);
+        if (byOrder) return byOrder;
+      }
+
+      const targetSubject = normalize(String(subject));
+      const bySubject = tutors.find((t: any) =>
+        Array.isArray(t.subjects) && t.subjects.some((s: string) => normalize(String(s)) === targetSubject)
+      );
+      if (bySubject) return bySubject;
+
+      return null;
+    };
+
     // Schedule each course
     courses.forEach((course, courseIdx) => {
-      // Find the tutor for this course
-      const tutor = tutors.find(t => String(t.id) === String(course.tutorId));
-      
+      const tutor = findTutorForCourse(course);
+
       if (!tutor) {
         console.warn(`No tutor found for course ${course.name} (tutorId: ${course.tutorId})`);
         return;
@@ -241,7 +305,7 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
           tutorName: tutor.name,
           courseName: course.name,
           subject: course.subject || course.department || 'General',
-          grade: 'Grade 10',
+          grade: 'Grade 12',
           type: 'Group',
           students: '',
           day,
@@ -468,7 +532,7 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
                                       <div className="flex-1">
                                         <div className="flex items-center gap-2 mb-1">
                                           <Book className="w-4 h-4" />
-                                          <span className="font-semibold text-sm">{cls.courseName || cls.subject}</span>
+                                          <span className="font-semibold text-sm">{cls.courseName}</span>
                                         </div>
                                         <div className="text-xs">{cls.startTime} - {cls.endTime}</div>
                                       </div>
@@ -502,13 +566,13 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
                                     )}
                                     <select value={newClass.courseName} onChange={(e) => {
                                       const c = courses.find(x => x.name === e.target.value);
-                                      setNewClass({...newClass, courseName: e.target.value, subject: c?.subject || c?.department || e.target.value});
+                                      setNewClass({...newClass, courseName: e.target.value, subject: c?.subject || c?.department || ''});
                                     }} className="w-full px-2 py-1 text-sm border rounded">
                                       <option value="">Select Course</option>
                                       {courses
                                         .filter(c => !newClass.tutorId || String(c.tutorId) === String(newClass.tutorId))
                                         .map(c => 
-                                          <option key={c.id} value={c.name}>{c.name} ({c.subject || c.department})</option>
+                                          <option key={c.id} value={c.name}>{c.name}</option>
                                         )}
                                     </select>
                                     <div className="flex gap-2">

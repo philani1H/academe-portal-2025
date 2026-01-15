@@ -167,6 +167,12 @@ export default function AdminDashboard() {
   const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null)
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([])
+  const [autoPlaceCourseId, setAutoPlaceCourseId] = useState<number | null>(null)
+  const [isEditingStudent, setIsEditingStudent] = useState(false)
+  const [editStudentName, setEditStudentName] = useState("")
+  const [editStudentEmail, setEditStudentEmail] = useState("")
+  const [editStudentStatus, setEditStudentStatus] = useState<"active" | "pending" | "inactive">("active")
 
   const [newTutor, setNewTutor] = useState({
     name: "",
@@ -228,6 +234,7 @@ export default function AdminDashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const [showCoursePlacementDialog, setShowCoursePlacementDialog] = useState(false)
+  const [showStudentPlacementDialog, setShowStudentPlacementDialog] = useState(false)
   const safeGetCourseTutorId = (course: any): string | null => {
     if (!course) return null
     const raw = course.tutorId ?? course.tutor_id
@@ -313,6 +320,42 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleStudentPlacementUpload = async (file: File) => {
+    try {
+      const text = await file.text()
+      const fileType = file.name.endsWith(".json") ? "json" : "csv"
+      const response = await apiFetch<{
+        message: string
+        studentsProcessed: number
+        studentsEnrolled: number
+        coursesMatched: number
+        warnings?: string[]
+      }>("/api/admin/content/student-placement/bulk-upload", {
+        method: "POST",
+        body: JSON.stringify({ fileContent: text, fileType }),
+      })
+      toast({
+        title: "Student placement processed",
+        description: `${response.message}. Students enrolled: ${response.studentsEnrolled}, Courses matched: ${response.coursesMatched}`,
+      })
+      await fetchStudents()
+      return {
+        updated: response.studentsEnrolled,
+        created: response.studentsEnrolled,
+        total: response.studentsProcessed,
+        message: response.message,
+        warnings: response.warnings ?? [],
+      }
+    } catch (error) {
+      toast({
+        title: "Student placement failed",
+        description: error instanceof Error ? error.message : "Failed to process student placement data",
+        variant: "destructive",
+      })
+      throw error instanceof Error ? error : new Error("Failed to process student placement data")
+    }
+  }
+
   const [filterRole, setFilterRole] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
   const [filterDepartment, setFilterDepartment] = useState<string | null>(null)
@@ -344,7 +387,7 @@ export default function AdminDashboard() {
       const tutorList = Array.isArray(rows) ? rows : []
       
       // Fetch all courses to count per tutor
-      const coursesData = await apiFetch<any[]>(`/api/courses`)
+      const coursesData = await apiFetch<any[]>(`/api/courses?all=true`)
       const allCourses = Array.isArray(coursesData) ? coursesData : []
       
       // Add status field and course counts
@@ -382,7 +425,7 @@ export default function AdminDashboard() {
 
   const fetchCourses = async () => {
     try {
-      const data = await apiFetch<any[]>(`/api/courses`)
+      const data = await apiFetch<any[]>(`/api/courses?all=true`)
       const rows = Array.isArray((data as any)) ? (data as any) : []
       const mapped = rows.map((r: any) => {
         const id = r.id ?? r.ID
@@ -407,6 +450,45 @@ export default function AdminDashboard() {
     } catch (e) {
       console.error('Failed to fetch courses:', e)
       setCourses([])
+    }
+  }
+
+  const handleDeleteAllCourses = async () => {
+    if (!confirm("Are you sure you want to DELETE ALL COURSES? This action cannot be undone.")) return
+    try {
+      const res = await apiFetch("/api/admin/courses/all", { method: "DELETE" })
+      toast({ title: "Success", description: (res as any).message })
+      fetchCourses()
+      fetchDepartmentsAndStats()
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Error", description: "Failed to delete courses", variant: "destructive" })
+    }
+  }
+
+  const handleDeleteAllTutors = async () => {
+    if (!confirm("Are you sure you want to DELETE ALL TUTORS? This action cannot be undone.")) return
+    try {
+      const res = await apiFetch("/api/admin/tutors/all", { method: "DELETE" })
+      toast({ title: "Success", description: (res as any).message })
+      fetchTutors()
+      fetchDepartmentsAndStats()
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Error", description: "Failed to delete tutors", variant: "destructive" })
+    }
+  }
+
+  const handleDeleteAllDepartments = async () => {
+    if (!confirm("Are you sure you want to DELETE ALL DEPARTMENTS/SUBJECTS? This action cannot be undone.")) return
+    try {
+      const res = await apiFetch("/api/admin/departments/all", { method: "DELETE" })
+      toast({ title: "Success", description: (res as any).message })
+      fetchDepartmentsAndStats()
+      fetchCourses() 
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Error", description: "Failed to delete departments", variant: "destructive" })
     }
   }
 
@@ -516,11 +598,100 @@ export default function AdminDashboard() {
   const handleStudentSelect = (studentId: string) => {
     const student = students.find((s) => s.id === studentId) || null
     setSelectedStudent(student)
+    if (student) {
+      setIsEditingStudent(false)
+      setEditStudentName(student.name || "")
+      setEditStudentEmail(student.email || "")
+      setEditStudentStatus((student.status as any) || "active")
+    }
   }
 
   const handleCourseSelect = (courseId: string) => {
     const course = courses.find((c) => c.id === courseId) || null
     setSelectedCourse(course)
+  }
+
+  const handleAutoPlace = async () => {
+    if (!autoPlaceCourseId) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a course to place students into",
+        variant: "destructive"
+      })
+      return
+    }
+    if (selectedStudentIds.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select at least one student",
+        variant: "destructive"
+      })
+      return
+    }
+
+    try {
+      const response = await apiFetch<{ success: boolean; message: string }>('/api/admin/students/auto-place', {
+        method: 'POST',
+        body: JSON.stringify({
+          studentIds: selectedStudentIds,
+          courseId: autoPlaceCourseId
+        })
+      })
+
+      toast({
+        title: "Auto-placement Success",
+        description: response.message
+      })
+
+      setSelectedStudentIds([])
+      await fetchStudents() // Refresh list
+    } catch (error) {
+      console.error("Auto-place error:", error)
+      toast({
+        title: "Auto-placement Failed",
+        description: error instanceof Error ? error.message : "Failed to place students",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const handleUpdateStudent = async () => {
+    if (!selectedStudent) return
+
+    try {
+      await apiFetch(`/api/users/${selectedStudent.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editStudentName,
+          email: editStudentEmail,
+          status: editStudentStatus
+        })
+      })
+
+      toast({
+        title: "Student Updated",
+        description: "Student details have been updated successfully"
+      })
+
+      // Update local state
+      setStudents(prev => prev.map(s => 
+        s.id === selectedStudent.id 
+          ? { ...s, name: editStudentName, email: editStudentEmail, status: editStudentStatus }
+          : s
+      ))
+      
+      // Update selected student
+      setSelectedStudent(prev => prev ? { ...prev, name: editStudentName, email: editStudentEmail, status: editStudentStatus } : null)
+      
+      setIsEditingStudent(false)
+    } catch (error) {
+      console.error("Update student error:", error)
+      toast({
+        title: "Update Failed",
+        description: "Failed to update student details",
+        variant: "destructive"
+      })
+    }
   }
 
   const handleCreateTutor = async () => {
@@ -1078,19 +1249,24 @@ export default function AdminDashboard() {
 
   const fetchTutorUsersForExport = async () => {
     try {
-      const data = await apiFetch<any>(`/api/query`, {
-        method: "POST",
-        body: JSON.stringify({
-          query: 'SELECT name, email, department FROM users WHERE role = "tutor" ORDER BY name ASC',
-        }),
+      const rows = filteredTutors.map((tutor) => {
+        const tutorCourses = courses
+          .filter((course) => course.tutorId && course.tutorId === tutor.id)
+          .map((course) => course.name)
+        return {
+          id: tutor.id,
+          name: tutor.name,
+          email: tutor.email,
+          department: tutor.department,
+          courses: tutorCourses.join(", "),
+        }
       })
-      const rows = data && (data as any).data ? (data as any).data : data
-      return Array.isArray(rows) ? rows : []
+      return rows
     } catch (error) {
-      console.error("Failed to load tutor users for export", error)
+      console.error("Failed to prepare tutor users for export", error)
       toast({
         title: "Export failed",
-        description: "Could not load tutor login information",
+        description: "Could not prepare tutor login information",
         variant: "destructive",
       })
       throw error
@@ -1104,9 +1280,10 @@ export default function AdminDashboard() {
       const datePart = now.toISOString().slice(0, 10)
       const loginRows = rows.map((row: any, index: number) => ({
         "#": index + 1,
-        Name: row.name,
+        "Tutor Name": row.name,
         Email: row.email,
         Department: row.department || "",
+        Courses: row.courses || "",
         TemporaryPassword: "Welcome123!",
         LoginUrl: `${window.location.origin}/tutor/login`,
       }))
@@ -1136,30 +1313,44 @@ export default function AdminDashboard() {
       const generatedAt = new Date().toLocaleString()
       const loginUrl = `${window.location.origin}/tutor/login`
       const header =
-        "<tr><th>#</th><th>Name</th><th>Email</th><th>Department</th><th>Temporary Password</th><th>Login URL</th></tr>"
+        "<tr><th>#</th><th>Tutor Name</th><th>Email</th><th>Department</th><th>Courses</th><th>Temporary Password</th><th>Login URL</th></tr>"
       const body = rows
         .map(
           (row: any, index: number) =>
-            `<tr><td>${index + 1}</td><td>${row.name}</td><td>${row.email}</td><td>${row.department || ""}</td><td>Welcome123!</td><td>${loginUrl}</td></tr>`,
+            `<tr>` +
+            `<td>${index + 1}</td>` +
+            `<td>${row.name}</td>` +
+            `<td>${row.email}</td>` +
+            `<td>${row.department || ""}</td>` +
+            `<td>${row.courses || ""}</td>` +
+            `<td>Welcome123!</td>` +
+            `<td>${loginUrl}</td>` +
+            `</tr>`,
         )
         .join("")
       const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Tutor Login Info</title>
+  <title>Tutor Login Credentials</title>
   <style>
-    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 16px; }
-    h1 { font-size: 20px; margin-bottom: 4px; }
-    p { margin-top: 0; margin-bottom: 16px; font-size: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    th, td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: left; }
-    th { background-color: #f3f4f6; }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h1 { color: #4F46E5; margin-bottom: 4px; }
+    h2 { margin-top: 0; margin-bottom: 12px; font-size: 16px; color: #111827; }
+    p { margin-top: 0; margin-bottom: 8px; font-size: 12px; color: #374151; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 16px; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; }
+    th { background-color: #4F46E5; color: #ffffff; }
+    tfoot td { border: none; font-size: 11px; color: #6B7280; padding-top: 12px; }
   </style>
 </head>
 <body>
-  <h1>Tutor Login Information</h1>
+  <h1>EXCELLENCE Akademie 25</h1>
+  <h2>Tutor Login Credentials</h2>
+  <p><strong>Empowering Minds, One Click at a Time!</strong></p>
   <p>Generated: ${generatedAt}</p>
+  <p>This sheet contains login details for tutors on the Excellence Akademie platform.</p>
+  <p>Tutors should visit the login URL below, sign in with the listed email and temporary password, and change their password after first login.</p>
   <table>
     <thead>
       ${header}
@@ -1167,6 +1358,17 @@ export default function AdminDashboard() {
     <tbody>
       ${body}
     </tbody>
+  </table>
+  <table>
+    <tfoot>
+      <tr>
+        <td>
+          This document is confidential and intended for internal use only.<br />
+          Phone: +27 79 386 7427 · Email: ExcellenceAcademia2025@gmail.com · www.excellenceakademie.co.za<br />
+          © 2026 Excellence Academia. All rights reserved.
+        </td>
+      </tr>
+    </tfoot>
   </table>
 </body>
 </html>`
@@ -2727,6 +2929,11 @@ export default function AdminDashboard() {
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <Button variant="destructive" onClick={handleDeleteAllTutors}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete All Tutors
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -2868,6 +3075,14 @@ export default function AdminDashboard() {
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <h2 className="text-2xl font-bold">Students Management</h2>
                 <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowStudentPlacementDialog(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Bulk Upload Students
+                  </Button>
                   <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Filter by status" />
@@ -2891,6 +3106,22 @@ export default function AdminDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8">
+                          <Checkbox
+                            checked={
+                              filteredStudents.length > 0 &&
+                              selectedStudentIds.length === filteredStudents.length
+                            }
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedStudentIds(filteredStudents.map((s) => s.id))
+                              } else {
+                                setSelectedStudentIds([])
+                              }
+                            }}
+                            aria-label="Select all students"
+                          />
+                        </TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Email</TableHead>
                         <TableHead>Status</TableHead>
@@ -2903,6 +3134,17 @@ export default function AdminDashboard() {
                     <TableBody>
                       {filteredStudents.map((student) => (
                         <TableRow key={student.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedStudentIds.includes(student.id)}
+                              onCheckedChange={(checked) => {
+                                setSelectedStudentIds((prev) =>
+                                  checked ? [...prev, student.id] : prev.filter((id) => id !== student.id),
+                                )
+                              }}
+                              aria-label={`Select ${student.name}`}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-2">
                               <Avatar className="h-8 w-8">
@@ -2966,7 +3208,9 @@ export default function AdminDashboard() {
                                   <DropdownMenuItem onClick={() => handleStudentSelect(student.id)}>
                                     View Details
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem>Edit Details</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleStudentSelect(student.id)}>
+                                    Edit Details
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem>Send Message</DropdownMenuItem>
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
@@ -2995,8 +3239,103 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                   )}
+                  {filteredStudents.length > 0 && (
+                    <div className="flex flex-col md:flex-row items-center gap-3 pt-4">
+                      <div className="text-sm text-muted-foreground">
+                        Selected: {selectedStudentIds.length}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={autoPlaceCourseId ? String(autoPlaceCourseId) : ""}
+                          onValueChange={(v) => setAutoPlaceCourseId(Number(v))}
+                        >
+                          <SelectTrigger className="w-64">
+                            <SelectValue placeholder="Select course to auto-place" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {courses.map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>
+                                {c.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm"
+                          disabled={selectedStudentIds.length === 0 || !autoPlaceCourseId}
+                          onClick={async () => {
+                            if (!autoPlaceCourseId || selectedStudentIds.length === 0) return
+                            try {
+                              const res = await apiFetch<any>("/api/admin/students/auto-place", {
+                                method: "POST",
+                                body: JSON.stringify({
+                                  studentIds: selectedStudentIds,
+                                  courseId: autoPlaceCourseId,
+                                }),
+                              })
+                              toast({
+                                title: "Auto-placement complete",
+                                description: `Placed ${res.placed}/${selectedStudentIds.length} into ${res.courseName}`,
+                              })
+                              setSelectedStudentIds([])
+                              await fetchStudents()
+                            } catch (e: any) {
+                              toast({
+                                title: "Auto-placement failed",
+                                description: e?.message || "Could not auto-place students",
+                                variant: "destructive",
+                              })
+                            }
+                          }}
+                        >
+                          Auto Place
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
+
+              <BulkUploadDialog
+                open={showStudentPlacementDialog}
+                onOpenChange={setShowStudentPlacementDialog}
+                title="Bulk Upload & Enroll Students"
+                description="Upload JSON or CSV to auto-create students and enroll them in courses."
+                onUpload={handleStudentPlacementUpload}
+                templateCsvUrl="/templates/student-placement-template.csv"
+                templateJsonUrl="/templates/student-placement-template.json"
+                csvExample={
+                  "name,email,courses,department,grade\n" +
+                  'John Doe,john@example.com,"Mathematics Grade 10|Physics Grade 10",Science,Grade 10\n' +
+                  'Jane Smith,jane@example.com,"English Literature|History",Languages,Grade 11'
+                }
+                jsonExample={
+                  '[\n' +
+                  '  {\n' +
+                  '    "name": "John Doe",\n' +
+                  '    "email": "john@example.com",\n' +
+                  '    "courses": ["Mathematics Grade 10", "Physics Grade 10"],\n' +
+                  '    "department": "Science",\n' +
+                  '    "grade": "Grade 10"\n' +
+                  '  },\n' +
+                  '  {\n' +
+                  '    "name": "Jane Smith",\n' +
+                  '    "email": "jane@example.com",\n' +
+                  '    "courses": ["English Literature", "History"],\n' +
+                  '    "department": "Languages",\n' +
+                  '    "grade": "Grade 11"\n' +
+                  '  }\n' +
+                  ']\n'
+                }
+                guidelines={[
+                  "Students are matched by email; new students are created if not found",
+                  "Courses are matched by name; students are enrolled in matching courses",
+                  "Use pipe (|) to separate multiple courses in CSV format",
+                  "Department and grade are optional but recommended",
+                  "Existing enrollments are preserved; only new courses are added",
+                  "Excel: Save as CSV before uploading",
+                ]}
+              />
             </div>
           )}
 
@@ -3140,6 +3479,11 @@ export default function AdminDashboard() {
                         <SelectItem value="inactive">Inactive</SelectItem>
                       </SelectContent>
                     </Select>
+
+                    <Button variant="destructive" onClick={handleDeleteAllCourses}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete All Courses
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -3283,19 +3627,23 @@ export default function AdminDashboard() {
                 onUpload={handleCoursePlacementUpload}
                 templateCsvUrl="/templates/tutor-placement-template.csv"
                 templateJsonUrl="/templates/tutor-placement-template.json"
-                csvExample={`name,subjects,courses,departments
-Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-12","Social Sciences|Commerce"`}
-                jsonExample={`[
-  {
-    "name": "Roshan (mr mvp)",
-    "subjects": ["Economics", "Geography"],
-    "courses": [
-      { "name": "Economics Grade 10-12", "subject": "Economics", "level": "High School" },
-      { "name": "Geography Grade 10-12", "subject": "Geography", "level": "High School" }
-    ],
-    "departments": ["Social Sciences", "Commerce"]
-  }
-]`}
+                csvExample={
+                  "name,subjects,courses,departments\n" +
+                  'Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-12","Social Sciences|Commerce"'
+                }
+                jsonExample={
+                  '[\n' +
+                  '  {\n' +
+                  '    "name": "Roshan (mr mvp)",\n' +
+                  '    "subjects": ["Economics", "Geography"],\n' +
+                  '    "courses": [\n' +
+                  '      { "name": "Economics Grade 10-12", "subject": "Economics", "level": "High School" },\n' +
+                  '      { "name": "Geography Grade 10-12", "subject": "Geography", "level": "High School" }\n' +
+                  '    ],\n' +
+                  '    "departments": ["Social Sciences", "Commerce"]\n' +
+                  '  }\n' +
+                  ']\n'
+                }
                 guidelines={[
                   "Recommended: use JSON for full courses/subjects/departments structure",
                   "CSV: use pipe (|) to separate subjects, courses, and departments",
@@ -3313,53 +3661,59 @@ Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Departments</h2>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" /> Add Department
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add New Department</DialogTitle>
-                      <DialogDescription>
-                        Create a new academic department.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="department-name">Department Name</Label>
-                        <Input
-                          id="department-name"
-                          placeholder="e.g., Computer Science"
-                          value={newDepartment.name}
-                          onChange={(e) => setNewDepartment({ ...newDepartment, name: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="department-color">Department Color</Label>
-                        <div className="flex items-center gap-2">
+                <div className="flex gap-2">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" /> Add Department
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add New Department</DialogTitle>
+                        <DialogDescription>
+                          Create a new academic department.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="department-name">Department Name</Label>
                           <Input
-                            id="department-color"
-                            type="color"
-                            className="w-12 h-8 p-1"
-                            value={newDepartment.color}
-                            onChange={(e) => setNewDepartment({ ...newDepartment, color: e.target.value })}
-                          />
-                          <div
-                            className="w-8 h-8 rounded-full"
-                            style={{ backgroundColor: newDepartment.color }}
+                            id="department-name"
+                            placeholder="e.g., Computer Science"
+                            value={newDepartment.name}
+                            onChange={(e) => setNewDepartment({ ...newDepartment, name: e.target.value })}
                           />
                         </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="department-color">Department Color</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="department-color"
+                              type="color"
+                              className="w-12 h-8 p-1"
+                              value={newDepartment.color}
+                              onChange={(e) => setNewDepartment({ ...newDepartment, color: e.target.value })}
+                            />
+                            <div
+                              className="w-8 h-8 rounded-full"
+                              style={{ backgroundColor: newDepartment.color }}
+                            />
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <DialogFooter>
-                      <Button onClick={handleCreateDepartment} disabled={isCreatingDepartment || !newDepartment.name.trim()}>
-                        {isCreatingDepartment ? "Creating..." : "Create Department"}
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                      <DialogFooter>
+                        <Button onClick={handleCreateDepartment} disabled={isCreatingDepartment || !newDepartment.name.trim()}>
+                          {isCreatingDepartment ? "Creating..." : "Create Department"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                  <Button variant="destructive" onClick={handleDeleteAllDepartments}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete All Departments
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -4268,9 +4622,29 @@ Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-
                     {selectedStudent.name.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
-                <DialogTitle>{selectedStudent.name}</DialogTitle>
+                <DialogTitle>
+                  {isEditingStudent ? (
+                    <Input
+                      value={editStudentName}
+                      onChange={(e) => setEditStudentName(e.target.value)}
+                      className="w-64"
+                    />
+                  ) : (
+                    selectedStudent.name
+                  )}
+                </DialogTitle>
               </div>
-              <DialogDescription>{selectedStudent.email}</DialogDescription>
+              <DialogDescription>
+                {isEditingStudent ? (
+                  <Input
+                    value={editStudentEmail}
+                    onChange={(e) => setEditStudentEmail(e.target.value)}
+                    className="w-80"
+                  />
+                ) : (
+                  selectedStudent.email
+                )}
+              </DialogDescription>
             </DialogHeader>
             <div className="py-4">
               <Tabs defaultValue="overview">
@@ -4285,24 +4659,40 @@ Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-
                       <h3 className="font-medium">Student Details</h3>
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <span className="text-muted-foreground">Status:</span>
-                        <Badge
-                          variant={
-                            selectedStudent.status === "active"
-                              ? "default"
-                              : selectedStudent.status === "pending"
-                                ? "outline"
-                                : "secondary"
-                          }
-                          className={
-                            selectedStudent.status === "active"
-                              ? "bg-green-100 text-green-800 hover:bg-green-100"
-                              : selectedStudent.status === "pending"
-                                ? "bg-amber-100 text-amber-800 hover:bg-amber-100"
-                                : "bg-gray-100 text-gray-800 hover:bg-gray-100"
-                          }
-                        >
-                          {selectedStudent.status}
-                        </Badge>
+                        {isEditingStudent ? (
+                          <Select
+                            value={editStudentStatus}
+                            onValueChange={(v) => setEditStudentStatus(v as any)}
+                          >
+                            <SelectTrigger className="w-40">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="inactive">Inactive</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge
+                            variant={
+                              selectedStudent.status === "active"
+                                ? "default"
+                                : selectedStudent.status === "pending"
+                                  ? "outline"
+                                  : "secondary"
+                            }
+                            className={
+                              selectedStudent.status === "active"
+                                ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                : selectedStudent.status === "pending"
+                                  ? "bg-amber-100 text-amber-800 hover:bg-amber-100"
+                                  : "bg-gray-100 text-gray-800 hover:bg-gray-100"
+                            }
+                          >
+                            {selectedStudent.status}
+                          </Badge>
+                        )}
                         <span className="text-muted-foreground">Joined:</span>
                         <span>{new Date(selectedStudent.createdAt).toLocaleDateString()}</span>
                         <span className="text-muted-foreground">Last Active:</span>
@@ -4445,9 +4835,63 @@ Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-
               </Tabs>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setSelectedStudent(null)}>
-                Close
-              </Button>
+              {isEditingStudent ? (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditingStudent(false)
+                      if (selectedStudent) {
+                        setEditStudentName(selectedStudent.name || "")
+                        setEditStudentEmail(selectedStudent.email || "")
+                        setEditStudentStatus((selectedStudent.status as any) || "active")
+                      }
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!selectedStudent) return
+                      try {
+                        const res = await apiFetch<any>(`/api/users/${selectedStudent.id}`, {
+                          method: "PUT",
+                          body: JSON.stringify({
+                            name: editStudentName,
+                            email: editStudentEmail,
+                            status: editStudentStatus,
+                          }),
+                        })
+                        toast({
+                          title: "Student updated",
+                          description: `${res?.data?.name || editStudentName}`,
+                        })
+                        setIsEditingStudent(false)
+                        await fetchStudents()
+                        const updated = students.find((s) => s.id === selectedStudent.id) || null
+                        setSelectedStudent(updated)
+                      } catch (e: any) {
+                        toast({
+                          title: "Update failed",
+                          description: e?.message || "Could not update student",
+                          variant: "destructive",
+                        })
+                      }
+                    }}
+                  >
+                    Save
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => setSelectedStudent(null)}>
+                    Close
+                  </Button>
+                  <Button variant="default" onClick={() => setIsEditingStudent(true)}>
+                    Edit
+                  </Button>
+                </>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

@@ -63,11 +63,11 @@ export default function StudentManagementPage() {
   const loadData = async () => {
     try {
       setLoading(true)
-      // Pass tutor ID to filter students
+      // Pass tutor ID to filter students and courses
       const userId = user?.id ? String(user.id) : undefined
       const [studentsData, coursesData] = await Promise.all([
         api.getStudents(userId), 
-        api.getCourses()
+        api.getCourses(userId)
       ])
       setStudents(studentsData)
       setCourses(coursesData)

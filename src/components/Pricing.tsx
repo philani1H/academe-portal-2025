@@ -25,6 +25,8 @@ export default function Pricing() {
   const [activeTab, setActiveTab] = useState("monthly")
   const [activeHash, setActiveHash] = useState("")
   const [loading, setLoading] = useState(true);
+  const [annualDiscount, setAnnualDiscount] = useState<number>(15);
+  const [promotionalDiscount, setPromotionalDiscount] = useState<number>(0);
 
   // Helper function to get icon component
   const getIconComponent = (iconName: string) => {
@@ -85,6 +87,22 @@ export default function Pricing() {
     fetchPricingPlans()
   }, [])
 
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const settings = await apiFetch<any[]>('/api/admin/content/site-settings')
+        const rows = Array.isArray(settings) ? settings : []
+        const discountRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_annual_discount_percent')
+        const promoRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_promotional_discount_percent')
+        const annual = discountRow ? Number.parseFloat(String(discountRow.value)) : NaN
+        const promo = promoRow ? Number.parseFloat(String(promoRow.value)) : NaN
+        if (Number.isFinite(annual) && annual >= 0 && annual <= 100) setAnnualDiscount(annual)
+        if (Number.isFinite(promo) && promo >= 0 && promo <= 100) setPromotionalDiscount(promo)
+      } catch {}
+    }
+    fetchSettings()
+  }, [])
+
   // Handle hash changes for scrolling to specific plan
   useEffect(() => {
     const handleHashChange = () => {
@@ -117,9 +135,12 @@ export default function Pricing() {
   }, [])
 
   // Calculate annual price with discount
-  const calculateAnnualPrice = (monthlyPrice) => {
-    const priceNumber = Number.parseInt(monthlyPrice.replace("R ", ""))
-    return `R ${Math.round(priceNumber * 10.2)}`
+  const calculateAnnualPrice = (monthlyPrice: string) => {
+    const n = Number.parseFloat(String(monthlyPrice).replace(/[^\d.]/g, ''))
+    if (!Number.isFinite(n) || n <= 0) return 'R 0'
+    const effectiveDiscount = Math.min(annualDiscount + promotionalDiscount, 100)
+    const annual = n * 12 * (1 - (effectiveDiscount / 100))
+    return `R ${Math.round(annual)}`
   }
 
   if (loading) {
@@ -165,7 +186,7 @@ export default function Pricing() {
                 <span className="flex items-center gap-2">
                   Annually{" "}
                   <span className="text-xs font-bold text-green-500 bg-green-100 py-0.5 px-2 rounded-full">
-                    Save 15%
+                    Save {annualDiscount + promotionalDiscount}%
                   </span>
                 </span>
               </button>
@@ -226,7 +247,7 @@ export default function Pricing() {
                     </div>
                     <p className={`text-sm mt-1 ${plan.name === "STANDARD" ? "text-blue-200" : "text-gray-500"}`}>
                       Billed {activeTab === "monthly" ? "monthly" : "annually"}
-                      {activeTab === "annually" && " (15% discount applied)"}
+                      {activeTab === "annually" && ` (${annualDiscount + promotionalDiscount}% discount applied)`}
                     </p>
                   </div>
 

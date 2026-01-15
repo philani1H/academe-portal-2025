@@ -135,12 +135,15 @@ CREATE TABLE "Feature" (
 -- CreateTable
 CREATE TABLE "Announcement" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "title" TEXT NOT NULL,
     "content" TEXT NOT NULL,
-    "type" TEXT NOT NULL,
+    "type" TEXT NOT NULL DEFAULT 'general',
+    "department" TEXT,
+    "author_id" INTEGER NOT NULL,
     "pinned" BOOLEAN NOT NULL DEFAULT false,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "Announcement_author_id_fkey" FOREIGN KEY ("author_id") REFERENCES "users" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -513,7 +516,7 @@ CREATE TABLE "tutor_ratings" (
     "studentName" TEXT NOT NULL,
     "rating" INTEGER NOT NULL,
     "comment" TEXT,
-    "date" DATETIME DEFAULT date('now'),
+    "date" DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "tutor_ratings_tutor_id_fkey" FOREIGN KEY ("tutor_id") REFERENCES "tutors" ("id") ON DELETE CASCADE ON UPDATE NO ACTION
 );
 

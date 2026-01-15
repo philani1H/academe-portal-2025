@@ -88,7 +88,6 @@ interface Announcement {
   content: string
   type: "info" | "warning" | "success"
   pinned: boolean
-  isActive?: boolean
   createdAt?: string
 }
 
@@ -278,6 +277,9 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
   const [features, setFeatures] = useState<Feature[]>([])
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [pricingPlans, setPricingPlans] = useState<PricingPlan[]>([])
+  const [siteSettings, setSiteSettings] = useState<any[]>([])
+  const [annualDiscountInput, setAnnualDiscountInput] = useState<string>("15")
+  const [promotionalDiscountInput, setPromotionalDiscountInput] = useState<string>("0")
   const [testimonials, setTestimonials] = useState<Testimonial[]>([])
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [aboutUsContent, setAboutUsContent] = useState<AboutUsContent | null>(null)
@@ -410,6 +412,20 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       setPricingPlans(normalized)
     } catch (error) {
       console.error("Error fetching pricing plans:", error)
+    }
+  }
+
+  const fetchSiteSettings = async () => {
+    try {
+      const data = await apiFetch<any[]>("/api/admin/content/site-settings")
+      const list = Array.isArray(data) ? data : []
+      setSiteSettings(list)
+      const annualRow = list.find((r) => String(r.key).toLowerCase() === "pricing_annual_discount_percent")
+      if (annualRow) setAnnualDiscountInput(String(annualRow.value ?? "15"))
+      const promoRow = list.find((r) => String(r.key).toLowerCase() === "pricing_promotional_discount_percent")
+      if (promoRow) setPromotionalDiscountInput(String(promoRow.value ?? "0"))
+    } catch (error) {
+      console.error("Error fetching site settings:", error)
     }
   }
 
@@ -549,6 +565,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
         fetchFeatures(),
         fetchAnnouncements(),
         fetchPricingPlans(),
+        fetchSiteSettings(),
         fetchTestimonials(),
         fetchTeamMembers(),
         fetchAboutUsContent(),
@@ -1695,6 +1712,103 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
           </Button>
         </div>
       </div>
+
+      <Card className="bg-card border-border">
+        <CardContent className="p-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">Annual Discount (%)</Label>
+              <div className="mt-2 flex gap-2">
+                <Input
+                  value={annualDiscountInput}
+                  onChange={(e) => setAnnualDiscountInput(e.target.value)}
+                  placeholder="15"
+                />
+                <Button
+                  onClick={async () => {
+                    const v = Number.parseFloat(annualDiscountInput)
+                    if (!Number.isFinite(v) || v < 0 || v > 100) {
+                      toast({ title: "Invalid", description: "Enter 0–100", variant: "destructive" })
+                      return
+                    }
+                    const existing = siteSettings.find(
+                      (r) => String(r.key).toLowerCase() === "pricing_annual_discount_percent",
+                    )
+                    const payload = {
+                      ...(existing?.id ? { id: existing.id } : {}),
+                      key: "pricing_annual_discount_percent",
+                      value: String(v),
+                      type: "number",
+                      label: "Annual Discount %",
+                      category: "pricing",
+                    }
+                    const method = existing?.id ? "PUT" : "POST"
+                    const res = await apiFetch<any>("/api/admin/content/site-settings", {
+                      method,
+                      body: JSON.stringify(payload),
+                    })
+                    if (res) {
+                      toast({ title: "Saved", description: "Pricing settings updated" })
+                      await fetchSiteSettings()
+                    } else {
+                      toast({ title: "Error", description: "Failed to save settings", variant: "destructive" })
+                    }
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Used to compute annual billing savings.</p>
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Promotional Discount (%)</Label>
+              <div className="mt-2 flex gap-2">
+                <Input
+                  value={promotionalDiscountInput}
+                  onChange={(e) => setPromotionalDiscountInput(e.target.value)}
+                  placeholder="0"
+                />
+                <Button
+                  onClick={async () => {
+                    const v = Number.parseFloat(promotionalDiscountInput)
+                    if (!Number.isFinite(v) || v < 0 || v > 100) {
+                      toast({ title: "Invalid", description: "Enter 0–100", variant: "destructive" })
+                      return
+                    }
+                    const existing = siteSettings.find(
+                      (r) => String(r.key).toLowerCase() === "pricing_promotional_discount_percent",
+                    )
+                    const payload = {
+                      ...(existing?.id ? { id: existing.id } : {}),
+                      key: "pricing_promotional_discount_percent",
+                      value: String(v),
+                      type: "number",
+                      label: "Promotional Discount %",
+                      category: "pricing",
+                    }
+                    const method = existing?.id ? "PUT" : "POST"
+                    const res = await apiFetch<any>("/api/admin/content/site-settings", {
+                      method,
+                      body: JSON.stringify(payload),
+                    })
+                    if (res) {
+                      toast({ title: "Saved", description: "Promotional discount updated" })
+                      await fetchSiteSettings()
+                    } else {
+                      toast({ title: "Error", description: "Failed to save promotional discount", variant: "destructive" })
+                    }
+                  }}
+                >
+                  Save
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional extra discount for limited-time promotions. Set to 0 when not active.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {safeArray(pricingPlans).map((plan) => (

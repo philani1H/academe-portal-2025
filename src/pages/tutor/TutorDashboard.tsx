@@ -40,9 +40,8 @@ import {
   Mail,
 } from "lucide-react"
 import Timetable from "@/components/Timetable"
+import { ChangePassword } from "@/components/ChangePassword"
 
-
-// Import page components
 import AnalyticsDashboardPage from "./analytics-dashboard"
 import CourseManagementPage from "./course-management"
 import StudentManagementPage from "./student-management"
@@ -399,7 +398,7 @@ export default function TutorDashboard() {
       } catch (e) {
         console.warn("Failed to sync tutor to localStorage", e)
       }
-      setCourses((data?.courses || []).map((c: any) => ({
+      const mappedCourses: Course[] = (data?.courses || []).map((c: any) => ({
         id: c.id,
         name: c.name,
         description: c.description,
@@ -415,7 +414,9 @@ export default function TutorDashboard() {
         rating: 0,
         totalLessons: 0,
         completedLessons: 0,
-      })))
+      }))
+      const uniqueCourses = Array.from(new Map(mappedCourses.map((c) => [c.id, c])).values())
+      setCourses(uniqueCourses)
       setStudents((data?.students || []).map((s: any) => ({
         id: s.id,
         name: s.name,

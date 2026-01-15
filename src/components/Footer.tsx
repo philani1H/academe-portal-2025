@@ -135,7 +135,7 @@ export default function Footer() {
 
         {/* Copyright Section */}
         <div className="mt-8 pt-4 border-t border-gray-700 text-center text-gray-300">
-          <p>© 2025 Excellence Academia. All rights reserved.</p>
+          <p>© 2026 Excellence Academia. All rights reserved.</p>
         </div>
       </div>
     </motion.footer>

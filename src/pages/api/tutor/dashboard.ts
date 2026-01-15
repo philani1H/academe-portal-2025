@@ -17,162 +17,183 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
+type EnrolledCourse = {
+  id: number;
+  name: string;
+};
+
+type DashboardStudent = {
+  id: number;
+  name: string;
+  email: string;
+  updatedAt: Date | null;
+  enrolledCourses: EnrolledCourse[];
+};
+
 async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const { tutorId } = req.query;
+    const tutorIdParam = (req.query.tutorId as string) || '';
 
-    if (!tutorId || typeof tutorId !== 'string') {
+    if (!tutorIdParam) {
       return res.status(400).json({ error: 'Tutor ID is required' });
     }
 
-    // Get tutor information
-    const tutor = await prisma.tutor.findUnique({
-      where: { id: tutorId }
+    const tutorId = parseInt(tutorIdParam, 10);
+
+    if (Number.isNaN(tutorId)) {
+      return res.status(400).json({ error: 'Invalid tutor ID' });
+    }
+
+    const tutorUser = await prisma.user.findFirst({
+      where: { id: tutorId, role: 'tutor' }
     });
 
-    if (!tutor) {
+    if (!tutorUser) {
       return res.status(404).json({ error: 'Tutor not found' });
     }
 
-    // Get tutor's students (enrolled in courses taught by this tutor)
-    const students = await prisma.user.findMany({
-      where: {
-        role: 'student',
-        enrollments: {
-          some: {
-            course: {
-              // Assuming we have a tutorId field in Course model
-              // For now, we'll get all students
+    const [courses, notifications, scheduledSessions] = await Promise.all([
+      prisma.course.findMany({
+        where: { tutorId },
+        include: {
+          courseEnrollments: { include: { user: true } },
+          tests: { include: { submissions: true } }
+        }
+      }),
+      prisma.notification.findMany({
+        where: { userId: tutorId },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      }),
+      prisma.scheduledSession.findMany({
+        where: { tutorId },
+        include: { course: true },
+        orderBy: { scheduledAt: 'asc' }
+      })
+    ]);
+
+    const studentMap = new Map<number, DashboardStudent>();
+
+    courses.forEach((course) => {
+      course.courseEnrollments.forEach((enrollment) => {
+        const student = enrollment.user;
+        if (student && student.role === 'student') {
+          if (!studentMap.has(student.id)) {
+            studentMap.set(student.id, {
+              id: student.id,
+              name: student.name,
+              email: student.email,
+              updatedAt: student.updatedAt ?? null,
+              enrolledCourses: [
+                {
+                  id: course.id,
+                  name: course.name
+                }
+              ]
+            });
+          } else {
+            const existing = studentMap.get(student.id);
+            if (existing && !existing.enrolledCourses.find((c) => c.id === course.id)) {
+              existing.enrolledCourses.push({
+                id: course.id,
+                name: course.name
+              });
             }
           }
         }
-      },
-      include: {
-        enrollments: {
-          include: {
-            course: true
+      });
+    });
+
+    const students = Array.from(studentMap.values());
+
+    const upcomingSessions = scheduledSessions
+      .filter((s) => s.status === 'scheduled' && s.scheduledAt > new Date())
+      .slice(0, 5)
+      .map((s) => ({
+        id: s.id,
+        courseName: s.course?.name || s.title,
+        studentName: 'All Students',
+        studentEmail: '',
+        date: s.scheduledAt.toISOString(),
+        time: s.scheduledAt.toLocaleTimeString(),
+        duration: s.duration,
+        type: 'class'
+      }));
+
+    const recentActivities = scheduledSessions
+      .filter((s) => s.status === 'completed')
+      .slice(0, 5)
+      .map((s) => ({
+        id: s.id,
+        type: 'session_completed',
+        message: `Completed session: ${s.title}`,
+        timestamp: s.updatedAt.toISOString(),
+        studentName: 'Class'
+      }));
+
+    let subjects: string[] = [];
+
+    if (typeof tutorUser.subjects === 'string' && tutorUser.subjects.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(tutorUser.subjects);
+        if (Array.isArray(parsed)) {
+          subjects = parsed.filter((s): s is string => typeof s === 'string');
+        } else if (parsed && typeof parsed === 'object') {
+          const withSubjects = parsed as { subjects?: unknown };
+          if (Array.isArray(withSubjects.subjects)) {
+            subjects = withSubjects.subjects.filter((s): s is string => typeof s === 'string');
           }
+        } else {
+          subjects = tutorUser.subjects.split(/[|;,]/).map((s) => s.trim()).filter(Boolean);
         }
+      } catch {
+        subjects = tutorUser.subjects.split(/[|;,]/).map((s) => s.trim()).filter(Boolean);
       }
-    });
+    }
 
-    // Get courses taught by this tutor
-    const courses = await prisma.course.findMany({
-      where: {
-        // Assuming we have a tutorId field in Course model
-        // For now, we'll get all courses
-      },
-      include: {
-        enrollments: {
-          include: {
-            user: true
-          }
-        },
-        tests: {
-          include: {
-            submissions: true
-          }
-        }
-      }
-    });
-
-    // Get recent notifications
-    const notifications = await prisma.notification.findMany({
-      where: {
-        userId: tutorId
-      },
-      orderBy: {
-        createdAt: 'desc'
-      },
-      take: 10
-    });
-
-    // Calculate dashboard statistics
     const totalStudents = students.length;
     const totalCourses = courses.length;
-    const activeStudents = students.filter(s => 
-      s.enrollments.some(e => e.status === 'enrolled')
-    ).length;
-
-    // Get upcoming sessions (mock data for now)
-    const upcomingSessions = [
-      {
-        id: '1',
-        courseName: 'Mathematics Grade 12',
-        studentName: 'John Doe',
-        date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        time: '10:00 AM',
-        duration: '60 minutes',
-        type: '1-on-1'
-      },
-      {
-        id: '2',
-        courseName: 'Physics Grade 11',
-        studentName: 'Jane Smith',
-        date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-        time: '2:00 PM',
-        duration: '90 minutes',
-        type: 'Group'
-      }
-    ];
-
-    // Get recent activities (mock data for now)
-    const recentActivities = [
-      {
-        id: '1',
-        type: 'session_completed',
-        message: 'Completed session with John Doe - Mathematics',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        studentName: 'John Doe'
-      },
-      {
-        id: '2',
-        type: 'assignment_submitted',
-        message: 'Jane Smith submitted Physics assignment',
-        timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-        studentName: 'Jane Smith'
-      }
-    ];
 
     const dashboardData = {
       tutor: {
-        id: tutor.id,
-        name: tutor.name,
-        subjects: JSON.parse(tutor.subjects || '[]'),
-        contactEmail: tutor.contactEmail,
-        contactPhone: tutor.contactPhone,
-        description: tutor.description,
-        image: tutor.image
+        id: tutorUser.id,
+        name: tutorUser.name,
+        subjects,
+        contactEmail: tutorUser.email,
+        contactPhone: '',
+        description: '',
+        image: `https://ui-avatars.com/api/?name=${encodeURIComponent(tutorUser.name)}&background=random`
       },
       statistics: {
         totalStudents,
         totalCourses,
-        activeStudents,
-        completedSessions: 45, // Mock data
-        averageRating: 4.8, // Mock data
-        totalEarnings: 12500 // Mock data
+        activeStudents: totalStudents,
+        completedSessions: scheduledSessions.filter((s) => s.status === 'completed').length,
+        averageRating: 4.8,
+        totalEarnings: 0,
+        completionRate: totalCourses > 0 ? Math.round((totalStudents / totalCourses) * 10) / 10 : 0
       },
       upcomingSessions,
       recentActivities,
-      students: students.map(student => ({
+      students: students.map((student) => ({
         id: student.id,
         name: student.name,
         email: student.email,
-        progress: Math.floor(Math.random() * 100), // Mock progress
-        lastActivity: student.updatedAt.toISOString(),
+        progress: Math.floor(Math.random() * 100),
+        lastActivity: student.updatedAt ? student.updatedAt.toISOString() : new Date().toISOString(),
         status: 'active',
-        enrolledCourses: student.enrollments.map(e => e.course.title),
-        avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random`
+        enrolledCourses: student.enrolledCourses.map((course) => course.name),
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(student.name)}&background=random`
       })),
-      courses: courses.map(course => ({
+      courses: courses.map((course) => ({
         id: course.id,
-        name: course.title,
+        name: course.name,
         description: course.description,
-        students: course.enrollments.length,
-        nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        progress: Math.floor(Math.random() * 100), // Mock progress
-        materials: [], // Mock materials
-        tests: course.tests.map(test => ({
+        students: course.courseEnrollments.length,
+        nextSession: null,
+        progress: Math.floor(Math.random() * 100),
+        materials: [],
+        tests: course.tests.map((test) => ({
           id: test.id,
           title: test.title,
           dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -181,7 +202,7 @@ async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
         })),
         color: 'blue'
       })),
-      notifications: notifications.map(notification => ({
+      notifications: notifications.map((notification) => ({
         id: notification.id,
         message: notification.message,
         read: notification.read,

@@ -79,7 +79,18 @@ export default function CourseManagementPage() {
   const loadCourses = async () => {
     try {
       setLoading(true)
-      const coursesData = await api.getCourses()
+      // Get tutor ID from localStorage to filter courses
+      let tutorId: string | undefined
+      try {
+        const storedUser = localStorage.getItem('user')
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser)
+          if (parsed.role === 'tutor') {
+            tutorId = String(parsed.id)
+          }
+        }
+      } catch {}
+      const coursesData = await api.getCourses(tutorId)
       setCourses(coursesData)
     } catch (error) {
       toast({

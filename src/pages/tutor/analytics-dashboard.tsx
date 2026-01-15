@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/hooks/use-toast"
 import { api, type Analytics } from "@/lib/api"
+import { useAuth } from "@/contexts/AuthContext"
 import {
   BarChart,
   Bar,
@@ -28,19 +29,24 @@ import {
 import { TrendingUp, Users, Target, Award, Activity, Download, RefreshCw } from "lucide-react"
 
 export default function AnalyticsDashboardPage() {
+  const { user } = useAuth()
   const [analytics, setAnalytics] = useState<Analytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState("30d")
   const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
-    loadAnalytics()
-  }, [timeRange])
+    if (user) {
+      loadAnalytics()
+    }
+  }, [timeRange, user])
 
   const loadAnalytics = async () => {
     try {
       setLoading(true)
-      const analyticsData = await api.getAnalytics()
+      // Use tutor-specific analytics endpoint with tutor ID
+      const tutorId = user?.id ? String(user.id) : undefined
+      const analyticsData = await api.getAnalytics(tutorId)
       setAnalytics(analyticsData)
     } catch (error) {
       toast({

@@ -60,10 +60,21 @@ export default function NotificationSystemPage() {
   const loadData = async () => {
     try {
       setLoading(true)
+      // Get tutor ID from localStorage to filter data
+      let tutorId: string | undefined
+      try {
+        const storedUser = localStorage.getItem('user')
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser)
+          if (parsed.role === 'tutor') {
+            tutorId = String(parsed.id)
+          }
+        }
+      } catch {}
       const [notificationsData, coursesData, studentsData] = await Promise.all([
-        api.getNotifications(),
-        api.getCourses(),
-        api.getStudents(),
+        api.getNotifications(tutorId),
+        api.getCourses(tutorId),
+        api.getStudents(tutorId),
       ])
       // Ensure we never set null/undefined into state to keep list renders safe
       setNotifications(Array.isArray(notificationsData) ? notificationsData : [])

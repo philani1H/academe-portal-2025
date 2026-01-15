@@ -1,0 +1,32 @@
+[
+  {
+    "name": "John Smith",
+    "subjects": ["Mathematics", "Physics", "Chemistry"],
+    "image": "https://placeholder.com/tutor1.jpg",
+    "contactName": "John Smith",
+    "contactPhone": "+27123456789",
+    "contactEmail": "john.smith@example.com",
+    "description": "Experienced tutor with 10+ years in STEM subjects",
+    "order": 1
+  },
+  {
+    "name": "Sarah Johnson",
+    "subjects": ["English", "History", "Geography"],
+    "image": "https://placeholder.com/tutor2.jpg",
+    "contactName": "Sarah Johnson",
+    "contactPhone": "+27987654321",
+    "contactEmail": "sarah.j@example.com",
+    "description": "Passionate about humanities and social sciences",
+    "order": 2
+  },
+  {
+    "name": "Michael Brown",
+    "subjects": ["Biology", "Life Sciences"],
+    "image": "https://placeholder.com/tutor3.jpg",
+    "contactName": "Michael Brown",
+    "contactPhone": "+27555123456",
+    "contactEmail": "m.brown@example.com",
+    "description": "Specializes in life sciences and biology",
+    "order": 3
+  }
+]
