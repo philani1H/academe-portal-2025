@@ -405,6 +405,61 @@ app.post("/api/upload/material", authenticateJWT as RequestHandler, upload.singl
   }
 })
 
+// Cloudinary material upload endpoint - saves Cloudinary URL to database
+app.post("/api/upload/cloudinary-material", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId, type, name, url, publicId, format, duration, size, description } = req.body
+    const userId = req.user?.id
+    const userRole = req.user?.role
+
+    if (!courseId) {
+      return res.status(400).json({ error: "Course ID is required" })
+    }
+    if (!url) {
+      return res.status(400).json({ error: "Cloudinary URL is required" })
+    }
+
+    // If tutor, verify they own the course
+    if (userRole === "tutor" && userId) {
+      const course = await prisma.course.findFirst({
+        where: {
+          id: Number.parseInt(courseId),
+          tutorId: userId
+        }
+      })
+      if (!course) {
+        return res.status(403).json({ error: "Access denied: You can only upload materials to your own courses" })
+      }
+    }
+
+    console.log(`Saving Cloudinary material for course ${courseId}: ${url}`)
+
+    const material = await prisma.courseMaterial.create({
+      data: {
+        courseId: Number.parseInt(courseId),
+        name: name || "Live Session Recording",
+        type: type || "video",
+        url: url,
+        description: description || `Cloudinary video - ${format} format${duration ? `, ${Math.round(duration)}s duration` : ''}${size ? `, ${Math.round(size / (1024 * 1024))}MB` : ''}`,
+      },
+    })
+
+    res.json({
+      success: true,
+      material,
+      cloudinary: {
+        publicId,
+        format,
+        duration,
+        size
+      }
+    })
+  } catch (error) {
+    console.error("Cloudinary material save error:", error)
+    res.status(500).json({ error: "Failed to save Cloudinary material to database" })
+  }
+})
+
 // Cloudinary delete endpoint
 app.post("/api/cloudinary/delete", async (req: Request, res: Response) => {
   try {

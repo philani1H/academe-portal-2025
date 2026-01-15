@@ -83,7 +83,7 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
       category
   });
 
-  const { isRecording, startRecording, stopRecording } = useRecording(courseId, localStream, isScreenSharing);
+  const { isRecording, isUploading, startRecording, stopRecording } = useRecording(courseId, localStream, isScreenSharing);
 
   // Share session link
   const [showShareDialog, setShowShareDialog] = useState(false);
@@ -305,6 +305,7 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
             sessionName={sessionName}
             sessionTime={sessionTime}
             isRecording={isRecording}
+            isUploading={isUploading}
             participantCount={peers.length + 1}
             onLeave={onLeave}
             userRole={userRole}

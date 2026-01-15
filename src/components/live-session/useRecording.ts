@@ -1,12 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
+import { uploadVideoToCloudinary } from '@/lib/cloudinary';
 
 export const useRecording = (
-  courseId: string | undefined, 
-  localStream: MediaStream | null, 
+  courseId: string | undefined,
+  localStream: MediaStream | null,
   isScreenSharing: boolean
 ) => {
   const [isRecording, setIsRecording] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
@@ -30,32 +32,58 @@ export const useRecording = (
       return;
     }
 
-    const toastId = toast.loading("Saving recording as learning material...");
-    
-    try {
-      const formData = new FormData();
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      formData.append('file', blob, `session-recording-${timestamp}.webm`);
-      formData.append('courseId', courseId);
-      formData.append('type', 'video');
-      formData.append('name', `Live Session Recording - ${new Date().toLocaleDateString()}`);
+    setIsUploading(true);
+    const toastId = toast.loading("Uploading recording to cloud storage...");
 
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `session-recording-${timestamp}.webm`;
+
+      // Convert blob to File for Cloudinary
+      const file = new File([blob], filename, { type: blob.type || 'video/webm' });
+
+      // Step 1: Upload to Cloudinary
+      toast.loading("Uploading video to Cloudinary...", { id: toastId });
+      const cloudinaryResult = await uploadVideoToCloudinary(file, 'live-session-recordings');
+
+      console.log('Cloudinary upload successful:', cloudinaryResult);
+
+      // Step 2: Save Cloudinary URL to course materials database
+      toast.loading("Saving to course materials...", { id: toastId });
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/upload/material', {
+      const response = await fetch('/api/upload/cloudinary-material', {
         method: 'POST',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-        body: formData
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          courseId,
+          type: 'video',
+          name: `Live Session Recording - ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
+          url: cloudinaryResult.secure_url,
+          publicId: cloudinaryResult.public_id,
+          format: cloudinaryResult.format,
+          duration: cloudinaryResult.duration,
+          size: cloudinaryResult.bytes
+        })
       });
 
       if (response.ok) {
-        toast.success("Recording saved to Course Materials!", { id: toastId });
+        const data = await response.json();
+        toast.success(`Recording saved to Course Materials! (${Math.round(cloudinaryResult.bytes / (1024 * 1024))}MB)`, { id: toastId, duration: 5000 });
+        console.log('Material saved:', data);
       } else {
-        throw new Error('Upload failed');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || 'Failed to save material to database');
       }
     } catch (error) {
       console.error("Upload failed:", error);
-      toast.error("Failed to upload recording. Downloading locally instead.", { id: toastId });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Upload failed: ${errorMessage}. Downloading locally instead.`, { id: toastId, duration: 5000 });
       downloadLocally(blob);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -230,6 +258,7 @@ export const useRecording = (
 
   return {
     isRecording,
+    isUploading,
     startRecording,
     stopRecording
   };
