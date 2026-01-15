@@ -9,10 +9,11 @@ import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckC
 
 import ContentManagement from './ContentManagement'
 
-import { Timetable } from "@/components/Timetable"
+import Timetable from "@/components/Timetable"
 
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { BulkUploadDialog } from "@/components/BulkUploadDialog"
 import { apiFetch } from "@/lib/api"
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -217,6 +218,7 @@ export default function AdminDashboard() {
   const [inviteSubmitting, setInviteSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
+  const [showCoursePlacementDialog, setShowCoursePlacementDialog] = useState(false)
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -252,6 +254,42 @@ export default function AdminDashboard() {
     };
     reader.readAsBinaryString(file);
   };
+
+  const handleCoursePlacementUpload = async (file: File) => {
+    try {
+      const text = await file.text()
+      const fileType = file.name.endsWith(".json") ? "json" : "csv"
+      const response = await apiFetch<{
+        message: string
+        placements: number
+        tutorsMatched: number
+        coursesCreated: number
+        warnings?: string[]
+      }>("/api/admin/content/tutor-placement/bulk-upload", {
+        method: "POST",
+        body: JSON.stringify({ fileContent: text, fileType }),
+      })
+      toast({
+        title: "Placement processed",
+        description: `${response.message}. Tutors matched: ${response.tutorsMatched}, Courses created: ${response.coursesCreated}`,
+      })
+      await loadCourses()
+      return {
+        updated: response.coursesCreated,
+        created: response.coursesCreated,
+        total: response.placements,
+        message: response.message,
+        warnings: response.warnings ?? [],
+      }
+    } catch (error) {
+      toast({
+        title: "Placement failed",
+        description: error instanceof Error ? error.message : "Failed to process tutor placement data",
+        variant: "destructive",
+      })
+      throw error instanceof Error ? error : new Error("Failed to process tutor placement data")
+    }
+  }
 
   const [filterRole, setFilterRole] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<string | null>(null)
@@ -1139,6 +1177,10 @@ export default function AdminDashboard() {
   const pendingCourses = courses.filter((course) => course.status === "pending")
 
   // Render
+  if (activeTab === "content") {
+    return <ContentManagement onBack={() => setActiveTab("dashboard")} />
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
@@ -2762,15 +2804,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* Content Management Tab */}
-          {activeTab === "content" && (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <h2 className="text-2xl font-bold">Content Management</h2>
-              </div>
-              <ContentManagement />
-            </div>
-          )}
+          {/* Content Management Tab - Moved to full screen mode */}
 
           {/* Courses Tab */}
           {activeTab === "courses" && (
@@ -2881,6 +2915,10 @@ export default function AdminDashboard() {
                   </Dialog>
 
                   <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setShowCoursePlacementDialog(true)}>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Bulk Place Tutors
+                    </Button>
                     <Select onValueChange={(value) => setFilterDepartment(value === "all" ? null : value)}>
                       <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Filter by department" />
@@ -3036,6 +3074,35 @@ export default function AdminDashboard() {
                   )}
                 </CardContent>
               </Card>
+
+              <BulkUploadDialog
+                open={showCoursePlacementDialog}
+                onOpenChange={setShowCoursePlacementDialog}
+                title="Bulk Place Tutors into Courses"
+                description="Upload JSON or CSV to auto-create courses and assign departments based on tutor subjects."
+                onUpload={handleCoursePlacementUpload}
+                csvExample={`name,subjects,courses,departments
+Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-12","Social Sciences|Commerce"`}
+                jsonExample={`[
+  {
+    "name": "Roshan (mr mvp)",
+    "subjects": ["Economics", "Geography"],
+    "courses": [
+      { "name": "Economics Grade 10-12", "subject": "Economics", "level": "High School" },
+      { "name": "Geography Grade 10-12", "subject": "Geography", "level": "High School" }
+    ],
+    "departments": ["Social Sciences", "Commerce"]
+  }
+]`}
+                guidelines={[
+                  "Recommended: use JSON for full courses/subjects/departments structure",
+                  "CSV: use pipe (|) to separate subjects, courses, and departments",
+                  "Existing tutors are matched by name; unknown tutors are skipped",
+                  "New courses are created only if no matching course exists",
+                  "Departments are chosen using subject-to-department mapping when possible",
+                  "Excel: Save as CSV before uploading",
+                ]}
+              />
             </div>
           )}
 

@@ -97,6 +97,27 @@ export default function TestManagementPage() {
     try {
       const test = await api.createTest(newTest)
       setTests((prev) => [...prev, test])
+      
+      // Send email notification to students about new test
+      try {
+        const token = localStorage.getItem("auth_token")
+        await fetch("/api/tutor/test/notify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            testTitle: test.title,
+            dueDate: test.dueDate,
+            courseId: test.courseId,
+          }),
+        })
+      } catch (emailError) {
+        console.error("Failed to send email notifications:", emailError)
+        // Don't fail the test creation if email fails
+      }
+      
       setNewTest({
         title: "",
         description: "",

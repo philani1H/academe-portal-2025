@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Jane Smith",
+    "role": "CEO & Founder",
+    "bio": "Passionate educator with 15 years of experience in transforming education through technology",
+    "image": "https://placeholder.com/team1.jpg",
+    "order": 1
+  },
+  {
+    "name": "John Doe",
+    "role": "Chief Technology Officer",
+    "bio": "Tech enthusiast dedicated to building innovative learning platforms",
+    "image": "https://placeholder.com/team2.jpg",
+    "order": 2
+  },
+  {
+    "name": "Emily Davis",
+    "role": "Head of Curriculum",
+    "bio": "Experienced curriculum designer focused on student success",
+    "image": "https://placeholder.com/team3.jpg",
+    "order": 3
+  },
+  {
+    "name": "Michael Wilson",
+    "role": "Operations Manager",
+    "bio": "Ensures smooth operations and excellent student experience",
+    "image": "https://placeholder.com/team4.jpg",
+    "order": 4
+  }
+]

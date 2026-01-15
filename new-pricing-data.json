@@ -1,0 +1,69 @@
+[
+  {
+    "name": "Basic Package",
+    "price": "R199",
+    "period": "per month",
+    "features": [
+      "Daily sessions 5 days a week",
+      "All 7 subjects included",
+      "Progress tracking",
+      "Study Material",
+      "Exam Preparation"
+    ],
+    "notIncluded": [
+      "Weekend Classes",
+      "Career Counselling",
+      "Psychology Wellness Services"
+    ],
+    "color": "bg-blue-500",
+    "icon": "BookOpen",
+    "popular": false,
+    "order": 1
+  },
+  {
+    "name": "Standard Package",
+    "price": "R299",
+    "period": "per month",
+    "features": [
+      "Daily sessions",
+      "Progress tracking",
+      "Study Material",
+      "Exam Preparation",
+      "Tutoring for all subjects",
+      "Access WEEKEND Classes",
+      "Free Cheat Sheets",
+      "Access to all academic resources",
+      "Career Counselling"
+    ],
+    "notIncluded": [
+      "Psychology Wellness Services"
+    ],
+    "color": "bg-purple-500",
+    "icon": "GraduationCap",
+    "popular": true,
+    "order": 2
+  },
+  {
+    "name": "Premium Package",
+    "price": "R399",
+    "period": "per month",
+    "features": [
+      "Daily sessions",
+      "Progress tracking",
+      "Study Material",
+      "Exam Preparation",
+      "Tutoring for all subjects",
+      "Access to WEEKEND Classes",
+      "Free Cheat Sheets",
+      "Access to all academic resources",
+      "Career Counselling",
+      "Psychology Wellness Services",
+      "SAVE MORE"
+    ],
+    "notIncluded": [],
+    "color": "bg-gradient-to-r from-purple-600 to-pink-600",
+    "icon": "Star",
+    "popular": false,
+    "order": 3
+  }
+]

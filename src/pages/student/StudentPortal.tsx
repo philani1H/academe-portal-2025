@@ -30,7 +30,8 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Timetable } from "@/components/Timetable"
+import TutorTimetableManager from "@/components/Timetable"
+import { ChangePassword } from "@/components/ChangePassword"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -663,6 +664,16 @@ export default function StudentPortal() {
               </button>
 
               <button
+                onClick={() => setActiveTab("settings")}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "settings" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+              >
+                <Settings className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Settings</span>}
+              </button>
+
+              <button
                 onClick={() => setActiveTab("timetable")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
                   } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
@@ -843,6 +854,18 @@ export default function StudentPortal() {
                     {unreadCount > 0 && <Badge className="bg-red-500 text-white">{unreadCount}</Badge>}
                   </div>
                 </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("settings")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "settings" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                >
+                  <Settings className="h-5 w-5 mr-2" />
+                  <span>Settings</span>
+                </button>
               </nav>
             </ScrollArea>
 
@@ -880,6 +903,7 @@ export default function StudentPortal() {
                   {activeTab === "tests" && "Tests & Quizzes"}
                   {activeTab === "grades" && "Grades"}
                   {activeTab === "notifications" && "Notifications"}
+                  {activeTab === "settings" && "Settings"}
                 </h1>
               </div>
               <div className="flex items-center gap-4">
@@ -942,12 +966,6 @@ export default function StudentPortal() {
         {/* Page content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Dashboard Tab */}
-          {activeTab === "timetable" && (
-            <div className="space-y-6">
-              <Timetable userRole="student" />
-            </div>
-          )}
-
           {activeTab === "dashboard" && (
             <div className="space-y-6">
               {/* Live Classes Banner */}
@@ -1307,7 +1325,7 @@ export default function StudentPortal() {
           {/* Timetable Tab */}
           {activeTab === "timetable" && (
             <div className="space-y-6">
-              <Timetable userRole="student" />
+              <TutorTimetableManager userRole="student" />
             </div>
           )}
 
@@ -2034,6 +2052,41 @@ export default function StudentPortal() {
                   )}
                 </div>
               </Tabs>
+            </div>
+          )}
+
+          {/* Settings Tab */}
+          {activeTab === "settings" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold">Settings</h2>
+                <p className="text-muted-foreground">Manage your account and preferences</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Profile Information</CardTitle>
+                    <CardDescription>View your account details</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Full Name</label>
+                      <Input value={user.name} readOnly />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Email</label>
+                      <Input value={user.email} readOnly />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Student ID</label>
+                      <Input value={user.id} readOnly />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <ChangePassword />
+              </div>
             </div>
           )}
         </div>

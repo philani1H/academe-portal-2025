@@ -1,0 +1,4 @@
+name,subjects,image,contactName,contactPhone,contactEmail,description,order
+John Smith,"Mathematics|Physics|Chemistry","https://placeholder.com/tutor1.jpg","John Smith","+27123456789","john.smith@example.com","Experienced tutor with 10+ years in STEM subjects",1
+Sarah Johnson,"English|History|Geography","https://placeholder.com/tutor2.jpg","Sarah Johnson","+27987654321","sarah.j@example.com","Passionate about humanities and social sciences",2
+Michael Brown,"Biology|Life Sciences","https://placeholder.com/tutor3.jpg","Michael Brown","+27555123456","m.brown@example.com","Specializes in life sciences and biology",3

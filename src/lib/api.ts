@@ -372,6 +372,14 @@ export const api = {
     await apiFetch<any>(`/api/materials/${encodeURIComponent(materialId)}`, { method: 'DELETE' });
   },
 
+  async markNotificationAsRead(notificationId: string): Promise<void> {
+    await apiFetch<any>(`/api/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PATCH' });
+  },
+
+  async deleteNotification(notificationId: string): Promise<void> {
+    await apiFetch<any>(`/api/notifications/${encodeURIComponent(notificationId)}`, { method: 'DELETE' });
+  },
+
   async tutorInviteStudents(payload: { emails: string[]; courseName: string }): Promise<{ success: boolean; invited: any[] }> {
     return apiFetch<{ success: boolean; invited: any[] }>(
       '/api/tutor/students/invite',

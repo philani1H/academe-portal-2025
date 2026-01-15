@@ -88,15 +88,35 @@ export default function FileUploadPage() {
     try {
       const totalFiles = files.length
       let completed = 0
+      const uploadedFileNames: string[] = []
 
       // Upload files sequentially to track progress
       for (const file of files) {
         await api.uploadFile(file)
+        uploadedFileNames.push(file.name)
         completed++
         setUploadProgress(Math.round((completed / totalFiles) * 100))
       }
 
       setFiles([])
+
+      // Send email notification to students about new material
+      try {
+        const token = localStorage.getItem("auth_token")
+        await fetch("/api/tutor/material/notify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            materialNames: uploadedFileNames,
+          }),
+        })
+      } catch (emailError) {
+        console.error("Failed to send email notifications:", emailError)
+        // Don't fail the upload if email fails
+      }
 
       toast({
         title: "Success",

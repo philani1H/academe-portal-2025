@@ -85,6 +85,56 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
 
   const { isRecording, startRecording, stopRecording } = useRecording(courseId, localStream, isScreenSharing);
 
+  // Share session link
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [shareEmails, setShareEmails] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
+
+  const handleShareLink = async () => {
+    if (!shareEmails.trim()) {
+      toast.error('Please enter at least one email address');
+      return;
+    }
+
+    setIsSharing(true);
+    try {
+      const emails = shareEmails.split(',').map(e => e.trim()).filter(e => e);
+      const response = await fetch('/api/live-session/share-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          courseId,
+          courseName,
+          tutorName: user?.name || 'Instructor',
+          emails,
+          personalMessage: shareMessage,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message);
+        setShowShareDialog(false);
+        setShareEmails('');
+        setShareMessage('');
+      } else {
+        throw new Error('Failed to share link');
+      }
+    } catch (error) {
+      toast.error('Failed to share session link');
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const copySessionLink = () => {
+    const link = `${window.location.origin}/live-session/${sessionId}?courseId=${courseId}`;
+    navigator.clipboard.writeText(link);
+    toast.success('Session link copied to clipboard!');
+  };
+
   useEffect(() => {
     console.log(`[LiveSession] Current Session ID: ${sessionId}`);
     console.log(`[LiveSession] User Role: ${userRole}`);

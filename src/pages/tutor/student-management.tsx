@@ -155,6 +155,26 @@ export default function StudentManagementPage() {
     try {
       const updatedStudent = await api.updateStudent(studentId, { status: "active" })
       setStudents((prev) => prev.map((student) => (student.id === studentId ? updatedStudent : student)))
+      
+      // Send approval email notification
+      try {
+        const token = localStorage.getItem("auth_token")
+        await fetch("/api/tutor/student/approve-notify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            studentId: updatedStudent.id,
+            studentEmail: updatedStudent.email,
+            studentName: updatedStudent.name,
+          }),
+        })
+      } catch (emailError) {
+        console.error("Failed to send approval email:", emailError)
+      }
+      
       toast({
         title: "Success",
         description: "Student approved successfully",
@@ -170,8 +190,31 @@ export default function StudentManagementPage() {
 
   const handleRejectStudent = async (studentId: string) => {
     try {
+      const student = students.find(s => s.id === studentId)
+      
       await api.deleteStudent(studentId)
       setStudents((prev) => prev.filter((student) => student.id !== studentId))
+      
+      // Send rejection email notification
+      if (student) {
+        try {
+          const token = localStorage.getItem("auth_token")
+          await fetch("/api/tutor/student/reject-notify", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              studentEmail: student.email,
+              studentName: student.name,
+            }),
+          })
+        } catch (emailError) {
+          console.error("Failed to send rejection email:", emailError)
+        }
+      }
+      
       toast({
         title: "Success",
         description: "Student rejected",

@@ -9,6 +9,7 @@ import StudentManagementPage from './pages/tutor/student-management';
 import TestManagementPage from './pages/tutor/test-management';
 import NotificationSystemPage from './pages/tutor/notification-system';
 import FileUploadPage from './pages/tutor/file-upload';
+import EmailInbox from './pages/shared/EmailInbox';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ContentManagement from './pages/admin/ContentManagement';
 import AdminLogin from './pages/admin/AdminLogin';
@@ -40,7 +41,9 @@ export const router = createBrowserRouter([
       { path: 'tutor/tests', element: <TestManagementPage /> },
       { path: 'tutor/notifications', element: <NotificationSystemPage /> },
       { path: 'tutor/upload', element: <FileUploadPage /> },
+      { path: 'tutor/inbox', element: <EmailInbox /> },
       { path: 'admin', element: <AdminDashboard /> },
+      { path: 'admin/inbox', element: <EmailInbox /> },
       { path: 'admin/content', element: <ContentManagement /> },
       { path: 'admin/login', element: <AdminLogin /> },
     ],

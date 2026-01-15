@@ -28,6 +28,7 @@ export default function CourseManagementPage() {
   const [courses, setCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
+  const [user, setUser] = useState<{ id: string; name: string; email: string } | null>(null)
   
   const [inviteEmails, setInviteEmails] = useState("")
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
@@ -55,7 +56,25 @@ export default function CourseManagementPage() {
   useEffect(() => {
     loadCourses()
     loadScheduledSessions()
+    loadUser()
   }, [])
+
+  const loadUser = async () => {
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      } else {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load user:', error);
+    }
+  }
 
   const loadCourses = async () => {
     try {
@@ -200,16 +219,46 @@ export default function CourseManagementPage() {
     })
   }
 
-  const handleStartLiveSession = (course: Course) => {
+  const handleStartLiveSession = async (course: Course) => {
     const sessionId = `${course.id}-${Date.now()}`;
+    const tutorName = user?.name || 'Tutor';
     const params = new URLSearchParams({
         courseId: course.id,
         courseName: course.name,
         sessionName: `${course.name} Live Session`,
         category: course.category || '',
+        tutorName: tutorName,
         fromTutor: 'true'
     });
-    window.location.href = `/live-session/${sessionId}?${params.toString()}`;
+    const sessionLink = `${window.location.origin}/live-session/${sessionId}?${params.toString()}`;
+    
+    // Send email notifications to students
+    try {
+      const token = localStorage.getItem('token');
+      await fetch('/api/tutor/live-session/notify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          courseId: course.id,
+          sessionId,
+          sessionLink,
+          tutorName: tutorName
+        })
+      });
+      
+      toast({
+        title: "Students Notified",
+        description: "All enrolled students have been notified about the live session",
+      });
+    } catch (error) {
+      console.error('Failed to notify students:', error);
+    }
+    
+    // Navigate to live session
+    window.location.href = sessionLink;
   }
 
   const handleScheduleSession = (course: Course) => {
@@ -266,9 +315,30 @@ export default function CourseManagementPage() {
         throw new Error('Failed to schedule session');
       }
 
+      // Send email notifications to students
+      try {
+        await fetch('/api/tutor/live-session/notify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            courseId: schedulingCourse.id,
+            sessionId: `scheduled-${Date.now()}`,
+            sessionLink: `${window.location.origin}/student/courses/${schedulingCourse.id}`,
+            isScheduled: true,
+            scheduledDate: scheduledAt.toISOString(),
+            duration: parseInt(sessionDuration)
+          })
+        });
+      } catch (emailError) {
+        console.error('Failed to send email notifications:', emailError);
+      }
+
       toast({
         title: "Success",
-        description: "Session scheduled successfully",
+        description: "Session scheduled and students notified successfully",
       });
 
       setScheduleDialogOpen(false);

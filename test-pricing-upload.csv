@@ -1,0 +1,3 @@
+name,price,period,features,notIncluded,color,icon,popular,order
+Test Basic,R199,month,"Online sessions|Email support|Study guides","Priority support|Advanced tools","bg-green-500",BookOpen,false,1
+Test Premium,R799,month,"Unlimited sessions|24/7 support|All materials|Analytics","None","bg-purple-600",Star,true,2

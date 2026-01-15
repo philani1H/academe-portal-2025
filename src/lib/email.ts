@@ -10,6 +10,8 @@ export interface EmailPayload {
   to: string;
   subject: string;
   content: string;
+  fromEmail?: string;  // Optional: Use specific sender email
+  fromName?: string;   // Optional: Use specific sender name
 }
 
 export type EmailTemplate =
@@ -1186,11 +1188,13 @@ export function renderBrandedEmailPreview(payload: EmailPreviewPayload) {
 
 export async function sendEmail(payload: EmailPayload) {
   try {
-    const { to, subject, content } = payload;
+    const { to, subject, content, fromEmail, fromName } = payload;
     if (!brevoApiKey) {
       console.warn('⚠️ BREVO_API_KEY not configured. Email sending skipped (dev mode).');
       console.info('📧 [EMAIL PREVIEW]', {
         to,
+        from: fromEmail || defaultFromEmail,
+        fromName: fromName || defaultFromName,
         subject,
         contentLength: content.length,
         preview: content.slice(0, 200) + '...'
@@ -1199,17 +1203,379 @@ export async function sendEmail(payload: EmailPayload) {
     }
 
     const sendSmtpEmail = new brevo.SendSmtpEmail();
-    sendSmtpEmail.sender = { email: defaultFromEmail, name: defaultFromName };
+    // Use custom sender if provided, otherwise use default
+    sendSmtpEmail.sender = { 
+      email: fromEmail || defaultFromEmail, 
+      name: fromName || defaultFromName 
+    };
     sendSmtpEmail.to = [{ email: to }];
     sendSmtpEmail.subject = subject;
     sendSmtpEmail.htmlContent = content;
 
     const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
 
-    console.info('✅ Email sent successfully via Brevo:', { to, subject, messageId: data.messageId });
+    console.info('✅ Email sent successfully via Brevo:', { 
+      to, 
+      from: fromEmail || defaultFromEmail,
+      subject, 
+      messageId: data.messageId 
+    });
     return { success: true, data };
   } catch (error) {
     console.error('❌ Error sending email via Brevo:', error);
     return { success: false, error };
   }
+}
+
+
+// Live Session Started Email
+export function renderLiveSessionStartedEmail(params: {
+  studentName: string;
+  tutorName: string;
+  courseName: string;
+  sessionLink: string;
+}) {
+  const title = `🔴 LIVE NOW: ${params.courseName}`;
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${params.studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        <strong style="color: ${colors.primary};">${params.tutorName}</strong> has started a live session for <strong>${params.courseName}</strong>.
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0;">
+        Join the session now to participate in this interactive learning opportunity!
+      </p>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${params.sessionLink}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(220, 38, 38, 0.25);">
+            🔴 Join Live Session Now
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <div style="margin: 32px 0; padding: 20px; background: ${colors.veryLight}; border-radius: 12px; border: 1px dashed ${colors.lightGray}20;">
+      <p style="margin: 0 0 12px; font-size: 13px; color: ${colors.lightGray}; font-weight: 600;">
+        Session Link
+      </p>
+      <p style="word-break: break-all; color: ${colors.primary}; font-size: 13px; margin: 0; font-family: 'Courier New', monospace; line-height: 1.6;">
+        ${params.sessionLink}
+      </p>
+    </div>
+  `;
+  return renderBrandedEmail({ 
+    title, 
+    message,
+    footerNote: `This live session was started by ${params.tutorName}. Join now to not miss out!`
+  });
+}
+
+// Scheduled Session Email
+export function renderScheduledSessionEmail(params: {
+  studentName: string;
+  tutorName: string;
+  courseName: string;
+  scheduledDate: Date;
+  duration: number;
+}) {
+  const title = `📅 Scheduled: ${params.courseName} Live Session`;
+  const dateStr = new Date(params.scheduledDate).toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+  const timeStr = new Date(params.scheduledDate).toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${params.studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        <strong style="color: ${colors.primary};">${params.tutorName}</strong> has scheduled a live session for <strong>${params.courseName}</strong>.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(79, 70, 229, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(14, 165, 233, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: ${colors.primary}; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        📅 Session Details
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Date</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${dateStr}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Time</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${timeStr}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Duration</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${params.duration} minutes</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 20px 0;">
+      Mark your calendar! You'll receive a reminder before the session starts.
+    </p>
+  `;
+  return renderBrandedEmail({ 
+    title, 
+    message,
+    footerNote: `Scheduled by ${params.tutorName}. Add this to your calendar so you don't miss it!`
+  });
+}
+
+// Material Uploaded Email
+export function renderMaterialUploadedEmail(params: {
+  studentName: string;
+  tutorName: string;
+  courseName: string;
+  materialName: string;
+  materialType: string;
+  downloadLink?: string;
+}) {
+  const title = `📚 New Material: ${params.materialName}`;
+  const typeIcon = params.materialType === 'pdf' ? '📄' : params.materialType === 'video' ? '🎥' : '📁';
+  
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${params.studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        <strong style="color: ${colors.primary};">${params.tutorName}</strong> has uploaded new material for <strong>${params.courseName}</strong>.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(16, 185, 129, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: ${colors.success}; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        ${typeIcon} Material Details
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(16, 185, 129, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Material Name</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${params.materialName}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Type</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${params.materialType.toUpperCase()}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    ${params.downloadLink ? `
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${params.downloadLink}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.success} 0%, #059669 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25);">
+            📥 Download Material
+          </a>
+        </td>
+      </tr>
+    </table>
+    ` : ''}
+  `;
+  return renderBrandedEmail({ 
+    title, 
+    message,
+    footerNote: `New material uploaded by ${params.tutorName}. Access it anytime from your course dashboard.`
+  });
+}
+
+// Test Created Email
+export function renderTestCreatedEmail(params: {
+  studentName: string;
+  tutorName: string;
+  courseName: string;
+  testName: string;
+  dueDate: Date;
+  duration?: number;
+  totalPoints?: number;
+  testLink?: string;
+}) {
+  const title = `📝 New Test: ${params.testName}`;
+  const dueDateStr = new Date(params.dueDate).toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${params.studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        <strong style="color: ${colors.primary};">${params.tutorName}</strong> has published a new test for <strong>${params.courseName}</strong>.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(67, 56, 202, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: ${colors.secondary}; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        📝 Test Details
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(79, 70, 229, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Test Name</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${params.testName}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(79, 70, 229, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Due Date</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${dueDateStr}</div>
+          </td>
+        </tr>
+        ${params.duration ? `
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(79, 70, 229, 0.1);">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Duration</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${params.duration} minutes</div>
+          </td>
+        </tr>
+        ` : ''}
+        ${params.totalPoints ? `
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: ${colors.lightGray}; margin-bottom: 4px;">Total Points</div>
+            <div style="font-size: 16px; font-weight: 600; color: ${colors.dark};">${params.totalPoints} points</div>
+          </td>
+        </tr>
+        ` : ''}
+      </table>
+    </div>
+
+    ${params.testLink ? `
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${params.testLink}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.secondary} 0%, #4338ca 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            📝 Start Test
+          </a>
+        </td>
+      </tr>
+    </table>
+    ` : ''}
+
+    <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 20px 0;">
+      Good luck with your test!
+    </p>
+  `;
+  return renderBrandedEmail({ 
+    title, 
+    message,
+    footerNote: `Test published by ${params.tutorName}. Make sure to complete it before the due date.`
+  });
+}
+
+// Student Approved Email
+export function renderStudentApprovedEmail(params: {
+  studentName: string;
+  tutorName: string;
+  courseName: string;
+  courseLink?: string;
+}) {
+  const title = `✅ Enrollment Approved - ${params.courseName}`;
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${params.studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        Great news! <strong style="color: ${colors.primary};">${params.tutorName}</strong> has approved your enrollment in <strong>${params.courseName}</strong>.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(16, 185, 129, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: ${colors.success}; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        ✓ You Now Have Access To
+      </div>
+      <ul style="margin: 0; padding-left: 20px; color: ${colors.mediumGray};">
+        <li style="margin: 8px 0;">Course materials and resources</li>
+        <li style="margin: 8px 0;">Live sessions with your tutor</li>
+        <li style="margin: 8px 0;">Tests and assignments</li>
+        <li style="margin: 8px 0;">Direct communication with ${params.tutorName}</li>
+      </ul>
+    </div>
+
+    ${params.courseLink ? `
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${params.courseLink}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, ${colors.success} 0%, #059669 100%); color: ${colors.white}; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25);">
+            🎓 Access Course
+          </a>
+        </td>
+      </tr>
+    </table>
+    ` : ''}
+
+    <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 20px 0;">
+      Welcome to the class! We're excited to have you.
+    </p>
+  `;
+  return renderBrandedEmail({ 
+    title, 
+    message,
+    footerNote: `Your enrollment was approved by ${params.tutorName}. Start learning today!`
+  });
+}
+
+// Student Rejected Email
+export function renderStudentRejectedEmail(params: {
+  studentName: string;
+  tutorName: string;
+  courseName: string;
+}) {
+  const title = `Enrollment Status - ${params.courseName}`;
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: ${colors.mediumGray}; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: ${colors.dark};">${params.studentName}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0 0 20px;">
+        Thank you for your interest in <strong>${params.courseName}</strong>.
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: ${colors.mediumGray}; margin: 0;">
+        Unfortunately, your enrollment request has not been approved at this time.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 20px 24px; background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border-radius: 12px; border-left: 4px solid ${colors.warning};">
+      <p style="margin: 0; font-size: 14px; color: #78350F; line-height: 1.6;">
+        <strong style="font-weight: 700;">Have Questions?</strong><br>
+        If you have questions about this decision, please reply to this email to contact <strong>${params.tutorName}</strong> directly.
+      </p>
+    </div>
+  `;
+  return renderBrandedEmail({ 
+    title, 
+    message,
+    footerNote: `You can reply to this email to contact ${params.tutorName} directly.`
+  });
 }

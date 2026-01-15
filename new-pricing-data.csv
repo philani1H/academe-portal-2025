@@ -1,0 +1,4 @@
+name,price,period,features,notIncluded,color,icon,popular,order
+Basic Package,R199,per month,"Daily sessions 5 days a week|All 7 subjects included|Progress tracking|Study Material|Exam Preparation","Weekend Classes|Career Counselling|Psychology Wellness Services","bg-blue-500",BookOpen,false,1
+Standard Package,R299,per month,"Daily sessions|Progress tracking|Study Material|Exam Preparation|Tutoring for all subjects|Access WEEKEND Classes|Free Cheat Sheets|Access to all academic resources|Career Counselling","Psychology Wellness Services","bg-purple-500",GraduationCap,true,2
+Premium Package,R399,per month,"Daily sessions|Progress tracking|Study Material|Exam Preparation|Tutoring for all subjects|Access to WEEKEND Classes|Free Cheat Sheets|Access to all academic resources|Career Counselling|Psychology Wellness Services|SAVE MORE","","bg-gradient-to-r from-purple-600 to-pink-600",Star,false,3

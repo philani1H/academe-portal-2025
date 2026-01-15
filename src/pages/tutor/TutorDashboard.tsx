@@ -37,8 +37,10 @@ import {
   UserPlus,
   Calendar,
   Video,
+  Mail,
 } from "lucide-react"
-import { Timetable } from "@/components/Timetable"
+import Timetable from "@/components/Timetable"
+
 
 // Import page components
 import AnalyticsDashboardPage from "./analytics-dashboard"
@@ -46,7 +48,9 @@ import CourseManagementPage from "./course-management"
 import StudentManagementPage from "./student-management"
 import TestManagementPage from "./test-management"
 import NotificationSystemPage from "./notification-system"
+import EmailInbox from "../shared/EmailInbox"
 import FileUploadPage from "./file-upload"
+import BulkEmailComposer from "@/components/BulkEmailComposer"
 
 // Types
 interface User {
@@ -54,8 +58,8 @@ interface User {
   name: string
   email: string
   role: string
+  department?: string
   avatar?: string
-  department: string
 }
 
 interface Course {
@@ -296,6 +300,7 @@ export default function TutorDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [activeTab, setActiveTab] = useState("dashboard")
+  const [showBulkEmail, setShowBulkEmail] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -473,10 +478,23 @@ export default function TutorDashboard() {
   const pendingStudents = students.filter((s) => s.status === "pending")
 
   // Handlers
-  const handleMarkNotificationAsRead = (notificationId: string) => {
-    setNotifications((prev) =>
-      prev.map((notification) => (notification.id === notificationId ? { ...notification, read: true } : notification)),
-    )
+  const handleMarkNotificationAsRead = async (notificationId: string) => {
+    try {
+      await api.markNotificationAsRead(notificationId)
+      setNotifications((prev) =>
+        prev.map((notification) => (notification.id === notificationId ? { ...notification, read: true } : notification)),
+      )
+      toast({
+        title: "Success",
+        description: "Notification marked as read",
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update notification",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleFileUpload = (files: File[]) => {
@@ -523,6 +541,7 @@ export default function TutorDashboard() {
     { id: "timetable", label: "Timetable", icon: Calendar },
     { id: "students", label: "Students", icon: Users },
     { id: "tests", label: "Tests", icon: FileText },
+    { id: "inbox", label: "Inbox", icon: Mail },
     { id: "notifications", label: "Notifications", icon: Bell, badge: unreadCount },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "materials", label: "Materials", icon: Upload },
@@ -882,6 +901,15 @@ export default function TutorDashboard() {
                       <Button
                         className="w-full justify-start bg-transparent"
                         variant="outline"
+                        onClick={() => setShowBulkEmail(true)}
+                      >
+                        <Mail className="h-4 w-4 mr-2" />
+                        Send Bulk Email
+                      </Button>
+
+                      <Button
+                        className="w-full justify-start bg-transparent"
+                        variant="outline"
                         onClick={() => setActiveTab("students")}
                       >
                         <UserPlus className="h-4 w-4 mr-2" />
@@ -1147,6 +1175,13 @@ export default function TutorDashboard() {
               </div>
             )}
 
+            {/* Inbox Tab */}
+            {activeTab === "inbox" && (
+              <div className="space-y-6">
+                <EmailInbox />
+              </div>
+            )}
+
             {/* Settings Tab */}
             {activeTab === "settings" && (
               <div className="space-y-6">
@@ -1186,15 +1221,7 @@ export default function TutorDashboard() {
                     </CardContent>
                   </Card>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Preferences</CardTitle>
-                      <CardDescription>Customize your experience</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="text-center py-8 text-muted-foreground">Settings panel coming soon...</div>
-                    </CardContent>
-                  </Card>
+                  <ChangePassword />
                 </div>
               </div>
             )}
@@ -1202,6 +1229,11 @@ export default function TutorDashboard() {
         </main>
 
       <Toaster />
+      <BulkEmailComposer 
+        userRole="tutor" 
+        open={showBulkEmail} 
+        onClose={() => setShowBulkEmail(false)} 
+      />
     </div>
   )
 }

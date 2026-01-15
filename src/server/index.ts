@@ -1,72 +1,102 @@
-import express from 'express';
-import cors from 'cors';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import { getConnection } from '../lib/db';
-import prisma from '../lib/prisma';
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import jwt from 'jsonwebtoken';
-import { sendEmail, renderBrandedEmail, renderInvitationEmail, renderBrandedEmailPreview, renderStudentCredentialsEmail } from '../lib/email';
-import crypto from 'crypto';
-import multer from 'multer';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
+import express, { type Request, type Response, type NextFunction, type RequestHandler } from "express"
+import cors from "cors"
+import { createServer } from "http"
+import { Server } from "socket.io"
+import { getConnection } from "../lib/db.js"
+import prisma from "../lib/prisma.js"
+import fs from "fs/promises"
+import path from "path"
+import { fileURLToPath } from "url"
+import jwt from "jsonwebtoken"
+import {
+  sendEmail,
+  renderBrandedEmail,
+  renderInvitationEmail,
+  renderBrandedEmailPreview,
+  renderStudentCredentialsEmail,
+  renderLiveSessionStartedEmail,
+  renderMaterialUploadedEmail,
+  renderTestCreatedEmail,
+  renderStudentApprovedEmail,
+  renderStudentRejectedEmail,
+} from "../lib/email"
+import crypto from "crypto"
+import multer from "multer"
+import { createRequire } from "module"
+
+const require = createRequire(import.meta.url)
+const pdfParse = require("pdf-parse")
+
+// Type declarations
+interface AuthenticatedRequest extends Request {
+  user?: {
+    id: number | string
+    email: string
+    role: string
+    name?: string
+    username?: string
+  }
+}
+
+interface SessionData {
+  sessionId: string
+  courseId: number
+  tutorName: string
+  courseName: string
+  department: string
+  message: string
+}
 
 // Resolve base path in both ESM and CJS
-const resolvedDir = (typeof __dirname !== 'undefined')
-  ? __dirname
-  : path.dirname(fileURLToPath(import.meta.url));
-const baseDir = path.resolve(resolvedDir, '..');
-const uploadsDir = path.resolve(baseDir, '..', 'public', 'uploads');
+const resolvedDir = typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url))
+const baseDir = path.resolve(resolvedDir, "..")
+const uploadsDir = path.resolve(baseDir, "..", "public", "uploads")
 
 // Ensure uploads directory exists
-fs.mkdir(uploadsDir, { recursive: true }).catch(console.error);
+fs.mkdir(uploadsDir, { recursive: true }).catch(console.error)
 
 // Store active live sessions in memory (courseId -> sessionData)
-const activeSessions = new Map<string, any>();
+const activeSessions = new Map<string, SessionData>()
 
 // Scheduled session checker
-let scheduledSessionChecker: NodeJS.Timeout;
+let scheduledSessionChecker: NodeJS.Timeout
 
-const startScheduledSessionChecker = () => {
-  console.log('✓ Starting scheduled session checker...');
+const startScheduledSessionChecker = (): void => {
+  console.log("✓ Starting scheduled session checker...")
 
   scheduledSessionChecker = setInterval(async () => {
     try {
-      const now = new Date();
-      const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000); // Check sessions starting in next 5 minutes
+      const now = new Date()
+      const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000)
 
       const scheduledSessions = await prisma.scheduledSession.findMany({
         where: {
-          status: 'scheduled',
+          status: "scheduled",
           scheduledAt: {
             gte: now,
-            lte: fiveMinutesFromNow
-          }
+            lte: fiveMinutesFromNow,
+          },
         },
         include: {
           course: true,
-          tutor: true
-        }
-      });
+          tutor: true,
+        },
+      })
 
       for (const session of scheduledSessions) {
-        console.log(`Auto-starting scheduled session: ${session.title} for courseId=${session.courseId}, courseName=${session.course.name}`);
+        console.log(
+          `Auto-starting scheduled session: ${session.title} for courseId=${session.courseId}, courseName=${session.course.name}`,
+        )
 
-        // Generate session ID
-        const sessionId = `${session.courseId}-${Date.now()}`;
+        const sessionId = `${session.courseId}-${Date.now()}`
 
-        // Update session status and set sessionId
         await prisma.scheduledSession.update({
           where: { id: session.id },
           data: {
-            status: 'active',
-            sessionId: sessionId
-          }
-        });
+            status: "active",
+            sessionId: sessionId,
+          },
+        })
 
         activeSessions.set(String(session.courseId), {
           sessionId,
@@ -74,17 +104,17 @@ const startScheduledSessionChecker = () => {
           tutorName: session.tutor.name,
           courseName: session.course.name,
           department: session.course.category,
-          message: `${session.tutor.name} started a scheduled live session for ${session.course.name}!`
-        });
+          message: `${session.tutor.name} started a scheduled live session for ${session.course.name}!`,
+        })
 
-        io.to(`course:${session.courseId}`).emit('session-live', {
+        io.to(`course:${session.courseId}`).emit("session-live", {
           sessionId,
           courseId: session.courseId,
           tutorName: session.tutor.name,
           courseName: session.course.name,
           department: session.course.category,
-          message: `${session.tutor.name} started a scheduled live session for ${session.course.name}!`
-        });
+          message: `${session.tutor.name} started a scheduled live session for ${session.course.name}!`,
+        })
 
         // Send emails to enrolled students
         try {
@@ -92,21 +122,22 @@ const startScheduledSessionChecker = () => {
             where: { id: session.courseId },
             include: {
               courseEnrollments: {
-                include: { user: true }
-              }
-            }
-          });
+                include: { user: true },
+              },
+            },
+          })
 
           if (course && course.courseEnrollments.length > 0) {
-            const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-            const sessionLink = `${frontendBase}/student/dashboard?joinSession=${sessionId}&courseId=${session.courseId}&tutorName=${encodeURIComponent(session.tutor.name)}`;
+            const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+            const sessionLink = `${frontendBase}/student/dashboard?joinSession=${sessionId}&courseId=${session.courseId}&tutorName=${encodeURIComponent(session.tutor.name)}`
 
-            console.log(`Sending scheduled session emails to ${course.courseEnrollments.length} students...`);
+            console.log(`Sending scheduled session emails to ${course.courseEnrollments.length} students...`)
 
-            await Promise.all(course.courseEnrollments.map(async (enrollment) => {
-              const student = enrollment.user;
-              if (student.email) {
-                const content = `
+            await Promise.all(
+              course.courseEnrollments.map(async (enrollment) => {
+                const student = enrollment.user
+                if (student.email) {
+                  const content = `
                   <div style="font-family: sans-serif; color: #333;">
                     <h2>Scheduled Live Session Started!</h2>
                     <p>Hi ${student.name},</p>
@@ -118,390 +149,397 @@ const startScheduledSessionChecker = () => {
                     <br/><br/>
                     <p>See you there!</p>
                   </div>
-                `;
-                try {
-                  await sendEmail({
-                    to: student.email,
-                    subject: `🔴 Scheduled Session Live: ${session.title}`,
-                    content
-                  });
-                } catch (e) {
-                  console.error(`Failed to send email to ${student.email}`, e);
+                `
+                  try {
+                    await sendEmail({
+                      to: student.email,
+                      subject: `🔴 Scheduled Session Live: ${session.title}`,
+                      content,
+                    })
+                  } catch (e) {
+                    console.error(`Failed to send email to ${student.email}`, e)
+                  }
                 }
-              }
-            }));
+              }),
+            )
           }
         } catch (error) {
-          console.error('Error sending scheduled session emails:', error);
+          console.error("Error sending scheduled session emails:", error)
         }
 
-        console.log(`Scheduled session ${session.title} started successfully`);
+        console.log(`Scheduled session ${session.title} started successfully`)
       }
     } catch (error) {
-      console.error('Error checking scheduled sessions:', error);
+      console.error("Error checking scheduled sessions:", error)
     }
-  }, 60000); // Check every minute
-};
+  }, 60000)
+}
 
-const stopScheduledSessionChecker = () => {
+const stopScheduledSessionChecker = (): void => {
   if (scheduledSessionChecker) {
-    clearInterval(scheduledSessionChecker);
-    console.log('✓ Stopped scheduled session checker');
+    clearInterval(scheduledSessionChecker)
+    console.log("✓ Stopped scheduled session checker")
   }
-};
+}
 
-const app = express();
-const httpServer = createServer(app);
-const port = process.env.PORT || 3000;
+const app = express()
+const httpServer = createServer(app)
+const port = process.env.PORT || 3000
 
 // Enhanced CORS configuration
-const isProd = process.env.NODE_ENV === 'production';
+const isProd = process.env.NODE_ENV === "production"
 const corsOptions = {
   origin: isProd
     ? (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      // Allow requests with no origin (mobile apps, Postman, etc.)
-      if (!origin) return callback(null, true);
+        if (!origin) return callback(null, true)
 
-      const allowedOrigins = [
-        'https://excellence-akademie.com',
-        'https://www.excellence-akademie.com',
-        'https://excellence-akademie.co.za',
-        'https://www.excellence-akademie.co.za',
-        'https://excellenceakademie.co.za',
-        'https://www.excellenceakademie.co.za',
-        'https://excellenceacademia.co.za',
-        'https://www.excellenceacademia.co.za',
-        'https://academe-2025.onrender.com',
-        'https://academe-portal-2025.onrender.com',
-        process.env.FRONTEND_URL
-      ].filter(Boolean as any);
+        const allowedOrigins = [
+          "https://excellence-akademie.com",
+          "https://www.excellence-akademie.com",
+          "https://excellence-akademie.co.za",
+          "https://www.excellence-akademie.co.za",
+          "https://excellenceakademie.co.za",
+          "https://www.excellenceakademie.co.za",
+          "https://excellenceacademia.co.za",
+          "https://www.excellenceacademia.co.za",
+          "https://academe-2025.onrender.com",
+          "https://academe-portal-2025.onrender.com",
+          process.env.FRONTEND_URL,
+        ].filter(Boolean) as string[]
 
-      try {
-        const originUrl = new URL(origin);
-        const originHost = originUrl.host;
-        const allowedHosts = allowedOrigins.map((u: string) => new URL(u).host);
-        const isAllowed = allowedHosts.some((h: string) => originHost === h);
-        if (isAllowed) return callback(null, true);
-      } catch { }
+        try {
+          const originUrl = new URL(origin)
+          const originHost = originUrl.host
+          const allowedHosts = allowedOrigins.map((u: string) => new URL(u).host)
+          const isAllowed = allowedHosts.some((h: string) => originHost === h)
+          if (isAllowed) return callback(null, true)
+        } catch {}
 
-      callback(new Error('Not allowed by CORS'));
-    }
-    : true, // in development, allow all origins so Vite LAN hosts work
+        callback(new Error("Not allowed by CORS"))
+      }
+    : true,
   credentials: true,
   optionsSuccessStatus: 200,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS']
-};
+  allowedHeaders: ["Content-Type", "Authorization"],
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+}
 
-app.use(cors(corsOptions as any));
-app.use(express.json());
+app.use(cors(corsOptions as cors.CorsOptions))
+app.use(express.json())
 
 // Timetable API
-const timetableFile = path.resolve(resolvedDir, 'data', 'timetable.json');
-const testsFile = path.resolve(resolvedDir, 'data', 'tests.json');
+// Remove file-based storage references
+// const timetableFile = path.resolve(resolvedDir, "data", "timetable.json")
+// const testsFile = path.resolve(resolvedDir, "data", "tests.json")
+// fs.mkdir(path.dirname(timetableFile), { recursive: true }).catch(console.error)
+const testsFile = path.resolve(resolvedDir, "data", "tests.json")
 
-// Ensure data directory exists
-fs.mkdir(path.dirname(timetableFile), { recursive: true }).catch(console.error);
-
-app.get('/api/timetable', async (req, res) => {
+app.get("/api/timetable", async (req: Request, res: Response) => {
   try {
-    const data = await fs.readFile(timetableFile, 'utf-8');
-    res.json({ data: JSON.parse(data) });
+    const entries = await prisma.timetableEntry.findMany({
+      include: {
+        tutor: true,
+        course: true,
+      },
+    })
+
+    const contentTutors = await prisma.tutor.findMany()
+    const contentTutorMap = new Map(contentTutors.map((t) => [t.name, t.id]))
+
+    const data = entries.map((e) => {
+      const [startTime, endTime] = (e.timeSlot || "").split("-")
+      return {
+        id: e.id,
+        day: e.day,
+        startTime: startTime || "",
+        endTime: endTime || "",
+        time: startTime || "",
+        tutorId: contentTutorMap.get(e.tutor?.name || "") || e.tutorId,
+        tutorName: e.tutor?.name || "",
+        courseId: e.courseId,
+        courseName: e.course?.name || "",
+        subject: e.course?.category || "",
+        grade: e.grade || "Grade 12",
+        type: e.type,
+        students: e.students || "",
+      }
+    })
+    res.json({ data })
   } catch (error) {
-    // If file doesn't exist, return empty array
-    res.json({ data: [] });
+    console.error("Error fetching timetable:", error)
+    res.json({ data: [] })
   }
-});
+})
 
-app.post('/api/timetable', async (req, res) => {
+app.post("/api/timetable", async (req: Request, res: Response) => {
   try {
-    const { timetable } = req.body;
-
-    // Read existing for diffing
-    let existing: any[] = [];
-    try {
-      const fileData = await fs.readFile(timetableFile, 'utf-8');
-      existing = JSON.parse(fileData);
-    } catch (e) {
-      // ignore
+    const { timetable } = req.body
+    if (!Array.isArray(timetable)) {
+      return res.status(400).json({ success: false, error: "timetable must be an array" })
     }
 
-    // Find new entries
-    const existingIds = new Set(existing.map((e: any) => e.id));
-    const newEntries = Array.isArray(timetable) ? timetable.filter((e: any) => !existingIds.has(e.id)) : [];
+    // 1. Resolve names to IDs
+    const validEntries = []
+    for (const entry of timetable) {
+      if (!entry.tutorName || !entry.courseName) continue
 
-    // Save updated timetable
-    await fs.writeFile(timetableFile, JSON.stringify(timetable, null, 2));
-    res.json({ success: true });
+      const user = await prisma.user.findFirst({
+        where: { name: entry.tutorName, role: "tutor" },
+      })
+      const course = await prisma.course.findFirst({
+        where: { name: entry.courseName },
+      })
 
-    // Send emails for new entries asynchronously
-    if (newEntries.length > 0) {
-      console.log(`Found ${newEntries.length} new timetable entries. Sending emails...`);
-      (async () => {
-        for (const entry of newEntries) {
-          try {
-            // Find course by name (fuzzy match)
-            if (!entry.courseName) continue;
-
-            const course = await prisma.course.findFirst({
-              where: { name: { contains: entry.courseName } },
-              include: {
-                courseEnrollments: {
-                  include: { user: true }
-                }
-              }
-            });
-
-            if (course && course.courseEnrollments.length > 0) {
-              const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-
-              await Promise.all(course.courseEnrollments.map(async (enrollment) => {
-                const student = enrollment.user;
-                if (student.email) {
-                  const content = `
-                                        <div style="font-family: sans-serif; color: #333;">
-                                            <h2>New Class Scheduled</h2>
-                                            <p>Hi ${student.name},</p>
-                                            <p>A new class has been scheduled for <strong>${course.name}</strong>.</p>
-                                            <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                                                <p><strong>Topic:</strong> ${entry.type} - ${entry.courseName}</p>
-                                                <p><strong>Time:</strong> ${entry.day}, ${entry.time}</p>
-                                                <p><strong>Tutor:</strong> ${entry.tutorName}</p>
-                                            </div>
-                                            <a href="${frontendBase}/student/dashboard?tab=timetable" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Timetable</a>
-                                        </div>
-                                    `;
-                  await sendEmail({
-                    to: student.email,
-                    subject: `📅 New Class: ${entry.courseName}`,
-                    content
-                  });
-                }
-              }));
-            }
-          } catch (err) {
-            console.error('Error processing timetable email:', err);
-          }
-        }
-      })();
+      if (user && course) {
+        validEntries.push({
+          day: entry.day,
+          timeSlot: `${entry.startTime}-${entry.endTime}`,
+          courseId: course.id,
+          tutorId: user.id,
+          type: entry.type || "Group",
+          grade: entry.grade || null,
+          students: entry.students || "",
+        })
+      }
     }
 
+    // 2. Transaction: Replace all entries
+    await prisma.$transaction([
+      prisma.timetableEntry.deleteMany({}),
+      prisma.timetableEntry.createMany({
+        data: validEntries,
+      }),
+    ])
+
+    res.json({ success: true })
+
+    // Email notification logic (simplified/adapted)
+    // Identify new entries? Since we replace all, hard to diff without fetching previous.
+    // For now, skipping complex diffing to ensure basic persistence works first.
+    
   } catch (error) {
-    console.error('Error saving timetable:', error);
-    res.status(500).json({ error: 'Failed to save timetable' });
+    console.error("Error saving timetable:", error)
+    res.status(500).json({ error: "Failed to save timetable" })
   }
-});
+})
 
 // Configure Multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadsDir);
+    cb(null, uploadsDir)
   },
   filename: (req, file, cb) => {
-    // Generate unique filename to avoid collisions and invalid characters
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const ext = path.extname(file.originalname) || '.webm';
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
-  }
-});
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9)
+    const ext = path.extname(file.originalname) || ".webm"
+    cb(null, file.fieldname + "-" + uniqueSuffix + ext)
+  },
+})
 
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 500 * 1024 * 1024 // Limit file size to 500MB
-  }
-});
+    fileSize: 500 * 1024 * 1024,
+  },
+})
 
 // Upload endpoint for course materials
-app.post('/api/upload/material', upload.single('file'), async (req, res) => {
+app.post("/api/upload/material", upload.single("file"), async (req: Request, res: Response) => {
   try {
-    const file = req.file;
-    const { courseId, type, name, description } = req.body;
+    const file = req.file
+    const { courseId, type, name, description } = req.body
 
     if (!file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: "No file uploaded" })
     }
     if (!courseId) {
-      // Clean up file if no courseId
-      await fs.unlink(file.path).catch(console.error);
-      return res.status(400).json({ error: 'Course ID is required' });
+      await fs.unlink(file.path).catch(console.error)
+      return res.status(400).json({ error: "Course ID is required" })
     }
 
-    // Create URL (relative path)
-    const fileUrl = `/uploads/${file.filename}`;
+    const fileUrl = `/uploads/${file.filename}`
 
-    console.log(`File uploaded: ${file.filename} for course ${courseId}`);
+    console.log(`File uploaded: ${file.filename} for course ${courseId}`)
 
-    // Save to database
     const material = await prisma.courseMaterial.create({
       data: {
-        courseId: parseInt(courseId),
+        courseId: Number.parseInt(courseId),
         name: name || file.originalname,
-        type: type || 'video',
+        type: type || "video",
         url: fileUrl,
-        description: description || 'Live session recording'
-      }
-    });
+        description: description || "Live session recording",
+      },
+    })
 
-    res.json({ success: true, material });
+    res.json({ success: true, material })
   } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: 'Failed to upload material' });
+    console.error("Upload error:", error)
+    res.status(500).json({ error: "Failed to upload material" })
   }
-});
+})
 
-app.post('/api/tests/upload', upload.single('file'), async (req, res) => {
+app.post("/api/tests/upload", upload.single("file"), async (req: Request, res: Response) => {
   try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ success: false, error: 'No file' });
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (ext !== '.pdf') {
-      await fs.unlink(file.path).catch(() => {});
-      return res.status(400).json({ success: false, error: 'Only PDF supported' });
+    const file = req.file
+    if (!file) return res.status(400).json({ success: false, error: "No file" })
+    const ext = path.extname(file.originalname).toLowerCase()
+    if (ext !== ".pdf") {
+      await fs.unlink(file.path).catch(() => {})
+      return res.status(400).json({ success: false, error: "Only PDF supported" })
     }
-    const data = await fs.readFile(file.path);
-    const parsed = await pdfParse(data);
-    const text = String(parsed.text || '').replace(/\r/g, '');
-    const rawSections = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
-    const sections = rawSections.map((s, i) => {
-      const lines = s.split('\n');
-      const titleLine = lines[0] || `Section ${i + 1}`;
-      const content = lines.slice(1).join('\n');
-      return { title: titleLine, content: content || s };
-    });
-    await fs.unlink(file.path).catch(() => {});
-    return res.json({ success: true, sections });
+    const data = await fs.readFile(file.path)
+    const parsed = await pdfParse(data)
+    const text = String(parsed.text || "").replace(/\r/g, "")
+    const rawSections = text
+      .split(/\n{2,}/)
+      .map((s: string) => s.trim())
+      .filter(Boolean)
+    const sections = rawSections.map((s: string, i: number) => {
+      const lines = s.split("\n")
+      const titleLine = lines[0] || `Section ${i + 1}`
+      const content = lines.slice(1).join("\n")
+      return { title: titleLine, content: content || s }
+    })
+    await fs.unlink(file.path).catch(() => {})
+    return res.json({ success: true, sections })
   } catch (error) {
-    return res.status(500).json({ success: false, error: 'Parse failed' });
+    return res.status(500).json({ success: false, error: "Parse failed" })
   }
-});
+})
 
-app.post('/api/tests/generate', async (req, res) => {
+app.post("/api/tests/generate", async (req: Request, res: Response) => {
   try {
-    const { sections, options } = req.body || {};
-    const num = Number(options?.count || 20);
+    const { sections, options } = req.body || {}
+    const num = Number(options?.count || 20)
     const sentences = Array.isArray(sections)
-      ? sections.flatMap((sec: any) => String(sec?.content || '').split(/[\.!\?]\s+/).map((t: string) => t.trim()).filter((t: string) => t.length > 20))
-      : [];
-    const pick = (arr: string[], n: number) => arr.slice(0, n);
-    const slice = pick(sentences, num);
+      ? sections.flatMap((sec: any) =>
+          String(sec?.content || "")
+            .split(/[.!?]\s+/)
+            .map((t: string) => t.trim())
+            .filter((t: string) => t.length > 20),
+        )
+      : []
+    const pick = (arr: string[], n: number) => arr.slice(0, n)
+    const slice = pick(sentences, num)
     const randWord = (s: string) => {
-      const words = s.split(/\s+/).filter(w => w.length > 6);
-      return words[0] || null;
-    };
+      const words = s.split(/\s+/).filter((w) => w.length > 6)
+      return words[0] || null
+    }
     const makeMCQ = (s: string) => {
-      const key = randWord(s) || s.split(/\s+/)[0];
-      const distractors = ['analysis', 'process', 'context', 'outcome'].filter(d => d.toLowerCase() !== String(key).toLowerCase());
-      const options = [key, ...distractors].slice(0, 4).sort(() => Math.random() - 0.5);
-      return { type: 'mcq', prompt: s, options, answer: key };
-    };
+      const key = randWord(s) || s.split(/\s+/)[0]
+      const distractors = ["analysis", "process", "context", "outcome"].filter(
+        (d) => d.toLowerCase() !== String(key).toLowerCase(),
+      )
+      const mcqOptions = [key, ...distractors].slice(0, 4).sort(() => Math.random() - 0.5)
+      return { type: "mcq", prompt: s, options: mcqOptions, answer: key }
+    }
     const makeTF = (s: string) => {
-      return { type: 'true_false', prompt: s, answer: true };
-    };
+      return { type: "true_false", prompt: s, answer: true }
+    }
     const makeFill = (s: string) => {
-      const key = randWord(s);
-      if (!key) return { type: 'short', prompt: s, answer: '' };
-      const prompt = s.replace(new RegExp(key, 'i'), '_____');
-      return { type: 'fill', prompt, answer: key };
-    };
+      const key = randWord(s)
+      if (!key) return { type: "short", prompt: s, answer: "" }
+      const prompt = s.replace(new RegExp(key, "i"), "_____")
+      return { type: "fill", prompt, answer: key }
+    }
     const makeShort = (s: string) => {
-      return { type: 'short', prompt: s, answer: '' };
-    };
-    const out: any[] = [];
-    slice.forEach((s, i) => {
-      if (i % 4 === 0) out.push(makeMCQ(s));
-      else if (i % 4 === 1) out.push(makeTF(s));
-      else if (i % 4 === 2) out.push(makeFill(s));
-      else out.push(makeShort(s));
-    });
-    return res.json({ success: true, questions: out });
+      return { type: "short", prompt: s, answer: "" }
+    }
+    const out: any[] = []
+    slice.forEach((s: string, i: number) => {
+      if (i % 4 === 0) out.push(makeMCQ(s))
+      else if (i % 4 === 1) out.push(makeTF(s))
+      else if (i % 4 === 2) out.push(makeFill(s))
+      else out.push(makeShort(s))
+    })
+    return res.json({ success: true, questions: out })
   } catch (error) {
-    return res.status(500).json({ success: false, error: 'Generate failed' });
+    return res.status(500).json({ success: false, error: "Generate failed" })
   }
-});
+})
 
-app.post('/api/tests/save', async (req, res) => {
+app.post("/api/tests/save", async (req: Request, res: Response) => {
   try {
-    const body = req.body || {};
-    const id = String(body?.id || Date.now());
-    const payload = { id, ...body };
-    let existing: any[] = [];
+    const body = req.body || {}
+    const id = String(body?.id || Date.now())
+    const payload = { id, ...body }
+    let existing: any[] = []
     try {
-      const raw = await fs.readFile(testsFile, 'utf-8');
-      existing = JSON.parse(raw);
+      const raw = await fs.readFile(testsFile, "utf-8")
+      existing = JSON.parse(raw)
     } catch {}
-    const next = Array.isArray(existing) ? [...existing, payload] : [payload];
-    await fs.mkdir(path.dirname(testsFile), { recursive: true }).catch(() => {});
-    await fs.writeFile(testsFile, JSON.stringify(next, null, 2));
-    return res.json({ success: true, id });
+    const next = Array.isArray(existing) ? [...existing, payload] : [payload]
+    await fs.mkdir(path.dirname(testsFile), { recursive: true }).catch(() => {})
+    await fs.writeFile(testsFile, JSON.stringify(next, null, 2))
+    return res.json({ success: true, id })
   } catch (error) {
-    return res.status(500).json({ success: false, error: 'Save failed' });
+    return res.status(500).json({ success: false, error: "Save failed" })
   }
-});
+})
 
 // Socket.IO Setup
 const io = new Server(httpServer, {
   cors: {
-    origin: isProd ? undefined : "*", // Allow all in dev
+    origin: isProd ? undefined : "*",
     methods: ["GET", "POST"],
-    credentials: true
-  }
-});
+    credentials: true,
+  },
+})
 
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id)
 
-  socket.on('join-user-room', (userId) => {
-    socket.join(`user:${userId}`);
-    console.log(`User ${userId} joined their notification room`);
-  });
+  socket.on("join-user-room", (userId: string) => {
+    socket.join(`user:${userId}`)
+    console.log(`User ${userId} joined their notification room`)
+  })
 
-  socket.on('join-course-room', async (courseIds) => {
+  socket.on("join-course-room", async (courseIds: number[]) => {
     if (Array.isArray(courseIds)) {
-      // Optional: verify enrollment if possible
-      // For now, we trust the client's enrollment list
-      courseIds.forEach(id => socket.join(`course:${id}`));
-      console.log(`Socket ${socket.id} joined course rooms: ${courseIds.join(', ')}`);
+      courseIds.forEach((id) => socket.join(`course:${id}`))
+      console.log(`Socket ${socket.id} joined course rooms: ${courseIds.join(", ")}`)
     }
-  });
+  })
 
-  socket.on('join-session', ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
-    socket.join(sessionId);
-    console.log(`User ${userId} (${userRole}) joined session ${sessionId}`);
+  socket.on(
+    "join-session",
+    ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
+      socket.join(sessionId)
+      console.log(`User ${userId} (${userRole}) joined session ${sessionId}`)
+      socket
+        .to(sessionId)
+        .emit("user-joined", { userId, userRole, socketId: socket.id, userName, isVideoOn, isAudioOn })
+    },
+  )
 
-    // Notify others in the session
-    socket.to(sessionId).emit('user-joined', { userId, userRole, socketId: socket.id, userName, isVideoOn, isAudioOn });
-  });
+  socket.on("stream-state-change", ({ sessionId, isVideoOn, isAudioOn }) => {
+    socket.to(sessionId).emit("stream-state-changed", { socketId: socket.id, isVideoOn, isAudioOn })
+  })
 
-  socket.on('stream-state-change', ({ sessionId, isVideoOn, isAudioOn }) => {
-    socket.to(sessionId).emit('stream-state-changed', { socketId: socket.id, isVideoOn, isAudioOn });
-  });
+  socket.on("hand-raised-change", ({ sessionId, isHandRaised }) => {
+    socket.to(sessionId).emit("hand-raised-changed", { socketId: socket.id, isHandRaised })
+  })
 
-  socket.on('hand-raised-change', ({ sessionId, isHandRaised }) => {
-    socket.to(sessionId).emit('hand-raised-changed', { socketId: socket.id, isHandRaised });
-  });
-
-  socket.on('session-started', async ({ sessionId, courseId, tutorName, students }) => {
-    console.log(`Session started event received`, { sessionId, courseId, tutorName });
+  socket.on("session-started", async ({ sessionId, courseId, tutorName, students }) => {
+    console.log(`Session started event received`, { sessionId, courseId, tutorName })
 
     try {
-      const cId = parseInt(String(courseId));
+      const cId = Number.parseInt(String(courseId))
       if (isNaN(cId)) {
-        console.error('Invalid courseId for session-started', { courseId });
-        return;
+        console.error("Invalid courseId for session-started", { courseId })
+        return
       }
 
       const course = await prisma.course.findUnique({
         where: { id: cId },
         include: {
           courseEnrollments: {
-            include: { user: true }
-          }
-        }
-      });
+            include: { user: true },
+          },
+        },
+      })
 
-      const courseName = course?.name || (course as any)?.title || 'Course';
-      const department = (course as any)?.category;
+      const courseName = course?.name || (course as any)?.title || "Course"
+      const department = (course as any)?.category
 
       activeSessions.set(String(cId), {
         sessionId,
@@ -509,397 +547,180 @@ io.on('connection', (socket) => {
         tutorName,
         courseName,
         department,
-        message: `${tutorName} started a live session for ${courseName}!`
-      });
+        message: `${tutorName} started a live session for ${courseName}!`,
+      })
 
-      io.to(`course:${cId}`).emit('session-live', {
+      io.to(`course:${cId}`).emit("session-live", {
         sessionId,
         courseId: cId,
         tutorName,
         courseName,
         department,
-        message: `${tutorName} started a live session for ${courseName}!`
-      });
-      console.log(`Broadcasted live session`, { courseId: cId, courseName, sessionId });
+        message: `${tutorName} started a live session for ${courseName}!`,
+      })
+      console.log(`Broadcasted live session`, { courseId: cId, courseName, sessionId })
 
       if (course && course.courseEnrollments.length > 0) {
-        const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-        const sessionLink = `${frontendBase}/student/dashboard?joinSession=${sessionId}&courseId=${cId}&courseName=${encodeURIComponent(courseName)}&tutorName=${encodeURIComponent(tutorName)}`;
+        const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+        const sessionLink = `${frontendBase}/student/dashboard?joinSession=${sessionId}&courseId=${cId}&courseName=${encodeURIComponent(courseName)}&tutorName=${encodeURIComponent(tutorName)}`
 
         console.log(`Sending live session emails`, {
           courseId: cId,
           courseName,
-          recipients: course.courseEnrollments.length
-        });
+          recipients: course.courseEnrollments.length,
+        })
 
-        await Promise.all(course.courseEnrollments.map(async (enrollment) => {
-          const student = enrollment.user;
-          if (student.email) {
-            const content = `
-                            <div style="font-family: sans-serif; color: #333;">
-                                <h2>Live Session Started!</h2>
-                                <p>Hi ${student.name},</p>
-                                <p><strong>${tutorName}</strong> has started a live session for <strong>${courseName}</strong>.</p>
-                                <br/>
-                                <a href="${sessionLink}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Join Live Session</a>
-                                <br/><br/>
-                                <p>See you there!</p>
-                            </div>
-                        `;
-            try {
-              await sendEmail({
-                to: student.email,
-                subject: `🔴 Live Now: ${courseName}`,
-                content
-              });
-            } catch (e) {
-              console.error(`Failed to send email to ${student.email}`, e);
+        await Promise.all(
+          course.courseEnrollments.map(async (enrollment) => {
+            const student = enrollment.user
+            if (student.email) {
+              const content = `
+              <div style="font-family: sans-serif; color: #333;">
+                <h2>Live Session Started!</h2>
+                <p>Hi ${student.name},</p>
+                <p><strong>${tutorName}</strong> has started a live session for <strong>${courseName}</strong>.</p>
+                <br/>
+                <a href="${sessionLink}" style="background-color: #4F46E5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Join Live Session</a>
+                <br/><br/>
+                <p>See you there!</p>
+              </div>
+            `
+              try {
+                await sendEmail({
+                  to: student.email,
+                  subject: `🔴 Live Now: ${courseName}`,
+                  content,
+                })
+              } catch (e) {
+                console.error(`Failed to send email to ${student.email}`, e)
+              }
             }
-          }
-        }));
+          }),
+        )
         console.log(`Sent live session emails successfully`, {
           courseId: cId,
           courseName,
-          recipients: course.courseEnrollments.length
-        });
+          recipients: course.courseEnrollments.length,
+        })
       } else {
-        console.log('No enrolled students found for course, skipping email broadcast', {
+        console.log("No enrolled students found for course, skipping email broadcast", {
           courseId: cId,
-          courseName
-        });
+          courseName,
+        })
       }
     } catch (error) {
-      console.error('Error handling session-started', error);
+      console.error("Error handling session-started", error)
     }
-  });
+  })
 
-  socket.on('end-session', ({ courseId, sessionId }) => {
-    console.log(`Session ended for course ${courseId}`);
+  socket.on("end-session", ({ courseId, sessionId }) => {
+    console.log(`Session ended for course ${courseId}`)
     if (courseId) {
-      activeSessions.delete(String(courseId));
+      activeSessions.delete(String(courseId))
     }
-    // Optionally notify students that session ended
-    io.to(`course:${courseId}`).emit('session-ended', { courseId, sessionId });
-  });
+    io.to(`course:${courseId}`).emit("session-ended", { courseId, sessionId })
+  })
 
-  socket.on('signal', ({ to, signal, from, userRole, isVideoOn, isAudioOn }) => {
-    io.to(to).emit('signal', { signal, from, userRole, isVideoOn, isAudioOn });
-  });
+  socket.on("signal", ({ to, signal, from, userRole, isVideoOn, isAudioOn }) => {
+    io.to(to).emit("signal", { signal, from, userRole, isVideoOn, isAudioOn })
+  })
 
-  socket.on('whiteboard-draw', ({ sessionId, data }) => {
-    socket.to(sessionId).emit('whiteboard-draw', data);
-  });
+  socket.on("whiteboard-draw", ({ sessionId, data }) => {
+    socket.to(sessionId).emit("whiteboard-draw", data)
+  })
 
-  socket.on('whiteboard-clear', ({ sessionId }) => {
-    socket.to(sessionId).emit('whiteboard-clear');
-  });
+  socket.on("whiteboard-clear", ({ sessionId }) => {
+    socket.to(sessionId).emit("whiteboard-clear")
+  })
 
-  socket.on('whiteboard-image', ({ sessionId, imageUrl }) => {
-    socket.to(sessionId).emit('whiteboard-image', imageUrl);
-  });
+  socket.on("whiteboard-image", ({ sessionId, imageUrl }) => {
+    socket.to(sessionId).emit("whiteboard-image", imageUrl)
+  })
 
-  socket.on('chat-message', ({ sessionId, message }) => {
-    socket.to(sessionId).emit('chat-message', message);
-  });
+  socket.on("chat-message", ({ sessionId, message }) => {
+    socket.to(sessionId).emit("chat-message", message)
+  })
 
-  socket.on('shared-notes-update', ({ sessionId, notes }) => {
-    socket.to(sessionId).emit('shared-notes-update', notes);
-  });
+  socket.on("shared-notes-update", ({ sessionId, notes }) => {
+    socket.to(sessionId).emit("shared-notes-update", notes)
+  })
 
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
-});
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id)
+  })
+})
 
-
-// Preflight handler to avoid framework default errors
-app.options('*', cors({
-  origin: isProd
-    ? undefined
-    : true,
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS']
-}));
+// Preflight handler
+app.options(
+  "*",
+  cors({
+    origin: isProd ? undefined : true,
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  }),
+)
 
 // Security and performance middleware
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use(express.json({ limit: "5mb" }))
+app.use(express.urlencoded({ extended: true, limit: "5mb" }))
 
-// Serve static uploads (images)
-app.use('/uploads', (req, res, next) => {
-  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-  next();
-});
+// Serve static uploads
+app.use("/uploads", (req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable")
+  next()
+})
 
-// University Application content – return default payload if none exists
-app.get('/api/admin/content/university-application', async (req, res) => {
+// JWT auth helpers
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
+
+function parseCookies(req: Request): Record<string, string> {
+  const header = req.headers?.cookie || ""
+  return header.split(";").reduce(
+    (acc: Record<string, string>, part: string) => {
+      const [key, ...v] = part.trim().split("=")
+      if (!key) return acc
+      acc[key] = decodeURIComponent(v.join("="))
+      return acc
+    },
+    {} as Record<string, string>,
+  )
+}
+
+function authenticateJWT(req: AuthenticatedRequest, res: Response, next: NextFunction): void | Response {
   try {
-    // Try to read from a canonical table if it exists; otherwise return defaults
-    const record = await prisma.universityApplicationContent
-      ?.findFirst({ where: { isActive: true } })
-      .catch(() => null as any);
-    if (record) {
-      return res.json({
-        success: true,
-        services: record.services ?? '[]',
-        requirements: record.requirements ?? '[]',
-        process: record.process ?? '[]',
-      });
+    const cookies = parseCookies(req)
+    const headerToken = req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.slice("Bearer ".length)
+      : undefined
+    const token = headerToken || cookies["admin_token"] || cookies["auth_token"]
+    if (!token) {
+      res.status(401).json({ success: false, error: "Unauthorized" })
+      return
     }
-    // Default empty response (avoid 404 for better UX)
-    return res.json({ success: true, services: '[]', requirements: '[]', process: '[]' });
-  } catch (error) {
-    console.error('University application content error:', error);
-    return res.json({ success: true, services: '[]', requirements: '[]', process: '[]' });
-  }
-});
-
-// Tutor ratings – lightweight storage in SQLite for now
-async function ensureTutorRatingsTable() {
-  const db = await getConnection();
-  try {
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS tutor_ratings (
-        id TEXT PRIMARY KEY,
-        tutor_id TEXT NOT NULL,
-        rating INTEGER NOT NULL,
-        comment TEXT,
-        created_at TEXT NOT NULL
-      );
-    `);
-  } finally {
-    await db.close();
+    const decoded = jwt.verify(token, JWT_SECRET) as any
+    req.user = decoded
+    next()
+  } catch (err) {
+    res.status(401).json({ success: false, error: "Invalid token" })
   }
 }
 
-app.post('/api/admin/content/tutors/:id/ratings', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const tutorId = String(req.params.id || '');
-    const { rating, comment } = req.body || {};
-    const r = Number(rating);
-    if (!tutorId) return res.status(400).json({ success: false, error: 'Tutor ID is required' });
-    if (!Number.isFinite(r) || r < 1 || r > 5) return res.status(400).json({ success: false, error: 'Rating must be 1-5' });
-
-    await ensureTutorRatingsTable();
-    const db = await getConnection();
-    try {
-      const id = (globalThis.crypto?.randomUUID?.() || require('crypto').randomUUID());
-      const now = new Date().toISOString();
-      await db.run(
-        'INSERT INTO tutor_ratings (id, tutor_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?)',
-        [id, tutorId, r, String(comment || ''), now]
-      );
-      return res.json({ success: true, id });
-    } finally {
-      await db.close();
+function authorizeRoles(
+  ...allowedRoles: string[]
+): (req: AuthenticatedRequest, res: Response, next: NextFunction) => void | Response {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      res.status(403).json({ success: false, error: "Forbidden" })
+      return
     }
-  } catch (error) {
-    console.error('Create tutor rating error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to submit rating' });
+    next()
   }
-});
+}
 
-// Invite tutors (admin only)
-app.post('/api/admin/tutors/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { emails, department, tutorName } = req.body || {};
-    if (!Array.isArray(emails) || emails.length === 0) {
-      return res.status(400).json({ success: false, error: 'emails[] is required' });
-    }
-    const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-    const results: any[] = [];
-    for (const email of emails) {
-      const clean = String(email || '').trim().toLowerCase();
-      if (!clean || !clean.includes('@')) continue;
-      const token = jwt.sign({ email: clean, purpose: 'tutor-invite' }, JWT_SECRET, { expiresIn: '7d' });
-      const link = `${frontendBase.replace(/\/$/, '')}/set-password?token=${encodeURIComponent(token)}`;
-      const content = renderInvitationEmail({ recipientName: clean.split('@')[0], actionUrl: link, tutorName, department });
-      const send = await sendEmail({ to: clean, subject: 'Tutor Invitation • Excellence Academia', content });
-      results.push({ email: clean, sent: !!send.success });
-    }
-    return res.json({ success: true, invited: results });
-  } catch (error) {
-    console.error('Tutor invite error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send tutor invitations' });
-  }
-});
-
-// Student auth: login
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ success: false, error: 'Email and password are required' });
-    await ensureCredentialsTable();
-    const db = await getConnection();
-    try {
-      const userEmail = String(email).toLowerCase();
-      let row = await db.get('SELECT * FROM user_credentials WHERE email = ?', [userEmail]);
-
-      // Auto-register if no credentials exist (Dev/Test convenience)
-      if (!row) {
-        console.log(`[Auth] Auto-registering new user: ${userEmail}`);
-        const role = req.body.role || 'student';
-
-        // Create credentials first
-        const hash = await hashPassword(String(password));
-        const now = new Date().toISOString();
-
-        // Ensure Prisma user exists
-        let user = await prisma.user.findUnique({ where: { email: userEmail } });
-        if (!user) {
-          user = await prisma.user.create({
-            data: {
-              email: userEmail,
-              name: userEmail.split('@')[0],
-              role,
-              password_hash: hash
-            }
-          });
-        }
-
-        // Create credentials record (legacy/redundant but kept for consistency)
-        await db.run(
-          'INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-          [userEmail, user.id, hash, now, now]
-        );
-
-        // Set row for subsequent verification
-        row = {
-          email: userEmail,
-          user_id: user.id,
-          password_hash: hash,
-          created_at: now,
-          updated_at: now
-        };
-      }
-
-      if (!row || !row.password_hash) return res.status(401).json({ success: false, error: 'Invalid credentials' });
-      const [scheme, salt, stored] = String(row.password_hash).split(':');
-      if (scheme !== 'scrypt' || !salt || !stored) return res.status(500).json({ success: false, error: 'Invalid credential record' });
-      const derived = await new Promise<string>((resolve, reject) => {
-        crypto.scrypt(String(password), salt, 64, (err, dk) => err ? reject(err) : resolve(dk.toString('hex')));
-      });
-      if (derived !== stored) return res.status(401).json({ success: false, error: 'Invalid credentials' });
-      // load or create user
-      let user = await prisma.user.findUnique({ where: { email: userEmail } });
-
-      // Allow role to be passed in body, default to student
-      const role = req.body.role || 'student';
-
-      if (!user) user = await prisma.user.create({ data: { email: userEmail, name: userEmail.split('@')[0], role } });
-      const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-      const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
-      res.setHeader('Set-Cookie', `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax;${secure}`);
-      return res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
-    } finally {
-      await db.close();
-    }
-  } catch (error) {
-    console.error('Student login error:', error);
-    return res.status(500).json({ success: false, error: 'Login failed' });
-  }
-});
-
-// Student auth: logout
-app.post('/api/auth/logout', (req, res) => {
-  const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
-  res.setHeader('Set-Cookie', `auth_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax;${secure}`);
-  return res.json({ success: true });
-});
-
-// Current user (student/admin)
-app.get('/api/auth/me', authenticateJWT, (req, res) => {
-  return res.json({ success: true, user: req.user });
-});
-
-// List users (basic) - for tutor student-management
-app.get('/api/users', async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
-    return res.json({ success: true, data: users });
-  } catch (error) {
-    console.error('List users error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to list users' });
-  }
-});
-
-// List students for a specific tutor
-app.get('/api/tutor/:tutorId/students', async (req, res) => {
-  try {
-    const tutorId = parseInt(req.params.tutorId);
-    if (isNaN(tutorId)) {
-      return res.status(400).json({ success: false, error: 'Invalid tutor ID' });
-    }
-
-    // Find courses taught by this tutor
-    const courses = await prisma.course.findMany({
-      where: { tutorId },
-      include: {
-        courseEnrollments: {
-          include: { user: true }
-        }
-      }
-    });
-
-    // Extract unique students
-    const studentMap = new Map();
-    courses.forEach(course => {
-      course.courseEnrollments.forEach(enrollment => {
-        const student = enrollment.user;
-        if (student && student.role === 'student') {
-          if (!studentMap.has(student.id)) {
-            // Initialize student entry
-            studentMap.set(student.id, {
-              ...student,
-              enrolledCourses: [course]
-            });
-          } else {
-            // Add course to existing student entry if not already there
-            const existing = studentMap.get(student.id);
-            if (!existing.enrolledCourses.find(c => c.id === course.id)) {
-              existing.enrolledCourses.push(course);
-            }
-          }
-        }
-      });
-    });
-
-    const students = Array.from(studentMap.values());
-    return res.json({ success: true, data: students });
-  } catch (error) {
-    console.error('List tutor students error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to list tutor students' });
-  }
-});
-
-// Admin stats for analytics
-app.get('/api/admin/stats', async (req, res) => {
-  try {
-    const totalStudents = await prisma.user.count({ where: { role: 'student' } });
-    const totalCourses = await prisma.course.count().catch(() => 0 as any);
-    const activeStudents = Math.round(totalStudents * 0.7);
-    return res.json({
-      success: true, data: {
-        totalStudents,
-        activeStudents,
-        courses: totalCourses,
-        completionRate: 75,
-        averageGrade: 82,
-        monthlyGrowth: 12,
-        courseStats: [],
-        monthlyData: []
-      }
-    });
-  } catch (error) {
-    console.error('Admin stats error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to load stats' });
-  }
-});
-
-// Ensure credentials table exists (for student password storage)
-async function ensureCredentialsTable() {
-  const db = await getConnection();
+// Ensure credentials table exists
+async function ensureCredentialsTable(): Promise<void> {
+  const db = await getConnection()
   try {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS user_credentials (
@@ -909,337 +730,24 @@ async function ensureCredentialsTable() {
         created_at TEXT,
         updated_at TEXT
       );
-    `);
+    `)
   } finally {
-    await db.close();
+    await db.close()
   }
 }
 
 function hashPassword(password: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const salt = crypto.randomBytes(16).toString('hex');
+    const salt = crypto.randomBytes(16).toString("hex")
     crypto.scrypt(password, salt, 64, (err, derivedKey) => {
-      if (err) return reject(err);
-      resolve(`scrypt:${salt}:${derivedKey.toString('hex')}`);
-    });
-  });
+      if (err) return reject(err)
+      resolve(`scrypt:${salt}:${derivedKey.toString("hex")}`)
+    })
+  })
 }
 
-// Invite students (admin only) - Generates Student ID and sends credentials
-app.post('/api/admin/students/invite', authenticateJWT, authorizeRoles('admin', 'tutor'), async (req, res) => {
-  try {
-    const { emails, courseName, tutorName, department } = req.body || {};
-    if (!Array.isArray(emails) || emails.length === 0) {
-      return res.status(400).json({ success: false, error: 'emails[] is required' });
-    }
-    const frontendBase = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-    const results: any[] = [];
-    const year = new Date().getFullYear();
-
-    // Look up course if provided
-    let courseId: string | null = null;
-    if (courseName) {
-      const course = await prisma.course.findFirst({ where: { title: courseName } });
-      if (course) courseId = course.id;
-    }
-
-    for (const email of emails) {
-      const clean = String(email || '').trim().toLowerCase();
-      if (!clean || !clean.includes('@')) continue;
-
-      let user = await prisma.user.findUnique({ where: { email: clean } });
-      let studentNumber = '';
-      let studentEmail = clean; // Use personal email if user exists, or create new student email? 
-      // The previous logic forced creating a new student email.
-      // User requirement: "get users personal emails"
-      // If user exists with personal email, we use that.
-      // If not, do we create a new one with student number email?
-      // The previous logic was creating student number email.
-      // Let's stick to the previous logic for NEW users, but handle existing users gracefully.
-
-      let isNewUser = false;
-      let tempPassword = '';
-
-      if (!user) {
-        isNewUser = true;
-        // 1. Generate unique Student Number and Email
-        let isUnique = false;
-        let attempts = 0;
-
-        while (!isUnique && attempts < 10) {
-          const randomSuffix = Math.floor(1000 + Math.random() * 9000).toString();
-          studentNumber = `${year}${randomSuffix}`;
-          studentEmail = `${studentNumber}@excellenceakademie.co.za`; // Official email
-
-          const existing = await prisma.user.findUnique({ where: { email: studentEmail } });
-          if (!existing) isUnique = true;
-          attempts++;
-        }
-
-        if (!isUnique) {
-          results.push({ email: clean, error: 'Failed to generate unique Student ID' });
-          continue;
-        }
-
-        // 2. Generate Temporary Password
-        tempPassword = crypto.randomBytes(4).toString('hex') + Math.floor(Math.random() * 100);
-
-        // 3. Create User
-        const name = clean.split('@')[0];
-
-        // We store the official email in the User table?
-        // Or do we store the personal email?
-        // The schema has `email` unique.
-        // If we store official email, we lose the link to personal email unless we store it elsewhere.
-        // But we are sending credentials TO the personal email (`clean`).
-
-        user = await prisma.user.create({
-          data: {
-            email: studentEmail, // Official email
-            name: name,
-            role: 'student',
-            department_id: department || null
-          }
-        });
-
-        // 4. Save Credentials
-        const hash = await hashPassword(tempPassword);
-        const db = await getConnection();
-        try {
-          const now = new Date().toISOString();
-          await db.run(
-            `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
-            [studentEmail, user.id, hash, now, now]
-          );
-        } finally {
-          await db.close();
-        }
-      } else {
-        // User exists
-        studentEmail = user.email;
-        // If user exists, we don't generate new credentials?
-        // Or should we?
-        // Maybe just notify them they are enrolled.
-      }
-
-      // Enrollment
-      if (courseId && user) {
-        const enrollment = await prisma.courseEnrollment.findFirst({
-          where: { userId: user.id, courseId: courseId }
-        });
-        if (!enrollment) {
-          await prisma.courseEnrollment.create({
-            data: { userId: user.id, courseId: courseId, status: 'enrolled' }
-          });
-        }
-      }
-
-      // 5. Send Email
-      if (isNewUser) {
-        const link = `${frontendBase.replace(/\/$/, '')}/login`;
-        const content = renderStudentCredentialsEmail({
-          recipientName: user.name,
-          studentNumber,
-          studentEmail,
-          tempPassword,
-          loginUrl: link,
-          courseName
-        });
-
-        const send = await sendEmail({ to: clean, subject: 'Your Student Login Credentials - Excellence Academia', content });
-        results.push({ email: clean, studentNumber, studentEmail, sent: !!send.success });
-      } else {
-        // Send enrollment notification?
-        // For now, only if invited to course
-        if (courseName) {
-          const content = renderBrandedEmail({
-            title: 'Course Enrollment',
-            message: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`
-          });
-          const send = await sendEmail({ to: clean, subject: 'Course Enrollment - Excellence Academia', content });
-          results.push({ email: clean, enrolled: true, sent: !!send.success });
-        } else {
-          results.push({ email: clean, error: 'User already exists' });
-        }
-      }
-    }
-    return res.json({ success: true, invited: results });
-  } catch (error) {
-    console.error('Invite error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send invitations' });
-  }
-});
-
-// Set password from invitation token
-app.post('/api/auth/set-password', async (req, res) => {
-  try {
-    const { token, password } = req.body || {};
-    if (!token || !password || String(password).length < 8) {
-      return res.status(400).json({ success: false, error: 'Valid token and password (min 8 chars) are required' });
-    }
-    let payload: any;
-    try {
-      payload = jwt.verify(token, JWT_SECRET) as any;
-    } catch (e) {
-      return res.status(400).json({ success: false, error: 'Invalid or expired token' });
-    }
-    if (!payload.email || !['invite', 'tutor-invite'].includes(String(payload.purpose))) {
-      return res.status(400).json({ success: false, error: 'Invalid token purpose' });
-    }
-    const email = String(payload.email).toLowerCase();
-    await ensureCredentialsTable();
-    const hash = await hashPassword(String(password));
-
-    // Ensure User exists
-    let user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      const role = payload.purpose === 'tutor-invite' ? 'tutor' : 'student';
-      user = await prisma.user.create({ data: { email, name: email.split('@')[0], role } });
-    }
-
-    const db = await getConnection();
-    try {
-      const now = new Date().toISOString();
-      await db.run(
-        `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
-        [email, user.id, hash, now, now]
-      );
-    } finally {
-      await db.close();
-    }
-
-    return res.json({ success: true });
-  } catch (error) {
-    console.error('Set password error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to set password' });
-  }
-});
-app.use('/uploads', express.static(uploadsDir));
-
-// Request compression for better performance
-app.set('trust proxy', 1);
-
-// Enhanced request logging with performance metrics
-app.use((req, res, next) => {
-  const start = Date.now();
-
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
-  });
-
-  next();
-});
-
-// Basic cookie parser
-function parseCookies(req) {
-  const header = req.headers?.cookie || '';
-  return header.split(';').reduce((acc, part) => {
-    const [key, ...v] = part.trim().split('=');
-    if (!key) return acc;
-    acc[key] = decodeURIComponent(v.join('='));
-    return acc;
-  }, {} as Record<string, string>);
-}
-
-// JWT auth helpers
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
-function authenticateJWT(req, res, next) {
-  try {
-    const cookies = parseCookies(req);
-    const headerToken = req.headers.authorization?.startsWith('Bearer ')
-      ? req.headers.authorization.slice('Bearer '.length)
-      : undefined;
-    const token = headerToken || cookies['admin_token'] || cookies['auth_token'];
-    if (!token) return res.status(401).json({ success: false, error: 'Unauthorized' });
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ success: false, error: 'Invalid token' });
-  }
-}
-
-function authorizeRoles(...allowedRoles: string[]) {
-  return (req, res, next) => {
-    if (!req.user || !allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({ success: false, error: 'Forbidden' });
-    }
-    next();
-  };
-}
-
-// Global error handling middleware
-app.use((err, req, res, next) => {
-  console.error(`Error in ${req.method} ${req.path}:`, {
-    message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
-    timestamp: new Date().toISOString()
-  });
-
-  res.status(err.status || 500).json({
-    success: false,
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Enhanced health check with database connectivity
-app.get('/api/health', async (req, res) => {
-  try {
-    // Quick database connectivity check
-    await prisma.$queryRaw`SELECT 1`;
-
-    res.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      version: process.env.npm_package_version || '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
-      database: 'connected'
-    });
-  } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(503).json({
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      error: 'Database connection failed'
-    });
-  }
-});
-
-// Admin auth endpoints
-app.post('/api/admin/auth/login', async (req, res) => {
-  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || process.env.ADMIN_EMAIL || 'admin';
-  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
-  const { username, email, password } = req.body || {};
-  const submittedId = (email || username || '').toString().trim();
-
-  if (submittedId && submittedId === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-    const token = jwt.sign({ username: submittedId, role: 'admin', exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) }, JWT_SECRET);
-    const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
-    res.setHeader('Set-Cookie', `admin_token=${token}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Strict;${secure}`);
-    return res.status(200).json({ success: true, message: 'Login successful', user: { username: submittedId, role: 'admin' } });
-  }
-  return res.status(401).json({ success: false, message: 'Invalid credentials' });
-});
-
-app.get('/api/admin/auth/verify', authenticateJWT, authorizeRoles('admin'), (req, res) => {
-  return res.status(200).json({ success: true, user: req.user });
-});
-
-app.post('/api/admin/auth/logout', (req, res) => {
-  const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
-  res.setHeader('Set-Cookie', `admin_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict;${secure}`);
-  return res.status(200).json({ success: true, message: 'Logged out' });
-});
-
-async function ensureNotificationsTable() {
-  const db = await getConnection();
+async function ensureNotificationsTable(): Promise<void> {
+  const db = await getConnection()
   try {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS notifications (
@@ -1251,1000 +759,703 @@ async function ensureNotificationsTable() {
         created_at TEXT NOT NULL,
         read INTEGER DEFAULT 0
       );
-    `);
+    `)
   } finally {
-    await db.close();
+    await db.close()
   }
 }
 
-app.post('/api/notifications', async (req, res) => {
+async function ensureTutorRatingsTable(): Promise<void> {
+  const db = await getConnection()
   try {
-    const { title, message, type = 'system', recipients } = req.body || {};
-    if (!title || !message) return res.status(400).json({ success: false, error: 'title and message are required' });
-    await ensureNotificationsTable();
-    const db = await getConnection();
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS tutor_ratings (
+        id TEXT PRIMARY KEY,
+        tutor_id TEXT NOT NULL,
+        rating INTEGER NOT NULL,
+        comment TEXT,
+        created_at TEXT NOT NULL
+      );
+    `)
+  } finally {
+    await db.close()
+  }
+}
+
+// University Application content
+app.get("/api/admin/content/university-application", async (req: Request, res: Response) => {
+  try {
+    const record = await (prisma.universityApplicationContent as any)
+      ?.findFirst({ where: { isActive: true } })
+      .catch(() => null as any)
+    if (record) {
+      return res.json({
+        success: true,
+        services: record.services ?? "[]",
+        requirements: record.requirements ?? "[]",
+        process: record.process ?? "[]",
+      })
+    }
+    return res.json({ success: true, services: "[]", requirements: "[]", process: "[]" })
+  } catch (error) {
+    console.error("University application content error:", error)
+    return res.json({ success: true, services: "[]", requirements: "[]", process: "[]" })
+  }
+})
+
+// Tutor ratings
+app.post(
+  "/api/admin/content/tutors/:id/ratings",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const id = crypto.randomUUID();
-      const now = new Date().toISOString();
-      await db.run('INSERT INTO notifications (id, title, message, type, status, created_at, read) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-        id, String(title), String(message), String(type), 'sent', now, 0
-      ]);
-      const toSpecific = Array.isArray(recipients?.specific) ? recipients.specific.filter((e: any) => typeof e === 'string') : [];
-      const sendList: string[] = [];
-      if (recipients?.tutors) {
-        const tutors = await db.all(`SELECT email FROM users WHERE role = 'tutor' AND email IS NOT NULL AND TRIM(email) <> ''`);
-        sendList.push(...tutors.map((r: any) => String(r.email)));
-      }
-      if (recipients?.students) {
-        const students = await db.all(`SELECT email FROM users WHERE role = 'student' AND email IS NOT NULL AND TRIM(email) <> ''`);
-        sendList.push(...students.map((r: any) => String(r.email)));
-      }
-      sendList.push(...toSpecific.map((e: string) => e.toLowerCase()));
-      const uniqueList = Array.from(new Set(sendList)).slice(0, 200);
-      for (const to of uniqueList) {
-        const html = renderBrandedEmail({ title: String(title), message: `<p>${String(message)}</p>` });
-        await sendEmail({ to, subject: String(title), content: html });
-      }
-      return res.status(201).json({ success: true, id });
-    } finally {
-      await db.close();
-    }
-  } catch (error) {
-    console.error('Error creating notification:', error);
-    return res.status(500).json({ success: false, error: 'Failed to create notification' });
-  }
-});
+      const tutorId = String(req.params.id || "")
+      const { rating, comment } = req.body || {}
+      const r = Number(rating)
+      if (!tutorId) return res.status(400).json({ success: false, error: "Tutor ID is required" })
+      if (!Number.isFinite(r) || r < 1 || r > 5)
+        return res.status(400).json({ success: false, error: "Rating must be 1-5" })
 
-
-
-app.post('/api/admin/tutors/invite', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { emails, tutorName, department } = req.body || {};
-    const list = Array.isArray(emails) ? emails.filter((e: any) => typeof e === 'string').map((e: string) => e.trim()).filter(Boolean) : [];
-    if (list.length === 0) return res.status(400).json({ success: false, error: 'emails array required' });
-    const base = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-    const results: any[] = [];
-    for (const email of list.slice(0, 200)) {
-      const actionUrl = `${base}/welcome?email=${encodeURIComponent(email)}`;
-      const html = renderInvitationEmail({ recipientName: tutorName || email.split('@')[0], actionUrl, tutorName, department });
-      const r = await sendEmail({ to: email, subject: 'Invitation to Excellence Academia (Tutor)', content: html });
-      results.push({ email, sent: !!r?.success });
-    }
-    return res.json({ success: true, invited: results });
-  } catch (error) {
-    console.error('Tutor invite error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send invitations' });
-  }
-});
-
-app.post('/api/admin/email/send', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { subject, message, recipients, department } = req.body || {};
-    if (!subject || !message) return res.status(400).json({ success: false, error: 'subject and message are required' });
-    const db = await getConnection();
-    try {
-      const sendList: string[] = [];
-      const deptClause = department ? ` AND department = ?` : '';
-      const params: any[] = department ? [department] : [];
-      if (recipients?.tutors) {
-        const tutors = await db.all(`SELECT email FROM users WHERE role = 'tutor' AND email IS NOT NULL AND TRIM(email) <> ''${deptClause}`, params);
-        sendList.push(...tutors.map((r: any) => String(r.email)));
-      }
-      if (recipients?.students) {
-        const students = await db.all(`SELECT email FROM users WHERE role = 'student' AND email IS NOT NULL AND TRIM(email) <> ''${deptClause}`, params);
-        sendList.push(...students.map((r: any) => String(r.email)));
-      }
-      const toSpecific = Array.isArray(recipients?.specific) ? recipients.specific.filter((e: any) => typeof e === 'string') : [];
-      sendList.push(...toSpecific.map((e: string) => e.toLowerCase()));
-      const uniqueList = Array.from(new Set(sendList)).slice(0, 500);
-      const html = renderBrandedEmail({ title: String(subject), message: `<p>${String(message)}</p>` });
-      const results: any[] = [];
-      for (const to of uniqueList) {
-        const r = await sendEmail({ to, subject: String(subject), content: html });
-        results.push({ email: to, sent: !!r?.success });
-      }
-      return res.json({ success: true, sent: results });
-    } finally {
-      await db.close();
-    }
-  } catch (error) {
-    console.error('Admin email send error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send emails' });
-  }
-});
-
-app.post('/api/admin/email/preview', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { template, title, intro, actionText, actionUrl, highlights, courseName, tutorName, department } = req.body || {};
-    if (!template || !title || !intro) return res.status(400).json({ success: false, error: 'template, title, intro required' });
-    const html = renderBrandedEmailPreview({
-      template,
-      title: String(title),
-      intro: String(intro),
-      actionText: actionText ? String(actionText) : undefined,
-      actionUrl: actionUrl ? String(actionUrl) : undefined,
-      highlights: Array.isArray(highlights) ? highlights.map((x: any) => String(x)) : undefined,
-      courseName: courseName ? String(courseName) : undefined,
-      tutorName: tutorName ? String(tutorName) : undefined,
-      department: department ? String(department) : undefined
-    });
-    return res.json({ success: true, html });
-  } catch (error) {
-    console.error('Email preview error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to render preview' });
-  }
-});
-
-// Tutor invite endpoint - restrict recipients to tutor's own students or new emails
-app.post('/api/tutor/students/invite', authenticateJWT, authorizeRoles('tutor'), async (req, res) => {
-  try {
-    const { emails, courseName } = req.body || {};
-    const tutorId = req.user?.id;
-
-    // Basic validation
-    if (!courseName) return res.status(400).json({ success: false, error: 'courseName is required' });
-
-    const list = Array.isArray(emails) ? emails.filter((e: any) => typeof e === 'string').map((e: string) => e.trim()).filter(Boolean) : [];
-    if (list.length === 0) return res.status(400).json({ success: false, error: 'emails array required' });
-
-    // Verify course belongs to tutor
-    const db = await getConnection();
-    const course = await db.get('SELECT * FROM courses WHERE name = ? AND tutor_id = ?', [courseName, tutorId]);
-    await db.close();
-
-    if (!course) {
-      return res.status(403).json({ success: false, error: 'Course not found or access denied' });
-    }
-
-    const base = process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za';
-    const results: any[] = [];
-    const tutorName = req.user?.username || 'Tutor';
-    const department = course.department || 'General';
-
-    for (const email of list.slice(0, 200)) {
-      const actionUrl = `${base}/welcome?email=${encodeURIComponent(email)}`;
-      const html = renderInvitationEmail({ recipientName: email.split('@')[0], actionUrl, courseName, tutorName, department });
-      const r = await sendEmail({ to: email, subject: 'Invitation to Excellence Academia', content: html });
-      results.push({ email, sent: !!r?.success });
-    }
-    return res.json({ success: true, invited: results });
-  } catch (error) {
-    console.error('Tutor student invite error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send invitations' });
-  }
-});
-
-// Tutor email endpoint - restrict recipients to tutor's own students
-app.post('/api/tutor/email/send', authenticateJWT, authorizeRoles('tutor'), async (req, res) => {
-  try {
-    const { subject, message, courseId } = req.body || {};
-    if (!message) return res.status(400).json({ success: false, error: 'message is required' });
-    const tutorId = String(req.user?.id || '').trim();
-    if (!tutorId) return res.status(401).json({ success: false, error: 'Unauthorized' });
-    const db = await getConnection();
-    try {
-      const emails: string[] = [];
-      if (courseId && String(courseId).trim().length > 0) {
-        const owns = await db.get('SELECT 1 FROM courses WHERE id = ? AND tutor_id = ?', [courseId, tutorId]);
-        if (!owns) return res.status(403).json({ success: false, error: 'Forbidden: course does not belong to tutor' });
-        const rows = await db.all(
-          `SELECT DISTINCT u.email 
-           FROM users u 
-           JOIN enrollments e ON e.student_id = u.id 
-           WHERE e.course_id = ? 
-             AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
-          [courseId]
-        );
-        emails.push(...rows.map((r: any) => String(r.email)));
-      } else {
-        const rows = await db.all(
-          `SELECT DISTINCT u.email 
-           FROM users u 
-           JOIN enrollments e ON e.student_id = u.id 
-           JOIN courses c ON c.id = e.course_id 
-           WHERE c.tutor_id = ? 
-             AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
-          [tutorId]
-        );
-        emails.push(...rows.map((r: any) => String(r.email)));
-      }
-      const unique = Array.from(new Set(emails)).slice(0, 500);
-      const html = renderBrandedEmail({
-        title: String(subject || 'Message from your tutor'),
-        message: `<p>${String(message)}</p>`,
-        footerNote: 'You received this email because you are enrolled with this tutor.'
-      });
-      const results: any[] = [];
-      for (const to of unique) {
-        const r = await sendEmail({ to, subject: String(subject || 'Tutor Notification'), content: html });
-        results.push({ email: to, sent: !!r?.success });
-      }
-      return res.json({ success: true, count: results.length, sent: results });
-    } finally {
-      await db.close();
-    }
-  } catch (error) {
-    console.error('Tutor email send error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send tutor emails' });
-  }
-});
-
-// Optimized generic query endpoint with validation
-app.post('/api/query', async (req, res) => {
-  try {
-    const { query, params } = req.body;
-
-    if (!query || typeof query !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: 'Valid query string is required'
-      });
-    }
-
-    // Basic SQL injection protection - restrict dangerous operations
-    const dangerousPatterns = /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE)\b/i;
-    if (dangerousPatterns.test(query)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Query contains restricted operations'
-      });
-    }
-
-    const db = await getConnection();
-    const result = await db.all(query, params || []);
-    await db.close();
-
-    res.json({
-      success: true,
-      data: result,
-      count: Array.isArray(result) ? result.length : 1,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Query error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Database query failed',
-      message: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-// Optimized User routes with caching headers
-app.get('/api/users/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!id?.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'User ID is required'
-      });
-    }
-
-    const db = await getConnection();
-    const user = await db.get('SELECT * FROM users WHERE id = ?', [id]);
-    await db.close();
-
-    if (user) {
-      // Set cache headers for better performance
-      res.set('Cache-Control', 'public, max-age=300'); // 5 minutes
-      res.json({ success: true, data: user });
-    } else {
-      res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
-    }
-  } catch (error) {
-    console.error('Error fetching user:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch user'
-    });
-  }
-});
-
-// Update user
-app.put('/api/users/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, email, status } = req.body || {};
-    if (!id?.trim()) {
-      return res.status(400).json({ success: false, error: 'User ID is required' });
-    }
-
-    const db = await getConnection();
-    const existing = await db.get('SELECT * FROM users WHERE id = ?', [id]);
-    if (!existing) {
-      await db.close();
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
-
-    const nextName = name !== undefined ? name : existing.name;
-    const nextEmail = email !== undefined ? email : existing.email;
-    const nextStatus = status !== undefined ? status : existing.status;
-    await db.run('UPDATE users SET name = ?, email = ?, status = ?, updated_at = ? WHERE id = ?', [
-      nextName,
-      nextEmail,
-      nextStatus,
-      new Date().toISOString(),
-      id,
-    ]);
-    const updated = await db.get('SELECT * FROM users WHERE id = ?', [id]);
-    await db.close();
-    return res.json({ success: true, data: updated });
-  } catch (error) {
-    console.error('Error updating user:', error);
-    return res.status(500).json({ success: false, error: 'Failed to update user' });
-  }
-});
-
-// Delete user (soft delete -> set status inactive)
-app.delete('/api/users/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (!id?.trim()) {
-      return res.status(400).json({ success: false, error: 'User ID is required' });
-    }
-    const db = await getConnection();
-    const result = await db.run('UPDATE users SET status = ? WHERE id = ?', ['inactive', id]);
-    await db.close();
-    if (result.changes === 0) {
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
-    return res.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting user:', error);
-    return res.status(500).json({ success: false, error: 'Failed to delete user' });
-  }
-});
-
-// High-performance Course routes
-app.get('/api/courses', async (req, res) => {
-  try {
-    const { limit = 50, offset = 0, category } = req.query;
-    const limitInt = Math.min(parseInt(limit) || 50, 100); // Max 100 items
-    const offsetInt = Math.max(parseInt(offset) || 0, 0);
-
-    const db = await getConnection();
-    let query = 'SELECT * FROM courses';
-    const params = [];
-
-    if (category) {
-      query += ' WHERE category = ?';
-      params.push(category);
-    }
-
-    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    params.push(limitInt, offsetInt);
-
-    const courses = await db.all(query, params);
-    await db.close();
-
-    // Cache for 10 minutes
-    res.set('Cache-Control', 'public, max-age=600');
-    res.json({
-      success: true,
-      data: courses,
-      pagination: {
-        limit: limitInt,
-        offset: offsetInt,
-        count: courses.length,
-        hasMore: courses.length === limitInt
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching courses:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch courses'
-    });
-  }
-});
-
-app.get('/api/courses/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!id?.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Course ID is required'
-      });
-    }
-
-    const db = await getConnection();
-    const course = await db.get('SELECT * FROM courses WHERE id = ?', [id]);
-    await db.close();
-
-    if (course) {
-      res.set('Cache-Control', 'public, max-age=300');
-      res.json({ success: true, data: course });
-    } else {
-      res.status(404).json({
-        success: false,
-        error: 'Course not found'
-      });
-    }
-  } catch (error) {
-    console.error('Error fetching course:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch course'
-    });
-  }
-});
-
-// Create course
-app.post('/api/courses', async (req, res) => {
-  try {
-    const { title, description, department, tutorId, startDate, endDate, category } = req.body;
-
-    if (!title || !description || !department || !tutorId) {
-      return res.status(400).json({
-        success: false,
-        error: 'title, description, department, and tutorId are required'
-      });
-    }
-
-    const db = await getConnection();
-    const result = await db.run(
-      'INSERT INTO courses (title, description, department, tutor_id, start_date, end_date, category, section, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [title, description, department, tutorId, startDate, endDate, category || department, req.body.section || null, new Date().toISOString()]
-    );
-    await db.close();
-
-    const newCourse = {
-      id: result.lastID.toString(),
-      title,
-      description,
-      department,
-      tutorId,
-      startDate,
-      endDate,
-      category: category || department,
-      section: req.body.section || null,
-      createdAt: new Date().toISOString()
-    };
-
-    res.status(201).json({ success: true, data: newCourse });
-  } catch (error) {
-    console.error('Error creating course:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create course'
-    });
-  }
-});
-
-// Delete course
-app.delete('/api/courses/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    if (!id?.trim()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Course ID is required'
-      });
-    }
-
-    const db = await getConnection();
-    const result = await db.run('DELETE FROM courses WHERE id = ?', [id]);
-    await db.close();
-
-    if (result.changes === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Course not found'
-      });
-    }
-
-    res.json({ success: true, message: 'Course deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting course:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to delete course'
-    });
-  }
-});
-
-// High-performance Tutors API with advanced filtering
-app.get('/api/tutors', async (req, res) => {
-  try {
-    const {
-      subject,
-      rating,
-      limit = 20,
-      offset = 0,
-      search
-    } = req.query;
-
-    const limitInt = Math.min(parseInt(limit) || 20, 50);
-    const offsetInt = Math.max(parseInt(offset) || 0, 0);
-
-    const whereConditions = { isActive: true };
-
-    // Apply filters
-    if (subject) {
-      whereConditions.subjects = { contains: subject };
-    }
-
-    if (search) {
-      whereConditions.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } }
-      ];
-    }
-
-    const tutors = await prisma.tutor.findMany({
-      where: whereConditions,
-      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      take: limitInt,
-      skip: offsetInt
-    });
-
-    // Efficiently calculate ratings
-    const tutorsWithMetrics = tutors.map(tutor => {
-      let ratings = [];
-      let subjectsList = [];
-
+      await ensureTutorRatingsTable()
+      const db = await getConnection()
       try {
-        ratings = typeof tutor.ratings === 'string' ? JSON.parse(tutor.ratings) : (tutor.ratings || []);
-        subjectsList = typeof tutor.subjects === 'string' ? JSON.parse(tutor.subjects) : (tutor.subjects || []);
-      } catch (e) {
-        console.warn('JSON parse error for tutor:', tutor.id);
+        const id = globalThis.crypto?.randomUUID?.() || crypto.randomUUID()
+        const now = new Date().toISOString()
+        await db.run("INSERT INTO tutor_ratings (id, tutor_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?)", [
+          id,
+          tutorId,
+          r,
+          String(comment || ""),
+          now,
+        ])
+        return res.json({ success: true, id })
+      } finally {
+        await db.close()
       }
-
-      const avgRating = ratings.length > 0
-        ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
-        : 0;
-
-      return {
-        ...tutor,
-        averageRating: avgRating,
-        totalReviews: ratings.length,
-        subjectsList,
-        // Remove large JSON fields for list view
-        ratings: undefined
-      };
-    });
-
-    // Filter by rating if specified
-    const filteredTutors = rating
-      ? tutorsWithMetrics.filter(t => t.averageRating >= parseFloat(rating))
-      : tutorsWithMetrics;
-
-    res.set('Cache-Control', 'public, max-age=300'); // 5 minutes cache
-    res.json({
-      success: true,
-      data: filteredTutors,
-      pagination: {
-        limit: limitInt,
-        offset: offsetInt,
-        count: filteredTutors.length,
-        hasMore: filteredTutors.length === limitInt
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching tutors:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch tutors'
-    });
-  }
-});
-
-app.get('/api/tutors/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const tutor = await prisma.tutor.findUnique({
-      where: { id }
-    });
-
-    if (!tutor) {
-      return res.status(404).json({
-        success: false,
-        error: 'Tutor not found'
-      });
+    } catch (error) {
+      console.error("Create tutor rating error:", error)
+      return res.status(500).json({ success: false, error: "Failed to submit rating" })
     }
+  },
+)
 
-    // Parse JSON fields safely
-    let ratings = [];
-    let subjectsList = [];
-
+// Invite tutors (admin only)
+app.post(
+  "/api/admin/tutors/invite",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
-      ratings = typeof tutor.ratings === 'string' ? JSON.parse(tutor.ratings) : (tutor.ratings || []);
-      subjectsList = typeof tutor.subjects === 'string' ? JSON.parse(tutor.subjects) : (tutor.subjects || []);
-    } catch (e) {
-      console.warn('JSON parse error for tutor:', tutor.id);
+      const { emails, department, tutorName } = req.body || {}
+      if (!Array.isArray(emails) || emails.length === 0) {
+        return res.status(400).json({ success: false, error: "emails[] is required" })
+      }
+      const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+      const results: any[] = []
+
+      for (const email of emails) {
+        const clean = String(email || "")
+          .trim()
+          .toLowerCase()
+        if (!clean || !clean.includes("@")) continue
+
+        let user = await prisma.user.findUnique({ where: { email: clean } })
+        let isNewUser = false
+        let tempPassword = ""
+
+        if (!user) {
+          isNewUser = true
+          tempPassword = crypto.randomBytes(4).toString("hex") + Math.floor(Math.random() * 100)
+
+          const name = clean.split("@")[0]
+          user = await prisma.user.create({
+            data: {
+              email: clean,
+              name: name,
+              role: "tutor",
+              department_id: department || null,
+            },
+          })
+
+          const hash = await hashPassword(tempPassword)
+          const db = await getConnection()
+          try {
+            const now = new Date().toISOString()
+            await db.run(
+              `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
+              [clean, user.id, hash, now, now],
+            )
+          } finally {
+            await db.close()
+          }
+        }
+
+        if (isNewUser) {
+          const link = `${frontendBase.replace(/\/$/, "")}/tutor/login`
+          const content = renderStudentCredentialsEmail({
+            recipientName: user.name,
+            studentNumber: "N/A",
+            studentEmail: clean,
+            tempPassword,
+            loginUrl: link,
+            courseName: department,
+          })
+          const send = await sendEmail({
+            to: clean,
+            subject: "Tutor Account Credentials - Excellence Academia",
+            content,
+          })
+          results.push({ email: clean, sent: !!send.success, tempPassword })
+        } else {
+          results.push({ email: clean, error: "User already exists" })
+        }
+      }
+      return res.json({ success: true, invited: results })
+    } catch (error) {
+      console.error("Tutor invite error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send tutor invitations" })
+    }
+  },
+)
+
+// Student auth: login
+app.post("/api/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body || {}
+    if (!email || !password) return res.status(400).json({ success: false, error: "Email and password are required" })
+    await ensureCredentialsTable()
+    const db = await getConnection()
+    try {
+      const userEmail = String(email).toLowerCase()
+      let row = await db.get("SELECT * FROM user_credentials WHERE email = ?", [userEmail])
+
+      if (!row) {
+        console.log(`[Auth] Auto-registering new user: ${userEmail}`)
+        const role = req.body.role || "student"
+
+        const hash = await hashPassword(String(password))
+        const now = new Date().toISOString()
+
+        let user = await prisma.user.findUnique({ where: { email: userEmail } })
+        if (!user) {
+          user = await prisma.user.create({
+            data: {
+              email: userEmail,
+              name: userEmail.split("@")[0],
+              role,
+              password_hash: hash,
+            },
+          })
+        }
+
+        await db.run(
+          "INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+          [userEmail, user.id, hash, now, now],
+        )
+
+        row = {
+          email: userEmail,
+          user_id: user.id,
+          password_hash: hash,
+          created_at: now,
+          updated_at: now,
+        }
+      }
+
+      if (!row || !row.password_hash) return res.status(401).json({ success: false, error: "Invalid credentials" })
+      const [scheme, salt, stored] = String(row.password_hash).split(":")
+      if (scheme !== "scrypt" || !salt || !stored)
+        return res.status(500).json({ success: false, error: "Invalid credential record" })
+      const derived = await new Promise<string>((resolve, reject) => {
+        crypto.scrypt(String(password), salt, 64, (err, dk) => (err ? reject(err) : resolve(dk.toString("hex"))))
+      })
+      if (derived !== stored) return res.status(401).json({ success: false, error: "Invalid credentials" })
+
+      let user = await prisma.user.findUnique({ where: { email: userEmail } })
+      const role = req.body.role || "student"
+
+      if (!user) user = await prisma.user.create({ data: { email: userEmail, name: userEmail.split("@")[0], role } })
+      const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" })
+      const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+      res.setHeader(
+        "Set-Cookie",
+        `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax;${secure}`,
+      )
+      return res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, name: user.name } })
+    } finally {
+      await db.close()
+    }
+  } catch (error) {
+    console.error("Student login error:", error)
+    return res.status(500).json({ success: false, error: "Login failed" })
+  }
+})
+
+// Student auth: logout
+app.post("/api/auth/logout", (req: Request, res: Response) => {
+  const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+  res.setHeader("Set-Cookie", `auth_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax;${secure}`)
+  return res.json({ success: true })
+})
+
+// Current user
+app.get("/api/auth/me", authenticateJWT as RequestHandler, (req: AuthenticatedRequest, res: Response) => {
+  return res.json({ success: true, user: req.user })
+})
+
+// List users
+app.get("/api/users", async (req: Request, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" } })
+    return res.json({ success: true, data: users })
+  } catch (error) {
+    console.error("List users error:", error)
+    return res.status(500).json({ success: false, error: "Failed to list users" })
+  }
+})
+
+// List students for a specific tutor
+app.get("/api/tutor/:tutorId/students", async (req: Request, res: Response) => {
+  try {
+    const tutorId = Number.parseInt(req.params.tutorId)
+    if (isNaN(tutorId)) {
+      return res.status(400).json({ success: false, error: "Invalid tutor ID" })
     }
 
-    const avgRating = ratings.length > 0
-      ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
-      : 0;
+    const courses = await prisma.course.findMany({
+      where: { tutorId },
+      include: {
+        courseEnrollments: {
+          include: { user: true },
+        },
+      },
+    })
 
-    const enhancedTutor = {
-      ...tutor,
-      averageRating: avgRating,
-      totalReviews: ratings.length,
-      subjectsList,
-      ratingsList: ratings
-    };
+    const studentMap = new Map()
+    courses.forEach((course) => {
+      course.courseEnrollments.forEach((enrollment) => {
+        const student = enrollment.user
+        if (student && student.role === "student") {
+          if (!studentMap.has(student.id)) {
+            studentMap.set(student.id, {
+              ...student,
+              enrolledCourses: [course],
+            })
+          } else {
+            const existing = studentMap.get(student.id)
+            if (!existing.enrolledCourses.find((c: any) => c.id === course.id)) {
+              existing.enrolledCourses.push(course)
+            }
+          }
+        }
+      })
+    })
 
-    res.set('Cache-Control', 'public, max-age=600'); // 10 minutes cache
-    res.json({ success: true, data: enhancedTutor });
+    const students = Array.from(studentMap.values())
+    return res.json({ success: true, data: students })
   } catch (error) {
-    console.error('Error fetching tutor:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch tutor'
-    });
+    console.error("List tutor students error:", error)
+    return res.status(500).json({ success: false, error: "Failed to list tutor students" })
   }
-});
+})
 
-// High-performance Content API with comprehensive caching
-app.get('/api/admin/content/:type', async (req, res) => {
+// Admin stats for analytics
+app.get("/api/admin/stats", async (req: Request, res: Response) => {
   try {
-    const contentType = req.params.type;
-    let content;
-    let cacheTime = 600; // 10 minutes default
+    const [tutorsCount, subjectsCount, testimonialsCount, activeAnnouncementsCount, totalStudents, totalCourses] =
+      await Promise.all([
+        prisma.tutor.count({ where: { isActive: true } }),
+        prisma.subject.count({ where: { isActive: true } }),
+        prisma.testimonial.count({ where: { isActive: true } }),
+        prisma.announcement.count({ where: { isActive: true } }),
+        prisma.user.count({ where: { role: "student" } }),
+        prisma.course.count().catch(() => 0),
+      ])
 
-    const contentQueries = {
-      'tutors': async () => {
-        const tutors = await prisma.tutor.findMany({
-          where: { isActive: true },
-          orderBy: [{ order: 'asc' }, { createdAt: 'desc' }]
-        });
+    const activeStudents = Math.round(totalStudents * 0.7)
 
-        return tutors.map(tutor => {
-          let ratings = [];
-          try {
-            ratings = typeof tutor.ratings === 'string' ? JSON.parse(tutor.ratings) : (tutor.ratings || []);
-          } catch (e) {
-            console.warn('Ratings parse error:', tutor.id);
+    res.set("Cache-Control", "public, max-age=300")
+    return res.json({
+      success: true,
+      data: {
+        totalStudents,
+        activeStudents,
+        courses: totalCourses,
+        tutors: tutorsCount,
+        subjects: subjectsCount,
+        testimonials: testimonialsCount,
+        announcements: activeAnnouncementsCount,
+        completionRate: 75,
+        averageGrade: 82,
+        monthlyGrowth: 12,
+        courseStats: [],
+        monthlyData: [],
+        lastUpdated: new Date().toISOString(),
+      },
+    })
+  } catch (error) {
+    console.error("Admin stats error:", error)
+    return res.status(500).json({ success: false, error: "Failed to load stats" })
+  }
+})
+
+// Invite students (admin/tutor)
+app.post(
+  "/api/admin/students/invite",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin", "tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { emails, courseName, tutorName, department } = req.body || {}
+      if (!Array.isArray(emails) || emails.length === 0) {
+        return res.status(400).json({ success: false, error: "emails[] is required" })
+      }
+      const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+      const results: any[] = []
+      const year = new Date().getFullYear()
+
+      let courseId: number | null = null
+      if (courseName) {
+        const course = await prisma.course.findFirst({ where: { name: courseName } })
+        if (course) courseId = course.id
+      }
+
+      for (const email of emails) {
+        const clean = String(email || "")
+          .trim()
+          .toLowerCase()
+        if (!clean || !clean.includes("@")) continue
+
+        let user = await prisma.user.findUnique({ where: { email: clean } })
+        let studentNumber = ""
+        let studentEmail = clean
+
+        let isNewUser = false
+        let tempPassword = ""
+
+        if (!user) {
+          isNewUser = true
+          let isUnique = false
+          let attempts = 0
+
+          while (!isUnique && attempts < 10) {
+            const randomSuffix = Math.floor(1000 + Math.random() * 9000).toString()
+            studentNumber = `${year}${randomSuffix}`
+            studentEmail = `${studentNumber}@excellenceakademie.co.za`
+
+            const existing = await prisma.user.findUnique({ where: { email: studentEmail } })
+            if (!existing) isUnique = true
+            attempts++
           }
 
-          const avgRating = ratings.length > 0
-            ? Math.round((ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
-            : 0;
+          if (!isUnique) {
+            results.push({ email: clean, error: "Failed to generate unique Student ID" })
+            continue
+          }
 
-          return {
-            ...tutor,
-            averageRating: avgRating,
-            totalReviews: ratings.length
-          };
-        });
-      },
-      'team-members': () => prisma.teamMember.findMany({
-        where: { isActive: true },
-        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }]
-      }),
-      'about-us': () => prisma.aboutUsContent.findFirst({
-        where: { isActive: true },
-        orderBy: { updatedAt: 'desc' }
-      }),
-      'hero': () => prisma.heroContent.findFirst({
-        orderBy: { updatedAt: 'desc' }
-      }),
-      'features': () => prisma.feature.findMany({
-        where: { isActive: true },
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
-      }),
-      'announcements': () => prisma.announcement.findMany({
-        where: { isActive: true },
-        orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }]
-      }),
-      'testimonials': () => prisma.testimonial.findMany({
-        where: { isActive: true },
-        orderBy: [{ order: 'asc' }, { createdAt: 'desc' }]
-      }),
-      'pricing': () => prisma.pricingPlan.findMany({
-        where: { isActive: true },
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
-      }),
-      'events': () => prisma.$queryRawUnsafe('SELECT * FROM events ORDER BY date ASC'),
-      'footer': () => prisma.footerContent.findFirst({
-        where: { isActive: true },
-        orderBy: { updatedAt: 'desc' }
-      }),
-      'subjects': () => prisma.subject.findMany({
-        where: { isActive: true },
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
-      }),
-      'navigation': () => prisma.navigationItem.findMany({
-        where: { isActive: true },
-        select: { path: true, label: true, type: true },
-        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }]
-      }),
-      'exam-rewrite': () => prisma.examRewriteContent.findFirst({
-        where: { isActive: true },
-        orderBy: { updatedAt: 'desc' }
-      }),
-      'university-application': () => prisma.universityApplicationContent.findFirst({
-        where: { isActive: true },
-        orderBy: { updatedAt: 'desc' }
-      }),
-      'contact-us': () => prisma.contactUsContent.findFirst({
-        where: { isActive: true },
-        orderBy: { updatedAt: 'desc' }
-      }),
-      'become-tutor': () => prisma.becomeTutorContent.findFirst({
-        where: { isActive: true },
-        orderBy: { updatedAt: 'desc' }
-      })
-    };
+          tempPassword = crypto.randomBytes(4).toString("hex") + Math.floor(Math.random() * 100)
 
-    const queryFn = contentQueries[contentType];
+          const name = clean.split("@")[0]
 
-    if (!queryFn) {
-      return res.status(404).json({
-        success: false,
-        error: 'Content type not found',
-        availableTypes: Object.keys(contentQueries)
-      });
+          user = await prisma.user.create({
+            data: {
+              email: studentEmail,
+              name: name,
+              role: "student",
+              department_id: department || null,
+            },
+          })
+
+          const hash = await hashPassword(tempPassword)
+          const db = await getConnection()
+          try {
+            const now = new Date().toISOString()
+            await db.run(
+              `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
+              [studentEmail, user.id, hash, now, now],
+            )
+          } finally {
+            await db.close()
+          }
+        } else {
+          studentEmail = user.email
+        }
+
+        if (courseId && user) {
+          const enrollment = await prisma.courseEnrollment.findFirst({
+            where: { userId: user.id, courseId: courseId },
+          })
+          if (!enrollment) {
+            await prisma.courseEnrollment.create({
+              data: { userId: user.id, courseId: courseId, status: "enrolled" },
+            })
+          }
+        }
+
+        if (isNewUser) {
+          const link = `${frontendBase.replace(/\/$/, "")}/login`
+          const content = renderStudentCredentialsEmail({
+            recipientName: user.name,
+            studentNumber,
+            studentEmail,
+            tempPassword,
+            loginUrl: link,
+            courseName,
+          })
+
+          const send = await sendEmail({
+            to: clean,
+            subject: "Your Student Login Credentials - Excellence Academia",
+            content,
+          })
+          results.push({ email: clean, studentNumber, studentEmail, sent: !!send.success })
+        } else {
+          if (courseName) {
+            const content = renderBrandedEmail({
+              title: "Course Enrollment",
+              message: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`,
+            })
+            const send = await sendEmail({ to: clean, subject: "Course Enrollment - Excellence Academia", content })
+            results.push({ email: clean, enrolled: true, sent: !!send.success })
+          } else {
+            results.push({ email: clean, error: "User already exists" })
+          }
+        }
+      }
+      return res.json({ success: true, invited: results })
+    } catch (error) {
+      console.error("Invite error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send invitations" })
     }
+  },
+)
 
-    content = await queryFn();
-
-    if (content !== null && content !== undefined) {
-      const listTypes = [
-        'tutors', 'team-members', 'features', 'testimonials',
-        'pricing', 'subjects', 'announcements', 'events', 'navigation'
-      ];
-
-      res.set('Cache-Control', `public, max-age=${cacheTime}`);
-      res.json({
-        success: true,
-        data: content,
-        type: contentType,
-        isArray: listTypes.includes(contentType),
-        count: Array.isArray(content) ? content.length : 1,
-        timestamp: new Date().toISOString()
-      });
-    } else {
-      res.status(404).json({
-        success: false,
-        error: `${contentType} content not found`
-      });
+// Set password from invitation token
+app.post("/api/auth/set-password", async (req: Request, res: Response) => {
+  try {
+    const { token, password } = req.body || {}
+    if (!token || !password || String(password).length < 8) {
+      return res.status(400).json({ success: false, error: "Valid token and password (min 8 chars) are required" })
     }
-  } catch (error) {
-    console.error(`Error fetching ${req.params.type} content:`, error);
-    // In production, avoid leaking error details
-    const status = 500;
-    const isProd = process.env.NODE_ENV === 'production';
-    const message = isProd ? 'Failed to fetch content' : (error as any)?.message;
-    res.status(500).json({
-      success: false,
-      error: `Failed to fetch ${req.params.type} content`,
-      message
-    });
-  }
-});
-
-// Content configuration for CRUD
-const contentConfig = {
-  'features': { model: () => prisma.feature, jsonFields: ['benefits'], isSingleton: false },
-  'testimonials': { model: () => prisma.testimonial, jsonFields: [], isSingleton: false },
-  'team-members': { model: () => prisma.teamMember, jsonFields: [], isSingleton: false },
-  'pricing': { model: () => prisma.pricingPlan, jsonFields: ['features', 'notIncluded'], isSingleton: false },
-  'announcements': { model: () => prisma.announcement, jsonFields: [], isSingleton: false },
-  'subjects': { model: () => prisma.subject, jsonFields: ['popularTopics', 'difficulty'], isSingleton: false },
-  'navigation': { model: () => prisma.navigationItem, jsonFields: [], isSingleton: false },
-  'tutors': { model: () => prisma.tutor, jsonFields: ['subjects', 'ratings'], isSingleton: false },
-  'footer': { model: () => prisma.footerContent, jsonFields: ['socialLinks', 'quickLinks', 'resourceLinks'], isSingleton: true },
-  'hero': { model: () => prisma.heroContent, jsonFields: ['universities', 'features'], isSingleton: true },
-  'about-us': { model: () => prisma.aboutUsContent, jsonFields: ['rolesResponsibilities'], isSingleton: true },
-  'contact-us': { model: () => prisma.contactUsContent, jsonFields: ['contactInfo'], isSingleton: true },
-  'exam-rewrite': { model: () => prisma.examRewriteContent, jsonFields: ['benefits', 'process', 'subjects', 'pricingInfo'], isSingleton: true },
-  'university-application': { model: () => prisma.universityApplicationContent, jsonFields: ['services', 'process', 'requirements', 'pricing'], isSingleton: true },
-  'become-tutor': { model: () => prisma.becomeTutorContent, jsonFields: ['requirements', 'benefits'], isSingleton: true }
-} as const;
-
-function stringifyJsonFields(data: Record<string, any>, fields: string[]) {
-  const out: Record<string, any> = { ...data };
-  for (const f of fields) {
-    if (out[f] !== undefined) out[f] = JSON.stringify(out[f]);
-  }
-  return out;
-}
-
-function parseJsonFields(entity: any, fields: string[]) {
-  if (!entity) return entity;
-  const out: any = { ...entity };
-  for (const f of fields) {
+    let payload: any
     try {
-      out[f] = entity[f] ? JSON.parse(entity[f]) : (Array.isArray(out[f]) ? out[f] : (out[f] ?? null));
-    } catch {
-      // ignore parse errors
+      payload = jwt.verify(token, JWT_SECRET) as any
+    } catch (e) {
+      return res.status(400).json({ success: false, error: "Invalid or expired token" })
     }
-  }
-  return out;
-}
+    if (!payload.email || !["invite", "tutor-invite"].includes(String(payload.purpose))) {
+      return res.status(400).json({ success: false, error: "Invalid token purpose" })
+    }
+    const email = String(payload.email).toLowerCase()
+    await ensureCredentialsTable()
+    const hash = await hashPassword(String(password))
 
-// Create content
-app.post('/api/admin/content/:type', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { type } = req.params as { type: keyof typeof contentConfig };
-    const cfg = contentConfig[type];
-    if (!cfg) return res.status(404).json({ success: false, error: 'Content type not found' });
-    const model = cfg.model();
-    const payload = stringifyJsonFields(req.body || {}, cfg.jsonFields);
-
-    let created;
-    if (cfg.isSingleton) {
-      await model.updateMany({ where: { isActive: true }, data: { isActive: false } });
-      created = await model.create({ data: { ...payload, isActive: true } });
-    } else {
-      created = await model.create({ data: { ...payload, isActive: true } });
+    let user = await prisma.user.findUnique({ where: { email } })
+    if (!user) {
+      const role = payload.purpose === "tutor-invite" ? "tutor" : "student"
+      user = await prisma.user.create({ data: { email, name: email.split("@")[0], role } })
     }
 
-    const parsed = parseJsonFields(created, cfg.jsonFields);
-    return res.status(201).json({ success: true, data: parsed });
-  } catch (error) {
-    console.error('Content create error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to create content' });
-  }
-});
-
-// Update content
-app.put('/api/admin/content/:type', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { type } = req.params as { type: keyof typeof contentConfig };
-    const cfg = contentConfig[type];
-    if (!cfg) return res.status(404).json({ success: false, error: 'Content type not found' });
-    const model = cfg.model();
-    const { id, createdAt, updatedAt, averageRating, totalReviews, ...rest } = req.body || {};
-    if (!id) return res.status(400).json({ success: false, error: 'ID is required' });
-    const data = stringifyJsonFields(rest, cfg.jsonFields);
-    const updated = await model.update({ where: { id }, data });
-    const parsed = parseJsonFields(updated, cfg.jsonFields);
-    return res.status(200).json({ success: true, data: parsed });
-  } catch (error) {
-    console.error('Content update error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to update content' });
-  }
-});
-
-// Delete content (soft delete where applicable)
-app.delete('/api/admin/content/:type', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { type } = req.params as { type: keyof typeof contentConfig };
-    const cfg = contentConfig[type];
-    if (!cfg) return res.status(404).json({ success: false, error: 'Content type not found' });
-    const model = cfg.model();
-    const id = (req.query.id as string) || (req.body && req.body.id);
-    if (!id) return res.status(400).json({ success: false, error: 'ID is required' });
-    await model.update({ where: { id }, data: { isActive: false } });
-    return res.status(200).json({ success: true, message: 'Deleted' });
-  } catch (error) {
-    console.error('Content delete error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to delete content' });
-  }
-});
-
-// Image upload endpoint (base64)
-app.post('/api/admin/upload', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const { file, fileName } = req.body || {};
-    if (!file || typeof file !== 'string') {
-      return res.status(400).json({ success: false, error: 'file (base64) is required' });
+    const db = await getConnection()
+    try {
+      const now = new Date().toISOString()
+      await db.run(
+        `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
+        [email, user.id, hash, now, now],
+      )
+    } finally {
+      await db.close()
     }
 
-    const match = /^data:((image\/(png|jpeg|jpg|webp|svg\+xml))|(text\/(html|markdown|plain|x-markdown))|(application\/(json|pdf)));base64,(.+)$/i.exec(file);
-    if (!match) return res.status(400).json({ success: false, error: 'Invalid file data URL. Allowed types: Images, HTML, Markdown, PDF, JSON' });
-    const mime = match[1];
-    let ext = 'bin';
-    if (mime.includes('image')) {
-        ext = mime.includes('svg') ? 'svg' : mime.split('/')[1].replace('jpeg', 'jpg');
-    } else if (mime.includes('text/html')) {
-        ext = 'html';
-    } else if (mime.includes('markdown') || mime.includes('text/plain')) {
-        // Fallback to .md if text/plain, or trust filename if available
-        ext = 'md';
-    } else if (mime.includes('pdf')) {
-        ext = 'pdf';
-    } else if (mime.includes('json')) {
-        ext = 'json';
-    }
-    const base64 = match[match.length - 1];
-    const buffer = Buffer.from(base64, 'base64');
-
-    await fs.mkdir(uploadsDir, { recursive: true });
-    const safeBase = (fileName?.toString().toLowerCase().replace(/[^a-z0-9-_]/g, '-') || 'image');
-    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const name = `${safeBase}-${unique}.${ext}`;
-    const fullPath = path.join(uploadsDir, name);
-    await fs.writeFile(fullPath, buffer);
-
-    // Public URL
-    const urlPath = `/uploads/${name}`;
-    return res.status(201).json({ success: true, url: urlPath, mime, size: buffer.length });
+    return res.json({ success: true })
   } catch (error) {
-    console.error('Upload error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to upload image' });
+    console.error("Set password error:", error)
+    return res.status(500).json({ success: false, error: "Failed to set password" })
   }
-});
+})
 
-// Contact email endpoint
-app.post('/api/contact', async (req, res) => {
-  try {
-    const { name, email, subject, message } = req.body || {};
-    if (!name || !email || !message) {
-      return res.status(400).json({ success: false, error: 'name, email, and message are required' });
+// Change password (authenticated users)
+app.post(
+  "/api/auth/change-password",
+  authenticateJWT as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { currentPassword, newPassword } = req.body || {}
+      const userEmail = req.user?.email
+
+      if (!userEmail) {
+        return res.status(401).json({ success: false, error: "Not authenticated" })
+      }
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ success: false, error: "Current and new passwords are required" })
+      }
+
+      if (String(newPassword).length < 8) {
+        return res.status(400).json({ success: false, error: "New password must be at least 8 characters" })
+      }
+
+      await ensureCredentialsTable()
+      const db = await getConnection()
+
+      try {
+        const row = await db.get("SELECT * FROM user_credentials WHERE email = ?", [userEmail])
+
+        if (!row || !row.password_hash) {
+          return res.status(401).json({ success: false, error: "Invalid credentials" })
+        }
+
+        const [scheme, salt, stored] = String(row.password_hash).split(":")
+        if (scheme !== "scrypt" || !salt || !stored) {
+          return res.status(500).json({ success: false, error: "Invalid credential record" })
+        }
+
+        const derived = await new Promise<string>((resolve, reject) => {
+          crypto.scrypt(String(currentPassword), salt, 64, (err, dk) =>
+            err ? reject(err) : resolve(dk.toString("hex")),
+          )
+        })
+
+        if (derived !== stored) {
+          return res.status(401).json({ success: false, error: "Current password is incorrect" })
+        }
+
+        const newHash = await hashPassword(String(newPassword))
+        const now = new Date().toISOString()
+
+        await db.run(`UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE email = ?`, [
+          newHash,
+          now,
+          userEmail,
+        ])
+
+        return res.json({ success: true, message: "Password changed successfully" })
+      } finally {
+        await db.close()
+      }
+    } catch (error) {
+      console.error("Change password error:", error)
+      return res.status(500).json({ success: false, error: "Failed to change password" })
     }
-    const to = process.env.CONTACT_EMAIL || 'admin@excellenceacademia.com';
-    const adminHtml = renderBrandedEmail({
-      title: 'New Contact Form Submission',
-      message: `
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        ${subject ? `<p><strong>Subject:</strong> ${subject}</p>` : ''}
-        <p><strong>Message:</strong></p>
-        <p>${(message || '').replace(/\n/g, '<br/>')}</p>
-      `,
-      footerNote: 'A visitor submitted this message via the contact form.',
-    });
-    const adminSend = await sendEmail({ to, subject: subject || 'New Contact Message', content: adminHtml });
+  },
+)
 
-    // Optional: send acknowledgement to user (best UX)
-    if (email) {
-      const ackHtml = renderBrandedEmail({
-        title: 'We received your message',
-        message: `
-          <p>Hi ${name},</p>
-          <p>We received your message and will get back to you shortly.</p>
-          <p>Best regards,<br/>Excellence Academia</p>
-        `,
-      });
-      try { await sendEmail({ to: email, subject: 'We received your message', content: ackHtml }); } catch { }
+app.use("/uploads", express.static(uploadsDir))
+
+// Request compression for better performance
+app.set("trust proxy", 1)
+
+// Enhanced request logging
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now()
+
+  res.on("finish", () => {
+    const duration = Date.now() - start
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`)
+  })
+
+  next()
+})
+
+// Global error handling middleware
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error(`Error in ${req.method} ${req.path}:`, {
+    message: err.message,
+    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    timestamp: new Date().toISOString(),
+  })
+
+  res.status(err.status || 500).json({
+    success: false,
+    error: process.env.NODE_ENV === "production" ? "Internal server error" : err.message,
+    timestamp: new Date().toISOString(),
+  })
+})
+
+// Health check
+app.get("/api/health", async (req: Request, res: Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+
+    res.json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version || "1.0.0",
+      environment: process.env.NODE_ENV || "development",
+      database: "connected",
+    })
+  } catch (error) {
+    console.error("Health check failed:", error)
+    res.status(503).json({
+      status: "unhealthy",
+      timestamp: new Date().toISOString(),
+      error: "Database connection failed",
+    })
+  }
+})
+
+// Tests API
+app.get("/api/tests", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId } = req.query
+
+    const where: any = {}
+    if (courseId) {
+      where.courseId = Number.parseInt(courseId as string)
     }
 
-    if (!adminSend.success) throw new Error('Email send failed');
-    return res.status(200).json({ success: true });
-  } catch (error) {
-    console.error('Contact email error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send message' });
-  }
-});
+    const tests = await prisma.test.findMany({
+      where,
+      include: {
+        course: true,
+        questions: true,
+        submissions: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    })
 
-// Admin test email endpoint (for verifying RESEND configuration)
-app.post('/api/admin/test-email', authenticateJWT, authorizeRoles('admin'), async (req, res) => {
-  try {
-    const to = (req.body && req.body.to) || (process.env.CONTACT_EMAIL || 'admin@excellenceacademia.com');
-    const html = renderBrandedEmail({
-      title: 'Test Email from Excellence Academia',
-      message: '<p>This is a test email to verify your email delivery configuration.</p>',
-    });
-    const sent = await sendEmail({ to, subject: 'Test Email', content: html });
-    return res.status(200).json({ success: true, result: sent });
+    res.json({ success: true, tests, data: tests })
   } catch (error) {
-    console.error('Test email error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send test email' });
+    console.error("Error fetching tests:", error)
+    res.status(500).json({ success: false, error: "Failed to fetch tests" })
   }
-});
+})
 
-// Tests API endpoints
-app.post('/api/tests', async (req, res) => {
+// Create test
+app.post("/api/tests", async (req: Request, res: Response) => {
   try {
-    const { title, description, dueDate, courseId, questions, totalPoints } = req.body;
+    const { title, description, dueDate, courseId, questions, totalPoints } = req.body
 
     if (!title || !courseId) {
       return res.status(400).json({
         success: false,
-        error: 'title and courseId are required'
-      });
+        error: "title and courseId are required",
+      })
     }
 
-    const db = await getConnection();
+    const db = await getConnection()
     const result = await db.run(
-      'INSERT INTO tests (title, description, due_date, course_id, questions, total_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [title, description, dueDate, courseId, JSON.stringify(questions || []), totalPoints || 0, new Date().toISOString()]
-    );
-    await db.close();
+      "INSERT INTO tests (title, description, due_date, course_id, questions, total_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [
+        title,
+        description,
+        dueDate,
+        courseId,
+        JSON.stringify(questions || []),
+        totalPoints || 0,
+        new Date().toISOString(),
+      ],
+    )
+    await db.close()
 
     const newTest = {
       id: result.lastID.toString(),
@@ -2254,357 +1465,2445 @@ app.post('/api/tests', async (req, res) => {
       courseId,
       questions: questions || [],
       totalPoints: totalPoints || 0,
-      createdAt: new Date().toISOString()
-    };
+      createdAt: new Date().toISOString(),
+    }
 
-    res.status(201).json({ success: true, data: newTest });
+    res.status(201).json({ success: true, data: newTest })
   } catch (error) {
-    console.error('Error creating test:', error);
+    console.error("Error creating test:", error)
     res.status(500).json({
       success: false,
-      error: 'Failed to create test'
-    });
+      error: "Failed to create test",
+    })
   }
-});
+})
 
-// List tests
-app.get('/api/tests', async (req, res) => {
+// Email API - Get emails
+app.get("/api/emails", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const db = await getConnection();
-    const tests = await db.all('SELECT * FROM tests ORDER BY created_at DESC');
-    await db.close();
-    res.set('Cache-Control', 'public, max-age=300');
-    return res.json({ success: true, data: tests });
+    const { folder = "inbox" } = req.query
+    const userId = req.user?.id
+    const userEmail = req.user?.email
+
+    if (!userEmail) {
+      return res.status(400).json({ success: false, error: "User email not found" })
+    }
+
+    let emails
+    if (folder === "sent") {
+      emails = await prisma.email.findMany({
+        where: {
+          from: userEmail,
+          folder: "sent",
+        },
+        orderBy: { timestamp: "desc" },
+        take: 100,
+      })
+    } else {
+      emails = await prisma.email.findMany({
+        where: {
+          to: userEmail,
+          folder: folder as string,
+        },
+        orderBy: { timestamp: "desc" },
+        take: 100,
+      })
+    }
+
+    res.json({ success: true, emails })
   } catch (error) {
-    console.error('Error fetching tests:', error);
-    return res.status(500).json({ success: false, error: 'Failed to fetch tests' });
+    console.error("Error fetching emails:", error)
+    res.status(500).json({ success: false, error: "Failed to fetch emails" })
   }
-});
+})
 
-// Bulk students creation endpoint
-app.post('/api/students/bulk', async (req, res) => {
+// Email API - Send email
+app.post("/api/emails/send", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { emails } = req.body;
+    const { to, subject, body } = req.body
+    const userId = req.user?.id
+    const userEmail = req.user?.email
+    const userName = req.user?.name || "User"
+
+    if (!to || !subject || !body) {
+      return res.status(400).json({ success: false, error: "Missing required fields" })
+    }
+
+    const html = renderBrandedEmail({
+      recipientName: to.split("@")[0],
+      content: body,
+      title: subject,
+    })
+
+    const emailResult = await sendEmail({
+      to,
+      subject,
+      content: html,
+      fromEmail: userEmail,
+      fromName: userName,
+    })
+
+    const email = await prisma.email.create({
+      data: {
+        from: userEmail!,
+        fromName: userName,
+        to,
+        subject,
+        body,
+        htmlBody: html,
+        timestamp: new Date(),
+        read: false,
+        starred: false,
+        folder: "sent",
+      },
+    })
+
+    return res.json({ success: true, email, sent: !!emailResult?.success })
+  } catch (error) {
+    console.error("Send email error:", error)
+    return res.status(500).json({ success: false, error: "Failed to send email" })
+  }
+})
+
+// Email API - Update email
+app.patch("/api/emails/:id", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params
+    const { read, starred, folder } = req.body
+
+    const email = await prisma.email.update({
+      where: { id },
+      data: {
+        ...(typeof read === "boolean" && { read }),
+        ...(typeof starred === "boolean" && { starred }),
+        ...(folder && { folder }),
+      },
+    })
+
+    res.json({ success: true, email })
+  } catch (error) {
+    console.error("Error updating email:", error)
+    res.status(500).json({ success: false, error: "Failed to update email" })
+  }
+})
+
+// Mark email as read/unread
+app.patch(
+  "/api/emails/:id/read",
+  authenticateJWT as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params
+      const { read } = req.body
+
+      const email = await prisma.email.update({
+        where: { id },
+        data: { read },
+      })
+
+      return res.json({ success: true, email })
+    } catch (error) {
+      console.error("Mark read error:", error)
+      return res.status(500).json({ success: false, error: "Failed to update email" })
+    }
+  },
+)
+
+// Star/unstar email
+app.patch(
+  "/api/emails/:id/star",
+  authenticateJWT as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params
+      const { starred } = req.body
+
+      const email = await prisma.email.update({
+        where: { id },
+        data: { starred },
+      })
+
+      return res.json({ success: true, email })
+    } catch (error) {
+      console.error("Star email error:", error)
+      return res.status(500).json({ success: false, error: "Failed to update email" })
+    }
+  },
+)
+
+// Move email to folder
+app.patch(
+  "/api/emails/:id/move",
+  authenticateJWT as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params
+      const { folder } = req.body
+
+      const email = await prisma.email.update({
+        where: { id },
+        data: { folder },
+      })
+
+      return res.json({ success: true, email })
+    } catch (error) {
+      console.error("Move email error:", error)
+      return res.status(500).json({ success: false, error: "Failed to move email" })
+    }
+  },
+)
+
+// Students list for bulk email
+app.get("/api/students/list", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?.id
+    const userRole = req.user?.role
+
+    if (userRole !== "admin" && userRole !== "tutor") {
+      return res.status(403).json({ error: "Forbidden" })
+    }
+
+    let students
+
+    if (userRole === "tutor") {
+      const tutorCourses = await prisma.course.findMany({
+        where: { tutorId: userId as number },
+        select: { id: true, name: true },
+      })
+
+      const courseIds = tutorCourses.map((c) => c.id)
+
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: {
+          courseId: { in: courseIds },
+          status: "enrolled",
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              personalEmail: true,
+            },
+          },
+          course: {
+            select: { name: true },
+          },
+        },
+      })
+
+      students = enrollments.map((e) => ({
+        id: e.user.id.toString(),
+        name: e.user.name,
+        email: e.user.email,
+        personalEmail: e.user.personalEmail,
+        course: e.course.name,
+      }))
+    } else {
+      const allStudents = await prisma.user.findMany({
+        where: { role: "student" },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          personalEmail: true,
+          courseEnrollments: {
+            include: {
+              course: {
+                select: { name: true },
+              },
+            },
+          },
+        },
+      })
+
+      students = allStudents.map((s) => ({
+        id: s.id.toString(),
+        name: s.name,
+        email: s.email,
+        personalEmail: s.personalEmail,
+        course: s.courseEnrollments[0]?.course.name || "No course",
+      }))
+    }
+
+    res.json({ students })
+  } catch (error) {
+    console.error("Error fetching students:", error)
+    res.status(500).json({ error: "Failed to fetch students" })
+  }
+})
+
+// Bulk email send
+app.post(
+  "/api/emails/bulk-send",
+  authenticateJWT as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { students, subject, body, emailType, template } = req.body
+      const userId = req.user?.id
+
+      if (!students || !Array.isArray(students) || students.length === 0) {
+        return res.status(400).json({ error: "No students selected" })
+      }
+
+      if (!subject || !body) {
+        return res.status(400).json({ error: "Subject and body are required" })
+      }
+
+      const sender = await prisma.user.findUnique({
+        where: { id: userId as number },
+        select: { email: true, name: true, role: true },
+      })
+
+      if (!sender) {
+        return res.status(404).json({ error: "Sender not found" })
+      }
+
+      const results = {
+        sent: 0,
+        failed: 0,
+        errors: [] as string[],
+      }
+
+      for (const student of students) {
+        try {
+          let recipientEmail: string
+          let shouldSendExternal = false
+
+          if (emailType === "external") {
+            recipientEmail = student.personalEmail || student.email
+            shouldSendExternal = true
+          } else {
+            recipientEmail = student.email
+          }
+
+          const personalizedSubject = subject
+            .replace(/\[Student Name\]/g, student.name)
+            .replace(/\[Course Name\]/g, student.course || "Your Course")
+            .replace(/\[Tutor Name\]/g, sender.name)
+
+          const personalizedBody = body
+            .replace(/\[Student Name\]/g, student.name)
+            .replace(/\[Course Name\]/g, student.course || "Your Course")
+            .replace(/\[Tutor Name\]/g, sender.name)
+            .replace(/\[Date\]/g, new Date().toLocaleDateString())
+            .replace(/\[Time\]/g, new Date().toLocaleTimeString())
+
+          if (shouldSendExternal) {
+            const htmlContent = renderBrandedEmail({
+              title: personalizedSubject,
+              intro: `Dear ${student.name},`,
+              content: personalizedBody,
+              highlights: [`From: ${sender.name}`, `Role: ${sender.role === "admin" ? "Administrator" : "Tutor"}`],
+            })
+
+            await sendEmail({
+              to: recipientEmail,
+              subject: personalizedSubject,
+              content: htmlContent,
+              fromEmail: process.env.BREVO_FROM_EMAIL,
+              fromName: sender.name,
+            })
+          } else {
+            await prisma.email.create({
+              data: {
+                from: sender.email,
+                fromName: sender.name,
+                to: recipientEmail,
+                subject: personalizedSubject,
+                body: personalizedBody,
+                folder: "sent",
+                read: true,
+              },
+            })
+
+            await prisma.email.create({
+              data: {
+                from: sender.email,
+                fromName: sender.name,
+                to: recipientEmail,
+                subject: personalizedSubject,
+                body: personalizedBody,
+                folder: "inbox",
+                read: false,
+              },
+            })
+          }
+
+          results.sent++
+        } catch (error) {
+          console.error(`Failed to send email to ${student.name}:`, error)
+          results.failed++
+          results.errors.push(`${student.name}: ${error instanceof Error ? error.message : "Unknown error"}`)
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `Sent ${results.sent} email(s), ${results.failed} failed`,
+        results,
+      })
+    } catch (error) {
+      console.error("Bulk email send error:", error)
+      res.status(500).json({ error: "Failed to send bulk emails" })
+    }
+  },
+)
+
+// Tutor scheduled sessions
+app.get(
+  "/api/tutor/scheduled-sessions",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const tutorId = req.user?.id as number
+
+      const sessions = await prisma.scheduledSession.findMany({
+        where: {
+          tutorId,
+          scheduledAt: {
+            gte: new Date(),
+          },
+        },
+        include: {
+          course: true,
+        },
+        orderBy: {
+          scheduledAt: "asc",
+        },
+      })
+
+      res.json({ success: true, sessions })
+    } catch (error) {
+      console.error("Error fetching tutor scheduled sessions:", error)
+      res.status(500).json({ success: false, error: "Failed to fetch scheduled sessions" })
+    }
+  },
+)
+
+// Create scheduled session
+app.post(
+  "/api/tutor/scheduled-sessions",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { courseId, title, description, scheduledAt, duration } = req.body
+      const tutorId = req.user?.id as number
+
+      if (!courseId || !title || !scheduledAt) {
+        return res.status(400).json({ success: false, error: "Missing required fields" })
+      }
+
+      const session = await prisma.scheduledSession.create({
+        data: {
+          courseId: Number.parseInt(courseId),
+          tutorId,
+          title,
+          description,
+          scheduledAt: new Date(scheduledAt),
+          duration: duration || 60,
+          status: "scheduled",
+        },
+      })
+
+      return res.json({ success: true, session })
+    } catch (error) {
+      console.error("Create scheduled session error:", error)
+      return res.status(500).json({ success: false, error: "Failed to create scheduled session" })
+    }
+  },
+)
+
+// Delete scheduled session
+app.delete(
+  "/api/tutor/scheduled-sessions",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.query
+      const tutorId = req.user?.id
+
+      if (!id) {
+        return res.status(400).json({ success: false, error: "Session ID required" })
+      }
+
+      const session = await prisma.scheduledSession.findUnique({
+        where: { id: String(id) },
+      })
+
+      if (!session || session.tutorId !== tutorId) {
+        return res.status(403).json({ success: false, error: "Access denied" })
+      }
+
+      await prisma.scheduledSession.delete({
+        where: { id: String(id) },
+      })
+
+      return res.json({ success: true })
+    } catch (error) {
+      console.error("Delete scheduled session error:", error)
+      return res.status(500).json({ success: false, error: "Failed to delete scheduled session" })
+    }
+  },
+)
+
+// Get scheduled sessions for student
+app.get(
+  "/api/student/scheduled-sessions",
+  authenticateJWT as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const studentIdParam = (req.query.studentId as string) || String(req.user?.id || "")
+      const studentId = Number.parseInt(studentIdParam, 10)
+      if (isNaN(studentId) || studentId <= 0) {
+        return res.status(400).json({ success: false, error: "Student ID is required" })
+      }
+
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: { userId: studentId },
+        include: { course: true },
+      })
+      const courseIds = enrollments.map((e) => e.courseId)
+
+      const now = new Date()
+      const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000)
+
+      const dbSessions = await prisma.scheduledSession.findMany({
+        where: {
+          courseId: { in: courseIds },
+          scheduledAt: { gte: fifteenMinutesAgo },
+        },
+        include: { course: true, tutor: true },
+        orderBy: { scheduledAt: "asc" },
+        take: 20,
+      })
+
+      const activeAdHocSessions: any[] = []
+      activeSessions.forEach((session, cId) => {
+        const courseIdInt = Number.parseInt(cId, 10)
+        if (courseIds.includes(courseIdInt)) {
+          const isInDb = dbSessions.some(
+            (dbS) => dbS.courseId === courseIdInt && (dbS.sessionId === session.sessionId || dbS.status === "active"),
+          )
+
+          if (!isInDb) {
+            const course = enrollments.find((e) => e.courseId === courseIdInt)?.course
+            activeAdHocSessions.push({
+              id: -courseIdInt,
+              title: "Live Session",
+              description: session.message || "Live class in progress",
+              courseId: courseIdInt,
+              courseName: course?.name || "Course",
+              tutorId: 0,
+              tutorName: session.tutorName || "Tutor",
+              scheduledAt: new Date(),
+              duration: 60,
+              status: "live",
+              sessionId: session.sessionId,
+              isLive: true,
+              isReady: true,
+              canJoin: true,
+              course: course,
+              tutor: { name: session.tutorName || "Tutor" },
+            })
+          }
+        }
+      })
+
+      const result = [...dbSessions, ...activeAdHocSessions].map((s) => {
+        const scheduledTime = new Date(s.scheduledAt)
+        const endTime = new Date(scheduledTime.getTime() + s.duration * 60 * 1000)
+        const isLive = activeSessions.has(String(s.courseId))
+
+        const fifteenMinutesFromNow = new Date(now.getTime() + 15 * 60 * 1000)
+        const isReady =
+          !isLive &&
+          ((scheduledTime <= fifteenMinutesFromNow && scheduledTime >= now) || (scheduledTime < now && now < endTime))
+
+        const sessionRoomId = s.sessionId || `${s.courseId}-${s.id}`
+
+        return {
+          id: s.id,
+          title: s.title,
+          description: s.description,
+          courseId: s.courseId,
+          courseName: s.course?.name || "Unknown Course",
+          tutorId: s.tutorId,
+          tutorName: s.tutor?.name || "Tutor",
+          scheduledAt: s.scheduledAt.toISOString(),
+          duration: s.duration,
+          status: isLive ? "live" : isReady ? "ready" : s.status,
+          sessionId: sessionRoomId,
+          isLive,
+          isReady,
+          canJoin: isLive || isReady,
+          course: s.course,
+          tutor: s.tutor,
+        }
+      })
+
+      return res.json({ success: true, sessions: result })
+    } catch (error) {
+      console.error("Error fetching student scheduled sessions:", error)
+      return res.status(500).json({ success: false, error: "Failed to fetch scheduled sessions" })
+    }
+  },
+)
+
+// Admin auth endpoints
+app.post("/api/admin/auth/login", async (req: Request, res: Response) => {
+  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || process.env.ADMIN_EMAIL || "admin"
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123"
+  const { username, email, password } = req.body || {}
+  const submittedId = (email || username || "").toString().trim()
+
+  if (submittedId && submittedId === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const token = jwt.sign(
+      { username: submittedId, role: "admin", exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60 },
+      JWT_SECRET,
+    )
+    const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+    res.setHeader(
+      "Set-Cookie",
+      `admin_token=${token}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Strict;${secure}`,
+    )
+    return res
+      .status(200)
+      .json({ success: true, message: "Login successful", user: { username: submittedId, role: "admin" } })
+  }
+  return res.status(401).json({ success: false, message: "Invalid credentials" })
+})
+
+app.get(
+  "/api/admin/auth/verify",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  (req: AuthenticatedRequest, res: Response) => {
+    return res.status(200).json({ success: true, user: req.user })
+  },
+)
+
+app.post("/api/admin/auth/logout", (req: Request, res: Response) => {
+  const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+  res.setHeader("Set-Cookie", `admin_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict;${secure}`)
+  return res.status(200).json({ success: true, message: "Logged out" })
+})
+
+// Notifications
+app.post("/api/notifications", async (req: Request, res: Response) => {
+  try {
+    const { title, message, type = "system", recipients } = req.body || {}
+    if (!title || !message) return res.status(400).json({ success: false, error: "title and message are required" })
+    await ensureNotificationsTable()
+    const db = await getConnection()
+    try {
+      const id = crypto.randomUUID()
+      const now = new Date().toISOString()
+      await db.run(
+        "INSERT INTO notifications (id, title, message, type, status, created_at, read) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [id, String(title), String(message), String(type), "sent", now, 0],
+      )
+      const toSpecific = Array.isArray(recipients?.specific)
+        ? recipients.specific.filter((e: any) => typeof e === "string")
+        : []
+      const sendList: string[] = []
+      if (recipients?.tutors) {
+        const tutors = await db.all(
+          `SELECT email FROM users WHERE role = 'tutor' AND email IS NOT NULL AND TRIM(email) <> ''`,
+        )
+        sendList.push(...tutors.map((r: any) => String(r.email)))
+      }
+      if (recipients?.students) {
+        const students = await db.all(
+          `SELECT email FROM users WHERE role = 'student' AND email IS NOT NULL AND TRIM(email) <> ''`,
+        )
+        sendList.push(...students.map((r: any) => String(r.email)))
+      }
+      sendList.push(...toSpecific.map((e: string) => e.toLowerCase()))
+      const uniqueList = Array.from(new Set(sendList)).slice(0, 200)
+      for (const to of uniqueList) {
+        const html = renderBrandedEmail({ title: String(title), message: `<p>${String(message)}</p>` })
+        await sendEmail({ to, subject: String(title), content: html })
+      }
+      return res.status(201).json({ success: true, id })
+    } finally {
+      await db.close()
+    }
+  } catch (error) {
+    console.error("Error creating notification:", error)
+    return res.status(500).json({ success: false, error: "Failed to create notification" })
+  }
+})
+
+// List notifications
+app.get("/api/notifications", async (req: Request, res: Response) => {
+  try {
+    const db = await getConnection()
+    const notifications = await db.all("SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200")
+    await db.close()
+    res.set("Cache-Control", "public, max-age=120")
+    return res.json({ success: true, data: notifications })
+  } catch (error) {
+    console.error("Error fetching notifications:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch notifications" })
+  }
+})
+
+// Mark notification as read
+app.patch(
+  "/api/notifications/:id/read",
+  authenticateJWT as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params
+
+      await prisma.notification.update({
+        where: { id: Number.parseInt(id) },
+        data: { read: true },
+      })
+
+      return res.json({ success: true })
+    } catch (error) {
+      console.error("Mark notification read error:", error)
+      return res.status(500).json({ success: false, error: "Failed to update notification" })
+    }
+  },
+)
+
+// Delete notification
+app.delete(
+  "/api/notifications/:id",
+  authenticateJWT as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params
+
+      await prisma.notification.delete({
+        where: { id: Number.parseInt(id) },
+      })
+
+      return res.json({ success: true })
+    } catch (error) {
+      console.error("Delete notification error:", error)
+      return res.status(500).json({ success: false, error: "Failed to delete notification" })
+    }
+  },
+)
+
+// Admin email send
+app.post(
+  "/api/admin/email/send",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { subject, message, recipients, department } = req.body || {}
+      if (!subject || !message)
+        return res.status(400).json({ success: false, error: "subject and message are required" })
+      const db = await getConnection()
+      try {
+        const sendList: string[] = []
+        const deptClause = department ? ` AND department = ?` : ""
+        const params: any[] = department ? [department] : []
+        if (recipients?.tutors) {
+          const tutors = await db.all(
+            `SELECT email FROM users WHERE role = 'tutor' AND email IS NOT NULL AND TRIM(email) <> ''${deptClause}`,
+            params,
+          )
+          sendList.push(...tutors.map((r: any) => String(r.email)))
+        }
+        if (recipients?.students) {
+          const students = await db.all(
+            `SELECT email FROM users WHERE role = 'student' AND email IS NOT NULL AND TRIM(email) <> ''${deptClause}`,
+            params,
+          )
+          sendList.push(...students.map((r: any) => String(r.email)))
+        }
+        const toSpecific = Array.isArray(recipients?.specific)
+          ? recipients.specific.filter((e: any) => typeof e === "string")
+          : []
+        sendList.push(...toSpecific.map((e: string) => e.toLowerCase()))
+        const uniqueList = Array.from(new Set(sendList)).slice(0, 500)
+        const html = renderBrandedEmail({ title: String(subject), message: `<p>${String(message)}</p>` })
+        const results: any[] = []
+        for (const to of uniqueList) {
+          const r = await sendEmail({ to, subject: String(subject), content: html })
+          results.push({ email: to, sent: !!r?.success })
+        }
+        return res.json({ success: true, sent: results })
+      } finally {
+        await db.close()
+      }
+    } catch (error) {
+      console.error("Admin email send error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send emails" })
+    }
+  },
+)
+
+app.post(
+  "/api/admin/email/preview",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { template, title, intro, actionText, actionUrl, highlights, courseName, tutorName, department } =
+        req.body || {}
+      if (!template || !title || !intro)
+        return res.status(400).json({ success: false, error: "template, title, intro required" })
+      const html = renderBrandedEmailPreview({
+        template,
+        title: String(title),
+        intro: String(intro),
+        actionText: actionText ? String(actionText) : undefined,
+        actionUrl: actionUrl ? String(actionUrl) : undefined,
+        highlights: Array.isArray(highlights) ? highlights.map((x: any) => String(x)) : undefined,
+        courseName: courseName ? String(courseName) : undefined,
+        tutorName: tutorName ? String(tutorName) : undefined,
+        department: department ? String(department) : undefined,
+      })
+      return res.json({ success: true, html })
+    } catch (error) {
+      console.error("Email preview error:", error)
+      return res.status(500).json({ success: false, error: "Failed to render preview" })
+    }
+  },
+)
+
+// Tutor student invite
+app.post(
+  "/api/tutor/students/invite",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { emails, courseName } = req.body || {}
+      const tutorId = req.user?.id
+
+      if (!courseName) return res.status(400).json({ success: false, error: "courseName is required" })
+
+      const list = Array.isArray(emails)
+        ? emails
+            .filter((e: any) => typeof e === "string")
+            .map((e: string) => e.trim())
+            .filter(Boolean)
+        : []
+      if (list.length === 0) return res.status(400).json({ success: false, error: "emails array required" })
+
+      const tutor = await prisma.user.findUnique({ where: { id: tutorId as number } })
+      if (!tutor) {
+        return res.status(404).json({ success: false, error: "Tutor not found" })
+      }
+
+      const db = await getConnection()
+      const course = await db.get("SELECT * FROM courses WHERE name = ? AND tutor_id = ?", [courseName, tutorId])
+      await db.close()
+
+      if (!course) {
+        return res.status(403).json({ success: false, error: "Course not found or access denied" })
+      }
+
+      const base = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+      const results: any[] = []
+      const tutorName = tutor.name || req.user?.username || "Your Tutor"
+      const tutorEmail = tutor.email
+      const department = course.department || "General"
+
+      for (const email of list.slice(0, 200)) {
+        const actionUrl = `${base}/welcome?email=${encodeURIComponent(email)}`
+        const html = renderInvitationEmail({
+          recipientName: email.split("@")[0],
+          actionUrl,
+          courseName,
+          tutorName,
+          department,
+        })
+        const r = await sendEmail({
+          to: email,
+          subject: `Invitation from ${tutorName} - Excellence Academia`,
+          content: html,
+          fromEmail: tutorEmail,
+          fromName: tutorName,
+        })
+        results.push({ email, sent: !!r?.success })
+      }
+      return res.json({ success: true, invited: results })
+    } catch (error) {
+      console.error("Tutor student invite error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send invitations" })
+    }
+  },
+)
+
+// Tutor email endpoint
+app.post(
+  "/api/tutor/email/send",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { subject, message, courseId } = req.body || {}
+      if (!message) return res.status(400).json({ success: false, error: "message is required" })
+      const tutorId = String(req.user?.id || "").trim()
+      if (!tutorId) return res.status(401).json({ success: false, error: "Unauthorized" })
+
+      const tutor = await prisma.user.findUnique({ where: { id: Number.parseInt(tutorId) } })
+      if (!tutor) {
+        return res.status(404).json({ success: false, error: "Tutor not found" })
+      }
+
+      const tutorName = tutor.name || "Your Tutor"
+      const tutorEmail = tutor.email
+
+      const db = await getConnection()
+      try {
+        const emails: string[] = []
+        if (courseId && String(courseId).trim().length > 0) {
+          const owns = await db.get("SELECT 1 FROM courses WHERE id = ? AND tutor_id = ?", [courseId, tutorId])
+          if (!owns)
+            return res.status(403).json({ success: false, error: "Forbidden: course does not belong to tutor" })
+          const rows = await db.all(
+            `SELECT DISTINCT u.email 
+           FROM users u 
+           JOIN enrollments e ON e.student_id = u.id 
+           WHERE e.course_id = ? 
+             AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
+            [courseId],
+          )
+          emails.push(...rows.map((r: any) => String(r.email)))
+        } else {
+          const rows = await db.all(
+            `SELECT DISTINCT u.email 
+           FROM users u 
+           JOIN enrollments e ON e.student_id = u.id 
+           JOIN courses c ON c.id = e.course_id 
+           WHERE c.tutor_id = ? 
+             AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
+            [tutorId],
+          )
+          emails.push(...rows.map((r: any) => String(r.email)))
+        }
+        const unique = Array.from(new Set(emails)).slice(0, 500)
+        const html = renderBrandedEmail({
+          title: String(subject || `Message from ${tutorName}`),
+          message: `<p>${String(message)}</p>`,
+          footerNote: `You received this email from ${tutorName} because you are enrolled in their course.`,
+        })
+        const results: any[] = []
+        for (const to of unique) {
+          const r = await sendEmail({
+            to,
+            subject: String(subject || `Message from ${tutorName}`),
+            content: html,
+            fromEmail: tutorEmail,
+            fromName: tutorName,
+          })
+          results.push({ email: to, sent: !!r?.success })
+        }
+        return res.json({ success: true, count: results.length, sent: results })
+      } finally {
+        await db.close()
+      }
+    } catch (error) {
+      console.error("Tutor email send error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send tutor emails" })
+    }
+  },
+)
+
+// Live session notification
+app.post(
+  "/api/tutor/live-session/notify",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { courseId, sessionId, sessionLink } = req.body || {}
+      const tutorId = req.user?.id as number
+
+      if (!courseId || !sessionLink) {
+        return res.status(400).json({ success: false, error: "courseId and sessionLink are required" })
+      }
+
+      const tutor = await prisma.user.findUnique({ where: { id: tutorId } })
+      if (!tutor) {
+        return res.status(404).json({ success: false, error: "Tutor not found" })
+      }
+
+      const course = await prisma.course.findUnique({ where: { id: courseId } })
+      if (!course) {
+        return res.status(404).json({ success: false, error: "Course not found" })
+      }
+
+      if (course.tutorId !== tutorId) {
+        return res.status(403).json({ success: false, error: "Access denied" })
+      }
+
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: { courseId },
+        include: { user: true },
+      })
+
+      const results: any[] = []
+      const tutorName = tutor.name || "Your Tutor"
+      const tutorEmail = tutor.email
+
+      for (const enrollment of enrollments) {
+        const student = enrollment.user
+        if (!student || !student.email) continue
+
+        const html = renderLiveSessionStartedEmail({
+          studentName: student.name || "Student",
+          tutorName,
+          courseName: course.name,
+          sessionLink,
+        })
+
+        const r = await sendEmail({
+          to: student.email,
+          subject: `🔴 LIVE NOW: ${course.name}`,
+          content: html,
+          fromEmail: tutorEmail,
+          fromName: tutorName,
+        })
+
+        results.push({ email: student.email, sent: !!r?.success })
+      }
+
+      return res.json({ success: true, notified: results.length, results })
+    } catch (error) {
+      console.error("Live session notify error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send notifications" })
+    }
+  },
+)
+
+// Material notification
+app.post(
+  "/api/tutor/material/notify",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { courseId, materialName, materialNames, materialType, downloadLink } = req.body || {}
+      const tutorId = req.user?.id as number
+
+      const materials = materialNames || (materialName ? [materialName] : [])
+
+      if (materials.length === 0) {
+        return res.status(400).json({ success: false, error: "materialName or materialNames are required" })
+      }
+
+      const tutor = await prisma.user.findUnique({ where: { id: tutorId } })
+      if (!tutor) {
+        return res.status(404).json({ success: false, error: "Tutor not found" })
+      }
+
+      let enrollments: any[] = []
+      let courseName = "your course"
+
+      if (courseId) {
+        const course = await prisma.course.findUnique({ where: { id: courseId } })
+        if (!course) {
+          return res.status(404).json({ success: false, error: "Course not found" })
+        }
+
+        if (course.tutorId !== tutorId) {
+          return res.status(403).json({ success: false, error: "Access denied" })
+        }
+
+        courseName = course.name
+
+        enrollments = await prisma.courseEnrollment.findMany({
+          where: { courseId },
+          include: { user: true },
+        })
+      } else {
+        const tutorCourses = await prisma.course.findMany({
+          where: { tutorId },
+          select: { id: true, name: true },
+        })
+
+        if (tutorCourses.length > 0) {
+          const courseIds = tutorCourses.map((c) => c.id)
+          enrollments = await prisma.courseEnrollment.findMany({
+            where: { courseId: { in: courseIds } },
+            include: { user: true },
+            distinct: ["userId"],
+          })
+          courseName = tutorCourses.length === 1 ? tutorCourses[0].name : "your courses"
+        }
+      }
+
+      const results: any[] = []
+      const tutorName = tutor.name || "Your Tutor"
+      const tutorEmail = tutor.email
+
+      const materialList = materials.join(", ")
+
+      for (const enrollment of enrollments) {
+        const student = enrollment.user
+        if (!student || !student.email) continue
+
+        const html = renderMaterialUploadedEmail({
+          studentName: student.name || "Student",
+          tutorName,
+          courseName,
+          materialName: materialList,
+          materialType: materialType || "document",
+          downloadLink,
+        })
+
+        const r = await sendEmail({
+          to: student.email,
+          subject: `📚 New Material${materials.length > 1 ? "s" : ""}: ${materialList}`,
+          content: html,
+          fromEmail: tutorEmail,
+          fromName: tutorName,
+        })
+
+        results.push({ email: student.email, sent: !!r?.success })
+      }
+
+      return res.json({ success: true, notified: results.length, results })
+    } catch (error) {
+      console.error("Material notify error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send notifications" })
+    }
+  },
+)
+
+// Test notification
+app.post(
+  "/api/tutor/test/notify",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { courseId, testName, testTitle, dueDate, duration, totalPoints, testLink } = req.body || {}
+      const tutorId = req.user?.id as number
+
+      const finalTestName = testTitle || testName
+
+      if (!courseId || !finalTestName || !dueDate) {
+        return res.status(400).json({ success: false, error: "courseId, testName/testTitle, and dueDate are required" })
+      }
+
+      const tutor = await prisma.user.findUnique({ where: { id: tutorId } })
+      if (!tutor) {
+        return res.status(404).json({ success: false, error: "Tutor not found" })
+      }
+
+      const course = await prisma.course.findUnique({ where: { id: courseId } })
+      if (!course) {
+        return res.status(404).json({ success: false, error: "Course not found" })
+      }
+
+      if (course.tutorId !== tutorId) {
+        return res.status(403).json({ success: false, error: "Access denied" })
+      }
+
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: { courseId },
+        include: { user: true },
+      })
+
+      const results: any[] = []
+      const tutorName = tutor.name || "Your Tutor"
+      const tutorEmail = tutor.email
+
+      for (const enrollment of enrollments) {
+        const student = enrollment.user
+        if (!student || !student.email) continue
+
+        const html = renderTestCreatedEmail({
+          studentName: student.name || "Student",
+          tutorName,
+          courseName: course.name,
+          testName: finalTestName,
+          dueDate: new Date(dueDate),
+          duration,
+          totalPoints,
+          testLink,
+        })
+
+        const r = await sendEmail({
+          to: student.email,
+          subject: `📝 New Test: ${finalTestName}`,
+          content: html,
+          fromEmail: tutorEmail,
+          fromName: tutorName,
+        })
+
+        results.push({ email: student.email, sent: !!r?.success })
+      }
+
+      return res.json({ success: true, notified: results.length, results })
+    } catch (error) {
+      console.error("Test notify error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send notifications" })
+    }
+  },
+)
+
+// Student approval notification
+app.post(
+  "/api/tutor/student/approve-notify",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { studentId, studentEmail, studentName, courseId } = req.body || {}
+      const tutorId = req.user?.id as number
+
+      const tutor = await prisma.user.findUnique({ where: { id: tutorId } })
+      if (!tutor) {
+        return res.status(404).json({ success: false, error: "Tutor not found" })
+      }
+
+      let student: any = null
+      let finalStudentEmail = studentEmail
+      let finalStudentName = studentName
+
+      if (studentId) {
+        student = await prisma.user.findUnique({ where: { id: studentId } })
+        if (student) {
+          finalStudentEmail = student.email
+          finalStudentName = student.name || studentName
+        }
+      } else if (studentEmail) {
+        student = await prisma.user.findUnique({ where: { email: studentEmail } })
+        if (student) {
+          finalStudentName = student.name || studentName
+        }
+      }
+
+      if (!finalStudentEmail) {
+        return res.status(400).json({ success: false, error: "Student email is required" })
+      }
+
+      const tutorName = tutor.name || "Your Tutor"
+      const tutorEmail = tutor.email
+      const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+
+      let courseName = "the course"
+      let courseLink = `${frontendBase}/student/portal`
+
+      if (courseId) {
+        const course = await prisma.course.findUnique({ where: { id: courseId } })
+        if (course) {
+          courseName = course.name
+          courseLink = `${frontendBase}/student/courses/${courseId}`
+        }
+      }
+
+      const html = renderStudentApprovedEmail({
+        studentName: finalStudentName || "Student",
+        tutorName,
+        courseName,
+        courseLink,
+      })
+
+      const r = await sendEmail({
+        to: finalStudentEmail,
+        subject: `✅ Enrollment Approved - ${courseName}`,
+        content: html,
+        fromEmail: tutorEmail,
+        fromName: tutorName,
+      })
+
+      return res.json({ success: true, sent: !!r?.success })
+    } catch (error) {
+      console.error("Approval notify error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send notification" })
+    }
+  },
+)
+
+// Student rejection notification
+app.post(
+  "/api/tutor/student/reject-notify",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { studentId, studentEmail, studentName, courseId } = req.body || {}
+      const tutorId = req.user?.id as number
+
+      const tutor = await prisma.user.findUnique({ where: { id: tutorId } })
+      if (!tutor) {
+        return res.status(404).json({ success: false, error: "Tutor not found" })
+      }
+
+      let student: any = null
+      let finalStudentEmail = studentEmail
+      let finalStudentName = studentName
+
+      if (studentId) {
+        student = await prisma.user.findUnique({ where: { id: studentId } })
+        if (student) {
+          finalStudentEmail = student.email
+          finalStudentName = student.name || studentName
+        }
+      } else if (studentEmail) {
+        student = await prisma.user.findUnique({ where: { email: studentEmail } })
+        if (student) {
+          finalStudentName = student.name || studentName
+        }
+      }
+
+      if (!finalStudentEmail) {
+        return res.status(400).json({ success: false, error: "Student email is required" })
+      }
+
+      const tutorName = tutor.name || "Your Tutor"
+      const tutorEmail = tutor.email
+
+      let courseName = "the course"
+
+      if (courseId) {
+        const course = await prisma.course.findUnique({ where: { id: courseId } })
+        if (course) {
+          courseName = course.name
+        }
+      }
+
+      const html = renderStudentRejectedEmail({
+        studentName: finalStudentName || "Student",
+        tutorName,
+        courseName,
+      })
+
+      const r = await sendEmail({
+        to: finalStudentEmail,
+        subject: `Enrollment Status - ${courseName}`,
+        content: html,
+        fromEmail: tutorEmail,
+        fromName: tutorName,
+      })
+
+      return res.json({ success: true, sent: !!r?.success })
+    } catch (error) {
+      console.error("Rejection notify error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send notification" })
+    }
+  },
+)
+
+// Materials endpoints
+app.get("/api/materials", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId } = req.query
+
+    const where: any = {}
+    if (courseId) {
+      where.courseId = Number.parseInt(courseId as string)
+    }
+
+    const materials = await prisma.courseMaterial.findMany({
+      where,
+      orderBy: { uploadDate: "desc" },
+      include: {
+        course: {
+          select: { id: true, name: true },
+        },
+      },
+    })
+
+    return res.json({ success: true, materials })
+  } catch (error) {
+    console.error("Get materials error:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch materials" })
+  }
+})
+
+app.delete(
+  "/api/materials/:id",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("tutor", "admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { id } = req.params
+
+      await prisma.courseMaterial.delete({
+        where: { id },
+      })
+
+      return res.json({ success: true, message: "Material deleted successfully" })
+    } catch (error) {
+      console.error("Delete material error:", error)
+      return res.status(500).json({ success: false, error: "Failed to delete material" })
+    }
+  },
+)
+
+// Query endpoint with validation
+app.post("/api/query", async (req: Request, res: Response) => {
+  try {
+    const { query, params } = req.body
+
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "Valid query string is required",
+      })
+    }
+
+    const dangerousPatterns = /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE)\b/i
+    if (dangerousPatterns.test(query)) {
+      return res.status(403).json({
+        success: false,
+        error: "Query contains restricted operations",
+      })
+    }
+
+    const db = await getConnection()
+    const result = await db.all(query, params || [])
+    await db.close()
+
+    res.json({
+      success: true,
+      data: result,
+      count: Array.isArray(result) ? result.length : 1,
+      timestamp: new Date().toISOString(),
+    })
+  } catch (error: any) {
+    console.error("Query error:", error)
+    res.status(500).json({
+      success: false,
+      error: "Database query failed",
+      message: process.env.NODE_ENV === "development" ? error.message : undefined,
+    })
+  }
+})
+
+// User routes
+app.get("/api/users/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+
+    if (!id?.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "User ID is required",
+      })
+    }
+
+    const db = await getConnection()
+    const user = await db.get("SELECT * FROM users WHERE id = ?", [id])
+    await db.close()
+
+    if (user) {
+      res.set("Cache-Control", "public, max-age=300")
+      res.json({ success: true, data: user })
+    } else {
+      res.status(404).json({
+        success: false,
+        error: "User not found",
+      })
+    }
+  } catch (error) {
+    console.error("Error fetching user:", error)
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch user",
+    })
+  }
+})
+
+app.put("/api/users/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    const { name, email, status } = req.body || {}
+    if (!id?.trim()) {
+      return res.status(400).json({ success: false, error: "User ID is required" })
+    }
+
+    const db = await getConnection()
+    const existing = await db.get("SELECT * FROM users WHERE id = ?", [id])
+    if (!existing) {
+      await db.close()
+      return res.status(404).json({ success: false, error: "User not found" })
+    }
+
+    const nextName = name !== undefined ? name : existing.name
+    const nextEmail = email !== undefined ? email : existing.email
+    const nextStatus = status !== undefined ? status : existing.status
+    await db.run("UPDATE users SET name = ?, email = ?, status = ?, updated_at = ? WHERE id = ?", [
+      nextName,
+      nextEmail,
+      nextStatus,
+      new Date().toISOString(),
+      id,
+    ])
+    const updated = await db.get("SELECT * FROM users WHERE id = ?", [id])
+    await db.close()
+    return res.json({ success: true, data: updated })
+  } catch (error) {
+    console.error("Error updating user:", error)
+    return res.status(500).json({ success: false, error: "Failed to update user" })
+  }
+})
+
+app.delete("/api/users/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+    if (!id?.trim()) {
+      return res.status(400).json({ success: false, error: "User ID is required" })
+    }
+    const db = await getConnection()
+    const result = await db.run("UPDATE users SET status = ? WHERE id = ?", ["inactive", id])
+    await db.close()
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: "User not found" })
+    }
+    return res.json({ success: true })
+  } catch (error) {
+    console.error("Error deleting user:", error)
+    return res.status(500).json({ success: false, error: "Failed to delete user" })
+  }
+})
+
+// Course routes
+app.get("/api/courses", async (req: Request, res: Response) => {
+  try {
+    const { limit = 50, offset = 0, category } = req.query
+    const limitInt = Math.min(Number.parseInt(limit as string) || 50, 100)
+    const offsetInt = Math.max(Number.parseInt(offset as string) || 0, 0)
+
+    const db = await getConnection()
+    let query = "SELECT * FROM courses"
+    const params: any[] = []
+
+    if (category) {
+      query += " WHERE category = ?"
+      params.push(category)
+    }
+
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.push(limitInt, offsetInt)
+
+    const courses = await db.all(query, params)
+    await db.close()
+
+    res.set("Cache-Control", "public, max-age=600")
+    res.json({
+      success: true,
+      data: courses,
+      pagination: {
+        limit: limitInt,
+        offset: offsetInt,
+        count: courses.length,
+        hasMore: courses.length === limitInt,
+      },
+    })
+  } catch (error) {
+    console.error("Error fetching courses:", error)
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch courses",
+    })
+  }
+})
+
+app.get("/api/courses/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+
+    if (!id?.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Course ID is required",
+      })
+    }
+
+    const db = await getConnection()
+    const course = await db.get("SELECT * FROM courses WHERE id = ?", [id])
+    await db.close()
+
+    if (course) {
+      res.set("Cache-Control", "public, max-age=300")
+      res.json({ success: true, data: course })
+    } else {
+      res.status(404).json({
+        success: false,
+        error: "Course not found",
+      })
+    }
+  } catch (error) {
+    console.error("Error fetching course:", error)
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch course",
+    })
+  }
+})
+
+app.post("/api/courses", async (req: Request, res: Response) => {
+  try {
+    const { name, title, description, department, tutorId, startDate, endDate, category } = req.body
+    const courseName = name || title
+
+    if (!courseName || !description || !department || !tutorId) {
+      return res.status(400).json({
+        success: false,
+        error: "name, description, department, and tutorId are required",
+      })
+    }
+
+    const db = await getConnection()
+    const result = await db.run(
+      "INSERT INTO courses (name, description, department, tutor_id, start_date, end_date, category, section, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        courseName,
+        description,
+        department,
+        tutorId,
+        startDate,
+        endDate,
+        category || department,
+        req.body.section || null,
+        new Date().toISOString(),
+      ],
+    )
+    await db.close()
+
+    const newCourse = {
+      id: result.lastID.toString(),
+      name: courseName,
+      description,
+      department,
+      tutorId,
+      startDate,
+      endDate,
+      category: category || department,
+      section: req.body.section || null,
+      createdAt: new Date().toISOString(),
+    }
+
+    res.status(201).json({ success: true, data: newCourse })
+  } catch (error) {
+    console.error("Error creating course:", error)
+    res.status(500).json({
+      success: false,
+      error: "Failed to create course",
+    })
+  }
+})
+
+app.delete("/api/courses/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+
+    if (!id?.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Course ID is required",
+      })
+    }
+
+    const db = await getConnection()
+    const result = await db.run("DELETE FROM courses WHERE id = ?", [id])
+    await db.close()
+
+    if (result.changes === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Course not found",
+      })
+    }
+
+    res.json({ success: true, message: "Course deleted successfully" })
+  } catch (error) {
+    console.error("Error deleting course:", error)
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete course",
+    })
+  }
+})
+
+// Tutors API
+app.get("/api/tutors", async (req: Request, res: Response) => {
+  try {
+    const { subject, rating, limit = 20, offset = 0, search } = req.query
+
+    const limitInt = Math.min(Number.parseInt(limit as string) || 20, 50)
+    const offsetInt = Math.max(Number.parseInt(offset as string) || 0, 0)
+
+    const whereConditions: any = { isActive: true }
+
+    if (subject) {
+      whereConditions.subjects = { contains: subject }
+    }
+
+    if (search) {
+      whereConditions.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+      ]
+    }
+
+    const tutors = await prisma.tutor.findMany({
+      where: whereConditions,
+      orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+      take: limitInt,
+      skip: offsetInt,
+    })
+
+    const tutorsWithMetrics = tutors.map((tutor) => {
+      let ratings: any[] = []
+      let subjectsList: string[] = []
+
+      try {
+        ratings = typeof tutor.ratings === "string" ? JSON.parse(tutor.ratings) : tutor.ratings || []
+        subjectsList = typeof tutor.subjects === "string" ? JSON.parse(tutor.subjects) : tutor.subjects || []
+      } catch (e) {
+        console.warn("JSON parse error for tutor:", tutor.id)
+      }
+
+      const avgRating =
+        ratings.length > 0
+          ? Math.round((ratings.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
+          : 0
+
+      return {
+        ...tutor,
+        averageRating: avgRating,
+        totalReviews: ratings.length,
+        subjectsList,
+        ratings: undefined,
+      }
+    })
+
+    const filteredTutors = rating
+      ? tutorsWithMetrics.filter((t) => t.averageRating >= Number.parseFloat(rating as string))
+      : tutorsWithMetrics
+
+    res.set("Cache-Control", "public, max-age=300")
+    res.json({
+      success: true,
+      data: filteredTutors,
+      pagination: {
+        limit: limitInt,
+        offset: offsetInt,
+        count: filteredTutors.length,
+        hasMore: filteredTutors.length === limitInt,
+      },
+    })
+  } catch (error) {
+    console.error("Error fetching tutors:", error)
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch tutors",
+    })
+  }
+})
+
+app.get("/api/tutors/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params
+
+    const tutor = await prisma.tutor.findUnique({
+      where: { id },
+    })
+
+    if (!tutor) {
+      return res.status(404).json({
+        success: false,
+        error: "Tutor not found",
+      })
+    }
+
+    let ratings: any[] = []
+    let subjectsList: string[] = []
+
+    try {
+      ratings = typeof tutor.ratings === "string" ? JSON.parse(tutor.ratings) : tutor.ratings || []
+      subjectsList = typeof tutor.subjects === "string" ? JSON.parse(tutor.subjects) : tutor.subjects || []
+    } catch (e) {
+      console.warn("JSON parse error for tutor:", tutor.id)
+    }
+
+    const avgRating =
+      ratings.length > 0
+        ? Math.round((ratings.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / ratings.length) * 10) / 10
+        : 0
+
+    const enhancedTutor = {
+      ...tutor,
+      averageRating: avgRating,
+      totalReviews: ratings.length,
+      subjectsList,
+      ratingsList: ratings,
+    }
+
+    res.set("Cache-Control", "public, max-age=600")
+    res.json({ success: true, data: enhancedTutor })
+  } catch (error) {
+    console.error("Error fetching tutor:", error)
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch tutor",
+    })
+  }
+})
+
+// Content API
+app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
+  try {
+    const contentType = req.params.type
+    let content
+
+    const contentQueries: Record<string, () => Promise<any>> = {
+      tutors: async () => {
+        const tutors = await prisma.tutor.findMany({
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+        })
+        const allSubjects = await prisma.subject.findMany({
+          where: { isActive: true },
+          select: { name: true, category: true },
+        })
+        const subjMap = new Map(allSubjects.map((s) => [s.name, s.category]))
+
+        return tutors.map((tutor) => {
+          let ratings: any[] = []
+          let subjects: string[] = []
+          try {
+            ratings = typeof tutor.ratings === "string" ? JSON.parse(tutor.ratings) : tutor.ratings || []
+          } catch {
+            console.warn("Ratings parse error:", tutor.id)
+          }
+
+          if (typeof tutor.subjects === "string") {
+            const raw = tutor.subjects
+            let parsed: unknown = null
+            try {
+              parsed = JSON.parse(raw)
+            } catch {
+              parsed = null
+            }
+
+            if (Array.isArray(parsed)) {
+              subjects = parsed
+                .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+                .map((s) => s.trim())
+            } else if (
+              parsed &&
+              typeof parsed === "object" &&
+              Array.isArray((parsed as { subjects?: unknown[] }).subjects)
+            ) {
+              const arr = (parsed as { subjects?: unknown[] }).subjects || []
+              subjects = arr
+                .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+                .map((s) => s.trim())
+            } else {
+              const parts = raw.split(/[|;,]/).map((s) => s.trim()).filter((s) => s.length > 0)
+              if (parts.length > 0) {
+                subjects = parts
+              } else if (raw.trim().length > 0) {
+                subjects = [raw.trim()]
+              }
+            }
+          } else if (Array.isArray(tutor.subjects)) {
+            subjects = tutor.subjects
+              .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+              .map((s) => s.trim())
+          } else {
+            subjects = []
+          }
+
+          const departments = Array.from(new Set(subjects.map((n: string) => subjMap.get(n)).filter(Boolean)))
+
+          const avgRating =
+            ratings.length > 0
+              ? Math.round((ratings.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / ratings.length) * 10) /
+                10
+              : 0
+
+          return {
+            ...tutor,
+            subjects,
+            departments,
+            averageRating: avgRating,
+            totalReviews: ratings.length,
+          }
+        })
+      },
+      "team-members": () =>
+        prisma.teamMember.findMany({
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+        }),
+      "about-us": () =>
+        prisma.aboutUsContent.findFirst({
+          where: { isActive: true },
+          orderBy: { updatedAt: "desc" },
+        }),
+      hero: () =>
+        prisma.heroContent.findFirst({
+          orderBy: { updatedAt: "desc" },
+        }),
+      features: () =>
+        prisma.feature.findMany({
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        }),
+      announcements: () =>
+        prisma.announcement.findMany({
+          where: { isActive: true },
+          orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
+        }),
+      testimonials: () =>
+        prisma.testimonial.findMany({
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+        }),
+      pricing: () =>
+        prisma.pricingPlan.findMany({
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        }),
+      events: () => prisma.$queryRawUnsafe("SELECT * FROM events ORDER BY date ASC"),
+      footer: () =>
+        prisma.footerContent.findFirst({
+          where: { isActive: true },
+          orderBy: { updatedAt: "desc" },
+        }),
+      subjects: () =>
+        prisma.subject.findMany({
+          where: { isActive: true },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        }),
+      navigation: () =>
+        prisma.navigationItem.findMany({
+          where: { isActive: true },
+          select: { path: true, label: true, type: true },
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        }),
+      "exam-rewrite": () =>
+        prisma.examRewriteContent.findFirst({
+          where: { isActive: true },
+          orderBy: { updatedAt: "desc" },
+        }),
+      "university-application": () =>
+        prisma.universityApplicationContent.findFirst({
+          where: { isActive: true },
+          orderBy: { updatedAt: "desc" },
+        }),
+      "contact-us": () =>
+        prisma.contactUsContent.findFirst({
+          where: { isActive: true },
+          orderBy: { updatedAt: "desc" },
+        }),
+      "become-tutor": () =>
+        prisma.becomeTutorContent.findFirst({
+          where: { isActive: true },
+          orderBy: { updatedAt: "desc" },
+        }),
+    }
+
+    const queryFn = contentQueries[contentType]
+
+    if (!queryFn) {
+      return res.status(404).json({
+        success: false,
+        error: "Content type not found",
+        availableTypes: Object.keys(contentQueries),
+      })
+    }
+
+    content = await queryFn()
+
+    if (content !== null && content !== undefined) {
+      const listTypes = [
+        "tutors",
+        "team-members",
+        "features",
+        "testimonials",
+        "pricing",
+        "subjects",
+        "announcements",
+        "events",
+        "navigation",
+      ]
+
+      res.set("Cache-Control", "no-store, no-cache, must-revalidate")
+      res.json({
+        success: true,
+        data: content,
+        type: contentType,
+        isArray: listTypes.includes(contentType),
+        count: Array.isArray(content) ? content.length : 1,
+        timestamp: new Date().toISOString(),
+      })
+    } else {
+      res.status(404).json({
+        success: false,
+        error: `${contentType} content not found`,
+      })
+    }
+  } catch (error: any) {
+    console.error(`Error fetching ${req.params.type} content:`, error)
+    const message = process.env.NODE_ENV === "production" ? "Failed to fetch content" : error?.message
+    res.status(500).json({
+      success: false,
+      error: `Failed to fetch ${req.params.type} content`,
+      message,
+    })
+  }
+})
+
+// Content configuration for CRUD
+const contentConfig: Record<string, { model: () => any; jsonFields: string[]; isSingleton: boolean }> = {
+  features: { model: () => prisma.feature, jsonFields: ["benefits"], isSingleton: false },
+  testimonials: { model: () => prisma.testimonial, jsonFields: [], isSingleton: false },
+  "team-members": { model: () => prisma.teamMember, jsonFields: [], isSingleton: false },
+  pricing: { model: () => prisma.pricingPlan, jsonFields: ["features", "notIncluded"], isSingleton: false },
+  announcements: { model: () => prisma.announcement, jsonFields: [], isSingleton: false },
+  subjects: { model: () => prisma.subject, jsonFields: ["popularTopics", "difficulty"], isSingleton: false },
+  navigation: { model: () => prisma.navigationItem, jsonFields: [], isSingleton: false },
+  tutors: { model: () => prisma.tutor, jsonFields: ["subjects", "ratings"], isSingleton: false },
+  footer: {
+    model: () => prisma.footerContent,
+    jsonFields: ["socialLinks", "quickLinks", "resourceLinks"],
+    isSingleton: true,
+  },
+  hero: { model: () => prisma.heroContent, jsonFields: ["universities", "features"], isSingleton: true },
+  "about-us": { model: () => prisma.aboutUsContent, jsonFields: ["rolesResponsibilities"], isSingleton: true },
+  "contact-us": { model: () => prisma.contactUsContent, jsonFields: ["contactInfo"], isSingleton: true },
+  "exam-rewrite": {
+    model: () => prisma.examRewriteContent,
+    jsonFields: ["benefits", "process", "subjects", "pricingInfo"],
+    isSingleton: true,
+  },
+  "university-application": {
+    model: () => prisma.universityApplicationContent,
+    jsonFields: ["services", "process", "requirements", "pricing"],
+    isSingleton: true,
+  },
+  "become-tutor": {
+    model: () => prisma.becomeTutorContent,
+    jsonFields: ["requirements", "benefits"],
+    isSingleton: true,
+  },
+}
+
+function stringifyJsonFields(data: Record<string, any>, fields: string[]): Record<string, any> {
+  const out: Record<string, any> = { ...data }
+  for (const f of fields) {
+    if (out[f] !== undefined) out[f] = JSON.stringify(out[f])
+  }
+  return out
+}
+
+function parseJsonFields(entity: any, fields: string[]): any {
+  if (!entity) return entity
+  const out: any = { ...entity }
+  for (const f of fields) {
+    try {
+      out[f] = entity[f] ? JSON.parse(entity[f]) : Array.isArray(out[f]) ? out[f] : (out[f] ?? null)
+    } catch {}
+  }
+  return out
+}
+
+// Create content
+app.post(
+  "/api/admin/content/:type",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { type } = req.params
+      const cfg = contentConfig[type]
+      if (!cfg) return res.status(404).json({ success: false, error: "Content type not found" })
+      const model = cfg.model()
+      const payload = stringifyJsonFields(req.body || {}, cfg.jsonFields)
+
+      if (type === "tutors") {
+        const domain = (process.env.TUTOR_EMAIL_DOMAIN || "excellenceakademie.co.za").toString().toLowerCase()
+        const baseName = String(payload.contactName || payload.name || "")
+          .toLowerCase()
+          .trim()
+        const localPart =
+          baseName
+            .replace(/[^a-z0-9\s.-]/g, "")
+            .replace(/\s+/g, ".")
+            .replace(/\.+/g, ".")
+            .replace(/^\./, "")
+            .replace(/\.$/, "") || "tutor"
+        if (!payload.contactEmail || !String(payload.contactEmail).includes("@")) {
+          payload.contactEmail = `${localPart}@${domain}`
+        }
+      }
+
+      let created
+      if (cfg.isSingleton) {
+        await model.updateMany({ where: { isActive: true }, data: { isActive: false } })
+        created = await model.create({ data: { ...payload, isActive: true } })
+      } else {
+        created = await model.create({ data: { ...payload, isActive: true } })
+      }
+
+      const parsed = parseJsonFields(created, cfg.jsonFields)
+      return res.status(201).json({ success: true, data: parsed })
+    } catch (error) {
+      console.error("Content create error:", error)
+      return res.status(500).json({ success: false, error: "Failed to create content" })
+    }
+  },
+)
+
+// Update content
+app.put(
+  "/api/admin/content/:type",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { type } = req.params
+      const cfg = contentConfig[type]
+      if (!cfg) return res.status(404).json({ success: false, error: "Content type not found" })
+      const model = cfg.model()
+      const { id, createdAt, updatedAt, averageRating, totalReviews, departments, ...rest } = req.body || {}
+      if (!id) return res.status(400).json({ success: false, error: "ID is required" })
+      const data = stringifyJsonFields(rest, cfg.jsonFields)
+
+      if (type === "tutors") {
+        const domain = (process.env.TUTOR_EMAIL_DOMAIN || "excellenceakademie.co.za").toString().toLowerCase()
+        const baseName = String(data.contactName || data.name || "")
+          .toLowerCase()
+          .trim()
+        const localPart =
+          baseName
+            .replace(/[^a-z0-9\s.-]/g, "")
+            .replace(/\s+/g, ".")
+            .replace(/\.+/g, ".")
+            .replace(/^\./, "")
+            .replace(/\.$/, "") || "tutor"
+        if (!data.contactEmail || !String(data.contactEmail).includes("@")) {
+          data.contactEmail = `${localPart}@${domain}`
+        }
+      }
+
+      const updated = await model.update({ where: { id }, data })
+      const parsed = parseJsonFields(updated, cfg.jsonFields)
+      return res.status(200).json({ success: true, data: parsed })
+    } catch (error) {
+      console.error("Content update error:", error)
+      return res.status(500).json({ success: false, error: "Failed to update content" })
+    }
+  },
+)
+
+// Delete content
+app.delete(
+  "/api/admin/content/:type",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { type } = req.params
+      const cfg = contentConfig[type]
+      if (!cfg) return res.status(404).json({ success: false, error: "Content type not found" })
+      const model = cfg.model()
+      const id = (req.query.id as string) || (req.body && req.body.id)
+      if (!id) return res.status(400).json({ success: false, error: "ID is required" })
+      await model.update({ where: { id }, data: { isActive: false } })
+      return res.status(200).json({ success: true, message: "Deleted" })
+    } catch (error) {
+      console.error("Content delete error:", error)
+      return res.status(500).json({ success: false, error: "Failed to delete content" })
+    }
+  },
+)
+
+// Normalize tutor emails
+app.post(
+  "/api/admin/tutors/normalize-emails",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const domain = (process.env.TUTOR_EMAIL_DOMAIN || "excellenceakademie.co.za").toString().toLowerCase()
+      const tutors = await prisma.tutor.findMany({ where: { isActive: true } })
+      let updatedCount = 0
+      for (const t of tutors) {
+        const baseName = String(t.contactName || t.name || "")
+          .toLowerCase()
+          .trim()
+        const localPart =
+          baseName
+            .replace(/[^a-z0-9\s.-]/g, "")
+            .replace(/\s+/g, ".")
+            .replace(/\.+/g, ".")
+            .replace(/^\./, "")
+            .replace(/\.$/, "") || "tutor"
+        const targetEmail = `${localPart}@${domain}`
+        const current = String(t.contactEmail || "").toLowerCase()
+        const needsUpdate = !current || !current.includes("@") || !current.endsWith(`@${domain}`)
+        if (needsUpdate || current !== targetEmail) {
+          await prisma.tutor.update({ where: { id: t.id }, data: { contactEmail: targetEmail } })
+          updatedCount++
+        }
+      }
+      return res.json({ success: true, updated: updatedCount, domain })
+    } catch (error) {
+      console.error("Normalize tutor emails error:", error)
+      return res.status(500).json({ success: false, error: "Failed to normalize tutor emails" })
+    }
+  },
+)
+
+// Image upload endpoint
+app.post(
+  "/api/admin/upload",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { file, fileName } = req.body || {}
+      if (!file || typeof file !== "string") {
+        return res.status(400).json({ success: false, error: "file (base64) is required" })
+      }
+
+      const match =
+        /^data:((image\/(png|jpeg|jpg|webp|svg\+xml))|(text\/(html|markdown|plain|x-markdown))|(application\/(json|pdf)));base64,(.+)$/i.exec(
+          file,
+        )
+      if (!match)
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid file data URL. Allowed types: Images, HTML, Markdown, PDF, JSON" })
+      const mime = match[1]
+      let ext = "bin"
+      if (mime.includes("image")) {
+        ext = mime.includes("svg") ? "svg" : mime.split("/")[1].replace("jpeg", "jpg")
+      } else if (mime.includes("text/html")) {
+        ext = "html"
+      } else if (mime.includes("markdown") || mime.includes("text/plain")) {
+        ext = "md"
+      } else if (mime.includes("pdf")) {
+        ext = "pdf"
+      } else if (mime.includes("json")) {
+        ext = "json"
+      }
+      const base64 = match[match.length - 1]
+      const buffer = Buffer.from(base64, "base64")
+
+      await fs.mkdir(uploadsDir, { recursive: true })
+      const safeBase =
+        fileName
+          ?.toString()
+          .toLowerCase()
+          .replace(/[^a-z0-9-_]/g, "-") || "image"
+      const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const name = `${safeBase}-${unique}.${ext}`
+      const fullPath = path.join(uploadsDir, name)
+      await fs.writeFile(fullPath, buffer)
+
+      const urlPath = `/uploads/${name}`
+      return res.status(201).json({ success: true, url: urlPath, mime, size: buffer.length })
+    } catch (error) {
+      console.error("Upload error:", error)
+      return res.status(500).json({ success: false, error: "Failed to upload image" })
+    }
+  },
+)
+
+// Contact email endpoint
+app.post("/api/contact", async (req: Request, res: Response) => {
+  try {
+    const { name, email, subject, message } = req.body || {}
+    if (!name || !email || !message) {
+      return res.status(400).json({ success: false, error: "name, email, and message are required" })
+    }
+    const to = process.env.CONTACT_EMAIL || "admin@excellenceacademia.com"
+    const adminHtml = renderBrandedEmail({
+      title: "New Contact Form Submission",
+      message: `
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        ${subject ? `<p><strong>Subject:</strong> ${subject}</p>` : ""}
+        <p><strong>Message:</strong></p>
+        <p>${(message || "").replace(/\n/g, "<br/>")}</p>
+      `,
+      footerNote: "A visitor submitted this message via the contact form.",
+    })
+    const adminSend = await sendEmail({ to, subject: subject || "New Contact Message", content: adminHtml })
+
+    if (email) {
+      const ackHtml = renderBrandedEmail({
+        title: "We received your message",
+        message: `
+          <p>Hi ${name},</p>
+          <p>We received your message and will get back to you shortly.</p>
+          <p>Best regards,<br/>Excellence Academia</p>
+        `,
+      })
+      try {
+        await sendEmail({ to: email, subject: "We received your message", content: ackHtml })
+      } catch {}
+    }
+
+    if (!adminSend.success) throw new Error("Email send failed")
+    return res.status(200).json({ success: true })
+  } catch (error) {
+    console.error("Contact email error:", error)
+    return res.status(500).json({ success: false, error: "Failed to send message" })
+  }
+})
+
+// Admin test email endpoint
+app.post(
+  "/api/admin/test-email",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const to = (req.body && req.body.to) || process.env.CONTACT_EMAIL || "admin@excellenceacademia.com"
+      const html = renderBrandedEmail({
+        title: "Test Email from Excellence Academia",
+        message: "<p>This is a test email to verify your email delivery configuration.</p>",
+      })
+      const sent = await sendEmail({ to, subject: "Test Email", content: html })
+      return res.status(200).json({ success: true, result: sent })
+    } catch (error) {
+      console.error("Test email error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send test email" })
+    }
+  },
+)
+
+// Bulk students creation
+app.post("/api/students/bulk", async (req: Request, res: Response) => {
+  try {
+    const { emails } = req.body
 
     if (!emails || !Array.isArray(emails) || emails.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'emails array is required'
-      });
+        error: "emails array is required",
+      })
     }
 
-    const db = await getConnection();
-    const ids = [];
+    const db = await getConnection()
+    const ids: string[] = []
 
     for (const email of emails) {
-      if (email && email.includes('@')) {
+      if (email && email.includes("@")) {
         const name = email
           .split("@")[0]
           .replace(/[.]/g, " ")
-          .replace(/\b\w/g, (l) => l.toUpperCase());
+          .replace(/\b\w/g, (l: string) => l.toUpperCase())
 
-        const result = await db.run(
-          'INSERT INTO users (name, email, role, created_at) VALUES (?, ?, ?, ?)',
-          [name, email, 'student', new Date().toISOString()]
-        );
-        ids.push(result.lastID.toString());
+        const result = await db.run("INSERT INTO users (name, email, role, created_at) VALUES (?, ?, ?, ?)", [
+          name,
+          email,
+          "student",
+          new Date().toISOString(),
+        ])
+        ids.push(result.lastID.toString())
       }
     }
 
-    await db.close();
+    await db.close()
 
-    res.status(201).json({ success: true, ids, count: ids.length });
+    res.status(201).json({ success: true, ids, count: ids.length })
   } catch (error) {
-    console.error('Error creating bulk students:', error);
+    console.error("Error creating bulk students:", error)
     res.status(500).json({
       success: false,
-      error: 'Failed to create students'
-    });
+      error: "Failed to create students",
+    })
   }
-});
-
-// Notifications endpoint
-app.post('/api/notifications', async (req, res) => {
-  try {
-    const { title, message, type, recipients } = req.body || {};
-    if (!title || !message) {
-      return res.status(400).json({ success: false, error: 'title and message are required' });
-    }
-
-    // Save notification to database
-    const db = await getConnection();
-    const result = await db.run(
-      'INSERT INTO notifications (title, message, type, recipients, created_at) VALUES (?, ?, ?, ?, ?)',
-      [title, message, type || 'system', JSON.stringify(recipients || {}), new Date().toISOString()]
-    );
-    await db.close();
-
-    // Send emails to recipients
-    if (recipients) {
-      const emails = [];
-
-      if (recipients.tutors) {
-        const tutors = await prisma.tutor.findMany({ where: { isActive: true }, select: { contactEmail: true } });
-        emails.push(...tutors.map(t => t.contactEmail).filter(Boolean));
-      }
-
-      if (recipients.students) {
-        const students = await prisma.user.findMany({ where: { role: 'student' }, select: { email: true } });
-        emails.push(...students.map(s => s.email).filter(Boolean));
-      }
-
-      if (recipients.specific && Array.isArray(recipients.specific)) {
-        emails.push(...recipients.specific);
-      }
-
-      // Send emails
-      const brandColor = '#4f46e5';
-      const emailPromises = emails.map(email => {
-        const html = `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background:#f8fafc; padding:24px; color:#0f172a;">
-            <table width="100%" cellspacing="0" cellpadding="0" style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden;">
-              <tr>
-                <td style="background:${brandColor}; padding:18px 24px; color:#fff;">
-                  <h2 style="margin:0; font-size:18px;">Excellence Academia</h2>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:24px;">
-                  <h3 style="margin:0 0 8px; font-size:20px; color:#0f172a;">${title}</h3>
-                  <p style="margin:0 0 16px; line-height:1.6; color:#334155;">${message}</p>
-                  <div style="margin-top:16px; padding:12px 16px; background:#f1f5f9; border-radius:8px; color:#475569; font-size:12px;">
-                    This is an automated notification. Please do not reply to this email.
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:16px 24px; border-top:1px solid #e2e8f0; color:#64748b; font-size:12px;">
-                  © ${new Date().getFullYear()} Excellence Academia. All rights reserved.
-                </td>
-              </tr>
-            </table>
-          </div>
-        `;
-        return sendEmail({ to: email, subject: title, content: html });
-      });
-
-      await Promise.allSettled(emailPromises);
-    }
-
-    return res.status(201).json({ success: true, id: result.lastID });
-  } catch (error) {
-    console.error('Notification error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to send notification' });
-  }
-});
-
-// List notifications
-app.get('/api/notifications', async (req, res) => {
-  try {
-    const db = await getConnection();
-    const notifications = await db.all('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200');
-    await db.close();
-    res.set('Cache-Control', 'public, max-age=120');
-    return res.json({ success: true, data: notifications });
-  } catch (error) {
-    console.error('Error fetching notifications:', error);
-    return res.status(500).json({ success: false, error: 'Failed to fetch notifications' });
-  }
-});
+})
 
 // Students list
-app.get('/api/students', async (req, res) => {
+app.get("/api/students", async (req: Request, res: Response) => {
   try {
     const students = await prisma.user.findMany({
-      where: { role: 'student' },
-      orderBy: { updatedAt: 'desc' },
+      where: { role: "student" },
+      orderBy: { updatedAt: "desc" },
       include: {
-        enrollments: { include: { course: true } },
+        courseEnrollments: { include: { course: true } },
       },
-    });
+    })
     const result = students.map((s) => ({
       id: s.id,
       name: s.name,
       email: s.email,
-      status: (s as any).status || 'active',
+      status: (s as any).status || "active",
       progress: Math.floor(Math.random() * 100),
       lastActivity: (s.updatedAt as Date).toISOString(),
-      enrolledCourses: (s.enrollments || []).map((e: any) => e.course?.id).filter(Boolean),
+      enrolledCourses: (s.courseEnrollments || []).map((e: any) => e.course?.id).filter(Boolean),
       joinDate: (s.createdAt as Date).toISOString(),
       totalAssignments: Math.floor(Math.random() * 12),
       completedAssignments: Math.floor(Math.random() * 12),
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || 'Student')}&background=random`,
-    }));
-    res.set('Cache-Control', 'public, max-age=120');
-    return res.json({ success: true, data: result });
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name || "Student")}&background=random`,
+    }))
+    res.set("Cache-Control", "public, max-age=120")
+    return res.json({ success: true, data: result })
   } catch (error) {
-    console.error('Error fetching students:', error);
-    return res.status(500).json({ success: false, error: 'Failed to fetch students' });
+    console.error("Error fetching students:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch students" })
   }
-});
+})
 
-// Student Scheduled Sessions
-app.get('/api/student/scheduled-sessions', authenticateJWT, async (req, res) => {
-
+// Student Live Sessions
+app.get("/api/student/live-sessions", async (req: Request, res: Response) => {
   try {
-    // Get studentId from query param or from authenticated user
-    const studentIdParam = req.query.studentId as string || String(req.user?.id || '');
-    const studentId = parseInt(studentIdParam, 10);
-    if (isNaN(studentId) || studentId <= 0) {
-      return res.status(400).json({ success: false, error: 'Student ID is required' });
-    }
-
-    // Get courses the student is enrolled in
-    const enrollments = await prisma.courseEnrollment.findMany({
-      where: { userId: studentId },
-      include: { course: true }
-    });
-    const courseIds = enrollments.map(e => e.courseId);
-
-    const now = new Date();
-    // Include sessions from 15 minutes ago (in case they're ongoing) to future
-    const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
-
-    // Fetch scheduled sessions for those courses
-    const dbSessions = await prisma.scheduledSession.findMany({
-      where: {
-        courseId: { in: courseIds },
-        scheduledAt: { gte: fifteenMinutesAgo }
-      },
-      include: { course: true, tutor: true },
-      orderBy: { scheduledAt: 'asc' },
-      take: 20
-    });
-
-    // Get active ad-hoc sessions
-    const activeAdHocSessions: any[] = [];
-    activeSessions.forEach((session, cId) => {
-      const courseIdInt = parseInt(cId, 10);
-      if (courseIds.includes(courseIdInt)) {
-        // Check if this active session corresponds to a DB session
-        const isInDb = dbSessions.some(dbS =>
-          dbS.courseId === courseIdInt &&
-          (dbS.sessionId === session.sessionId || dbS.status === 'active')
-        );
-
-        if (!isInDb) {
-          const course = enrollments.find(e => e.courseId === courseIdInt)?.course;
-          activeAdHocSessions.push({
-            id: -courseIdInt, // Unique negative ID based on course
-            title: 'Live Session',
-            description: session.message || 'Live class in progress',
-            courseId: courseIdInt,
-            courseName: course?.name || 'Course',
-            tutorId: 0,
-            tutorName: session.tutorName || 'Tutor',
-            scheduledAt: new Date(),
-            duration: 60,
-            status: 'live',
-            sessionId: session.sessionId,
-            isLive: true,
-            isReady: true,
-            canJoin: true,
-            course: course,
-            tutor: { name: session.tutorName || 'Tutor' }
-          });
-        }
-      }
-    });
-
-    const result = [...dbSessions, ...activeAdHocSessions].map(s => {
-      const scheduledTime = new Date(s.scheduledAt);
-      const endTime = new Date(scheduledTime.getTime() + s.duration * 60 * 1000);
-      const isLive = activeSessions.has(String(s.courseId));
-
-      // Session is "ready" if:
-      // 1. Scheduled time is within 15 minutes from now (upcoming)
-      // 2. OR scheduled time has passed but session hasn't ended yet (ongoing window)
-      const fifteenMinutesFromNow = new Date(now.getTime() + 15 * 60 * 1000);
-      const isReady = !isLive && (
-        (scheduledTime <= fifteenMinutesFromNow && scheduledTime >= now) || // Starting soon
-        (scheduledTime < now && now < endTime) // Scheduled window is active
-      );
-
-      // Generate a session ID for ready sessions so students can join the waiting room
-      const sessionRoomId = s.sessionId || `${s.courseId}-${s.id}`;
-
-      return {
-        id: s.id,
-        title: s.title,
-        description: s.description,
-        courseId: s.courseId,
-        courseName: s.course?.name || 'Unknown Course',
-        tutorId: s.tutorId,
-        tutorName: s.tutor?.name || 'Tutor',
-        scheduledAt: s.scheduledAt.toISOString(),
-        duration: s.duration,
-        status: isLive ? 'live' : isReady ? 'ready' : s.status,
-        sessionId: sessionRoomId,
-        isLive,
-        isReady,
-        canJoin: isLive || isReady,
-        course: s.course, // Include full object for frontend compatibility
-        tutor: s.tutor    // Include full object for frontend compatibility
-      };
-    });
-
-    return res.json({ success: true, sessions: result });
-  } catch (error) {
-    console.error('Error fetching student scheduled sessions:', error);
-    return res.status(500).json({ success: false, error: 'Failed to fetch scheduled sessions' });
-  }
-});
-
-// Student Live Sessions - Get currently active live sessions for enrolled courses
-app.get('/api/student/live-sessions', async (req, res) => {
-  try {
-    const studentId = parseInt(req.query.studentId as string || (req as any).user?.id, 10);
+    const studentId = Number.parseInt((req.query.studentId as string) || (req as any).user?.id, 10)
     if (isNaN(studentId)) {
-      return res.status(400).json({ success: false, error: 'Student ID is required' });
+      return res.status(400).json({ success: false, error: "Student ID is required" })
     }
 
-    // Get courses the student is enrolled in
     const enrollments = await prisma.courseEnrollment.findMany({
       where: { userId: studentId },
-      select: { courseId: true, course: true }
-    });
-    const courseIds = enrollments.map(e => e.courseId);
+      select: { courseId: true, course: true },
+    })
+    const courseIds = enrollments.map((e) => e.courseId)
 
-    // Check which enrolled courses have active sessions
-    const liveSessions: any[] = [];
+    const liveSessions: any[] = []
     for (const courseId of courseIds) {
-      const activeSession = activeSessions.get(String(courseId));
+      const activeSession = activeSessions.get(String(courseId))
       if (activeSession) {
-        const enrollment = enrollments.find(e => e.courseId === courseId);
+        const enrollment = enrollments.find((e) => e.courseId === courseId)
         liveSessions.push({
           ...activeSession,
           courseId,
-          courseName: (enrollment?.course as any)?.name || 'Course',
-          isLive: true
-        });
+          courseName: (enrollment?.course as any)?.name || "Course",
+          isLive: true,
+        })
       }
     }
 
-    return res.json({ success: true, data: liveSessions });
+    return res.json({ success: true, data: liveSessions })
   } catch (error) {
-    console.error('Error fetching live sessions:', error);
-    return res.status(500).json({ success: false, error: 'Failed to fetch live sessions' });
+    console.error("Error fetching live sessions:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch live sessions" })
   }
-});
+})
 
 // Student Dashboard
-app.get('/api/student/dashboard', async (req, res) => {
+app.get("/api/student/dashboard", async (req: Request, res: Response) => {
   try {
-    const rawStudentId = (req.query.studentId as string) || (req as any).user?.id;
-    if (!rawStudentId) return res.status(400).json({ success: false, error: 'Student ID is required' });
+    const rawStudentId = (req.query.studentId as string) || (req as any).user?.id
+    if (!rawStudentId) return res.status(400).json({ success: false, error: "Student ID is required" })
 
-    const studentId = parseInt(String(rawStudentId), 10);
+    const studentId = Number.parseInt(String(rawStudentId), 10)
     if (isNaN(studentId)) {
-      return res.status(400).json({ success: false, error: 'Invalid Student ID format' });
+      return res.status(400).json({ success: false, error: "Invalid Student ID format" })
     }
 
-    const student = await prisma.user.findUnique({ where: { id: studentId } });
-    if (!student) return res.status(404).json({ success: false, error: 'Student not found' });
+    const student = await prisma.user.findUnique({ where: { id: studentId } })
+    if (!student) return res.status(404).json({ success: false, error: "Student not found" })
 
     const enrollments = await prisma.courseEnrollment.findMany({
       where: { userId: studentId },
@@ -2614,132 +3913,135 @@ app.get('/api/student/dashboard', async (req, res) => {
             tutor: true,
             materials: true,
             announcements: {
-              orderBy: { createdAt: 'desc' },
-              take: 5
+              orderBy: { createdAt: "desc" },
+              take: 5,
             },
             tests: {
               include: {
-                submissions: { where: { userId: studentId } }
-              }
-            }
-          }
-        }
-      }
-    });
+                submissions: { where: { userId: studentId } },
+              },
+            },
+          },
+        },
+      },
+    })
 
     const testSubmissions = await prisma.testSubmission.findMany({
       where: { userId: studentId },
       include: { test: { include: { course: true } } },
-      orderBy: { createdAt: 'desc' }
-    });
+      orderBy: { createdAt: "desc" },
+    })
 
     const notifications = await prisma.notification.findMany({
       where: { userId: studentId },
-      orderBy: { createdAt: 'desc' },
-      take: 10
-    });
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    })
 
-    // Fetch scheduled sessions for courses the student is enrolled in
-    const enrolledCourseIds = enrollments.map(e => e.courseId);
+    const enrolledCourseIds = enrollments.map((e) => e.courseId)
     const scheduledSessions = await prisma.scheduledSession.findMany({
       where: {
         courseId: { in: enrolledCourseIds },
         scheduledAt: { gte: new Date() },
-        status: { in: ['scheduled', 'active'] }
+        status: { in: ["scheduled", "active"] },
       },
       include: { course: true, tutor: true },
-      orderBy: { scheduledAt: 'asc' },
-      take: 10
-    });
+      orderBy: { scheduledAt: "asc" },
+      take: 10,
+    })
 
-    const averageGrade = testSubmissions.length > 0
-      ? testSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / testSubmissions.length
-      : 0;
+    const averageGrade =
+      testSubmissions.length > 0
+        ? testSubmissions.reduce((sum, s) => sum + (s.score || 0), 0) / testSubmissions.length
+        : 0
 
-    // Read timetable for real schedule
-    let timetable: any[] = [];
+    let timetable: any[] = []
     try {
-      const timetableData = await fs.readFile(timetableFile, 'utf-8');
-      timetable = JSON.parse(timetableData);
-    } catch (e) {
-      // ignore
+      const timetableData = await fs.readFile(timetableFile, "utf-8")
+      timetable = JSON.parse(timetableData)
+    } catch (e) {}
+
+    const getNextSession = (courseName: string) => {
+      if (!courseName || timetable.length === 0) return null
+
+      const courseEntries = timetable.filter((t: any) => t.courseName === courseName)
+      if (courseEntries.length === 0) return null
+
+      const daysMap: Record<string, number> = {
+        sunday: 0,
+        monday: 1,
+        tuesday: 2,
+        wednesday: 3,
+        thursday: 4,
+        friday: 5,
+        saturday: 6,
+      }
+
+      const now = new Date()
+
+      const upcomingSessions = courseEntries
+        .map((entry: any) => {
+          const dayIndex = daysMap[entry.day.toLowerCase().trim()]
+          if (dayIndex === undefined) return null
+
+          const [time, modifier] = entry.time.split(" ")
+          let [hours, minutes] = time.split(":").map(Number)
+
+          if (modifier) {
+            if (modifier.toLowerCase() === "pm" && hours < 12) hours += 12
+            if (modifier.toLowerCase() === "am" && hours === 12) hours = 0
+          }
+
+          const sessionDate = new Date(now)
+          sessionDate.setHours(hours, minutes, 0, 0)
+
+          let dayDiff = dayIndex - now.getDay()
+          if (dayDiff < 0) dayDiff += 7
+
+          if (dayDiff === 0 && now > sessionDate) {
+            dayDiff = 7
+          }
+
+          sessionDate.setDate(now.getDate() + dayDiff)
+          return { date: sessionDate, ...entry }
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => a.date.getTime() - b.date.getTime())
+
+      if (upcomingSessions.length === 0) return null
+
+      const next = upcomingSessions[0]
+      const formatted =
+        next.date
+          .toLocaleDateString("en-GB", {
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })
+          .replace(",", "") + (next.type ? ` (${next.type})` : "")
+
+      return { formatted, date: next.date }
     }
 
-    // Helper to find next session for a course
-    const getNextSession = (courseName: string) => {
-      if (!courseName || timetable.length === 0) return null;
+    const courses = enrollments.map((e) => {
+      const course = e.course as any
+      const courseTests = (course.tests || []) as any[]
+      const completedTests = courseTests.filter((t) => t.submissions && t.submissions.length > 0)
 
-      const courseEntries = timetable.filter((t: any) => t.courseName === courseName);
-      if (courseEntries.length === 0) return null;
+      const activeSession = activeSessions.get(String(course.id))
 
-      const daysMap: { [key: string]: number } = {
-        'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6
-      };
-
-      const now = new Date();
-
-      const upcomingSessions = courseEntries.map((entry: any) => {
-        const dayIndex = daysMap[entry.day.toLowerCase().trim()];
-        if (dayIndex === undefined) return null;
-
-        // Parse time (assuming HH:MM or HH:MM AM/PM)
-        let [time, modifier] = entry.time.split(' ');
-        let [hours, minutes] = time.split(':').map(Number);
-
-        if (modifier) {
-          if (modifier.toLowerCase() === 'pm' && hours < 12) hours += 12;
-          if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
-        }
-
-        const sessionDate = new Date(now);
-        sessionDate.setHours(hours, minutes, 0, 0);
-
-        // Calculate day difference
-        let dayDiff = dayIndex - now.getDay();
-        if (dayDiff < 0) dayDiff += 7;
-
-        // If today but passed, move to next week
-        if (dayDiff === 0 && now > sessionDate) {
-          dayDiff = 7;
-        }
-
-        sessionDate.setDate(now.getDate() + dayDiff);
-        return { date: sessionDate, ...entry };
-      }).filter(Boolean).sort((a: any, b: any) => a.date.getTime() - b.date.getTime());
-
-      if (upcomingSessions.length === 0) return null;
-
-      const next = upcomingSessions[0];
-      // Format: "Mon, 14 Oct at 10:00"
-      const formatted = next.date.toLocaleDateString('en-GB', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-      }).replace(',', '') + (next.type ? ` (${next.type})` : '');
-
-      return { formatted, date: next.date };
-    };
-
-    const courses = enrollments.map(e => {
-      const course = e.course as any;
-      const courseTests = (course.tests || []) as any[];
-      const completedTests = courseTests.filter(t => t.submissions && t.submissions.length > 0);
-
-      // Check for active live session
-      const activeSession = activeSessions.get(String(course.id));
-
-      const nextSessionData = getNextSession(course.name);
+      const nextSessionData = getNextSession(course.name)
 
       return {
         id: course.id,
-        name: course.name || course.title,
+        name: course.name,
         description: course.description,
-        tutor: course.tutor?.name || 'Tutor',
-        tutorEmail: course.tutor?.email || '',
-        nextSession: nextSessionData?.formatted || 'TBA',
+        tutor: course.tutor?.name || "Tutor",
+        tutorEmail: course.tutor?.email || "",
+        nextSession: nextSessionData?.formatted || "TBA",
         nextSessionDate: nextSessionData?.date || null,
         progress: courseTests.length > 0 ? (completedTests.length / courseTests.length) * 100 : 0,
         isLive: !!activeSession,
@@ -2751,227 +4053,238 @@ app.get('/api/student/dashboard', async (req, res) => {
           type: m.type,
           url: m.url,
           dateAdded: m.createdAt,
-          completed: false // Todo: Track completion
+          completed: false,
         })),
-        tests: courseTests.map(t => ({ id: t.id, title: t.title, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), questions: 10, totalPoints: 100, status: (t.submissions && t.submissions.length > 0) ? 'completed' : 'upcoming', score: (t.submissions && t.submissions.length > 0) ? t.submissions[0].score : null })),
-        color: 'blue',
+        tests: courseTests.map((t) => ({
+          id: t.id,
+          title: t.title,
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          questions: 10,
+          totalPoints: 100,
+          status: t.submissions && t.submissions.length > 0 ? "completed" : "upcoming",
+          score: t.submissions && t.submissions.length > 0 ? t.submissions[0].score : null,
+        })),
+        color: "blue",
         announcements: (course.announcements || []).map((a: any) => ({
           id: a.id,
           title: a.title,
           content: a.content,
           date: a.createdAt,
-          type: 'info'
+          type: "info",
         })),
         grade: averageGrade,
         enrollmentDate: e.createdAt,
-        status: e.status
-      };
-    });
+        status: e.status,
+      }
+    })
 
-    const assignments = enrollments.flatMap(e => {
-      const course = e.course as any;
+    const assignments = enrollments.flatMap((e) => {
+      const course = e.course as any
       return (course.tests || [])
         .filter((t: any) => !t.submissions || t.submissions.length === 0)
         .map((t: any) => ({
           id: t.id,
           title: t.title,
-          description: t.description || 'Test/Assignment',
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Todo: Real due date
+          description: t.description || "Test/Assignment",
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           courseId: course.id,
-          status: 'pending'
-        }));
-    });
+          status: "pending",
+        }))
+    })
 
-    const recentActivities = testSubmissions.map(s => ({
+    const recentActivities = testSubmissions.map((s) => ({
       id: s.id,
-      type: 'assignment_submitted',
-      message: `Submitted ${s.test?.title || 'Test'}`,
+      type: "assignment_submitted",
+      message: `Submitted ${s.test?.title || "Test"}`,
       timestamp: s.createdAt,
-      courseName: s.test?.course?.name || 'Course'
-    }));
+      courseName: s.test?.course?.name || "Course",
+    }))
 
-    // Generate upcoming sessions from timetable
     const timetableSessions = timetable
-      .filter((t: any) => enrollments.some(e => e.course.name === t.courseName))
+      .filter((t: any) => enrollments.some((e) => e.course.name === t.courseName))
       .map((t: any, index: number) => ({
         id: `timetable-${index}`,
         courseName: t.courseName,
-        tutorName: t.tutorName || 'Tutor',
+        tutorName: t.tutorName || "Tutor",
         date: new Date().toISOString(),
         time: `${t.day} ${t.time}`,
-        duration: '60 minutes',
-        type: t.type || 'Class',
-        location: 'Online',
-        source: 'timetable'
-      }));
+        duration: "60 minutes",
+        type: t.type || "Class",
+        location: "Online",
+        source: "timetable",
+      }))
 
-    // Add scheduled sessions from database
     const dbSessions = scheduledSessions.map((s: any) => ({
       id: s.id,
       courseName: s.course?.name || s.title,
-      tutorName: s.tutor?.name || 'Tutor',
+      tutorName: s.tutor?.name || "Tutor",
       date: s.scheduledAt.toISOString(),
-      time: s.scheduledAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      time: s.scheduledAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
       duration: `${s.duration} minutes`,
-      type: 'Scheduled Session',
-      location: 'Online',
+      type: "Scheduled Session",
+      location: "Online",
       sessionId: s.sessionId,
       status: s.status,
-      source: 'scheduled'
-    }));
+      source: "scheduled",
+    }))
 
-    // Combine and sort by date
     const upcomingSessions = [...dbSessions, ...timetableSessions]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(0, 10);
+      .slice(0, 10)
 
     const dashboardData = {
-      student: { id: student.id, name: student.name, email: student.email, avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random` },
+      student: {
+        id: student.id,
+        name: student.name,
+        email: student.email,
+        avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random`,
+      },
       statistics: {
         totalCourses: enrollments.length,
-        completedCourses: enrollments.filter(e => e.status === 'completed').length,
-        activeCourses: enrollments.filter(e => e.status === 'enrolled').length,
+        completedCourses: enrollments.filter((e) => e.status === "completed").length,
+        activeCourses: enrollments.filter((e) => e.status === "enrolled").length,
         averageGrade: Math.round(averageGrade * 100) / 100,
         totalStudyHours: 0,
-        streak: 0
+        streak: 0,
       },
       upcomingSessions: upcomingSessions,
       recentActivities: recentActivities.length > 0 ? recentActivities : [],
       courses,
       assignments,
-      notifications: notifications.map(n => ({
+      notifications: notifications.map((n) => ({
         id: n.id,
         message: n.message,
         read: n.read,
         date: (n.createdAt as Date).toISOString(),
-        type: n.type || 'course'
+        type: n.type || "course",
       })),
-      achievements: []
-    };
+      achievements: [],
+    }
 
-    return res.status(200).json(dashboardData);
+    return res.status(200).json(dashboardData)
   } catch (error) {
-    console.error('Error fetching student dashboard:', error);
-    return res.status(500).json({ success: false, error: 'Failed to fetch student dashboard' });
+    console.error("Error fetching student dashboard:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch student dashboard" })
   }
-});
+})
 
 // Tutor Dashboard
-app.get('/api/tutor/dashboard', async (req, res) => {
+app.get("/api/tutor/dashboard", async (req: Request, res: Response) => {
   try {
-    const tutorIdParam = (req.query.tutorId as string) || (req as any).user?.id;
-    if (!tutorIdParam) return res.status(400).json({ success: false, error: 'Tutor ID is required' });
+    const tutorIdParam = (req.query.tutorId as string) || (req as any).user?.id
+    if (!tutorIdParam) return res.status(400).json({ success: false, error: "Tutor ID is required" })
 
-    // Convert to integer since User model uses integer IDs
-    const tutorId = parseInt(tutorIdParam, 10);
-    if (isNaN(tutorId)) return res.status(400).json({ success: false, error: 'Invalid tutor ID' });
+    const tutorId = Number.parseInt(tutorIdParam, 10)
+    if (isNaN(tutorId)) return res.status(400).json({ success: false, error: "Invalid tutor ID" })
 
-    // Look up the tutor in the User model (not the content Tutor model)
     const tutorUser = await prisma.user.findFirst({
-      where: { id: tutorId, role: 'tutor' }
-    });
-    if (!tutorUser) return res.status(404).json({ success: false, error: 'Tutor not found' });
+      where: { id: tutorId, role: "tutor" },
+    })
+    if (!tutorUser) return res.status(404).json({ success: false, error: "Tutor not found" })
 
     const courses = await prisma.course.findMany({
       where: { tutorId: tutorId },
       include: {
         courseEnrollments: { include: { user: true } },
-        tests: { include: { submissions: true } }
-      }
-    });
+        tests: { include: { submissions: true } },
+      },
+    })
 
-    const studentMap = new Map();
-    courses.forEach(course => {
-      course.courseEnrollments.forEach(enrollment => {
-        const student = enrollment.user;
-        if (student && student.role === 'student') {
+    const studentMap = new Map()
+    courses.forEach((course) => {
+      course.courseEnrollments.forEach((enrollment) => {
+        const student = enrollment.user
+        if (student && student.role === "student") {
           if (!studentMap.has(student.id)) {
             studentMap.set(student.id, {
               ...student,
-              enrolledCourses: [course]
-            });
+              enrolledCourses: [course],
+            })
           } else {
-            const existing = studentMap.get(student.id);
+            const existing = studentMap.get(student.id)
             if (!existing.enrolledCourses.find((c: any) => c.id === course.id)) {
-              existing.enrolledCourses.push(course);
+              existing.enrolledCourses.push(course)
             }
           }
         }
-      });
-    });
+      })
+    })
 
-    const students = Array.from(studentMap.values());
+    const students = Array.from(studentMap.values())
 
-    const notifications = await prisma.notification.findMany({ where: { userId: tutorId }, orderBy: { createdAt: 'desc' }, take: 10 });
+    const notifications = await prisma.notification.findMany({
+      where: { userId: tutorId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    })
 
-    // Fetch scheduled sessions for this tutor
     const scheduledSessions = await prisma.scheduledSession.findMany({
       where: { tutorId: tutorId },
       include: { course: true },
-      orderBy: { scheduledAt: 'asc' }
-    });
+      orderBy: { scheduledAt: "asc" },
+    })
 
     const dashboardData = {
       tutor: {
         id: tutorUser.id,
         name: tutorUser.name,
         email: tutorUser.email,
-        department: tutorUser.department || 'General',
+        department: tutorUser.department || "General",
         subjects: [],
         contactEmail: tutorUser.email,
-        contactPhone: '',
-        description: '',
-        image: `https://ui-avatars.com/api/?name=${encodeURIComponent(tutorUser.name)}&background=random`
+        contactPhone: "",
+        description: "",
+        image: `https://ui-avatars.com/api/?name=${encodeURIComponent(tutorUser.name)}&background=random`,
       },
       statistics: {
         totalStudents: students.length,
         totalCourses: courses.length,
         activeStudents: students.length,
-        completedSessions: scheduledSessions.filter(s => s.status === 'completed').length,
+        completedSessions: scheduledSessions.filter((s) => s.status === "completed").length,
         averageRating: 4.8,
-        totalEarnings: 0
+        totalEarnings: 0,
       },
       upcomingSessions: scheduledSessions
-        .filter(s => s.status === 'scheduled' && new Date(s.scheduledAt) > new Date())
+        .filter((s) => s.status === "scheduled" && new Date(s.scheduledAt) > new Date())
         .slice(0, 5)
-        .map(s => ({
+        .map((s) => ({
           id: s.id,
           courseName: s.course?.name || s.title,
-          studentName: 'All Students',
-          studentEmail: '',
+          studentName: "All Students",
+          studentEmail: "",
           date: s.scheduledAt.toISOString(),
           time: s.scheduledAt.toLocaleTimeString(),
           duration: s.duration,
-          type: 'class',
+          type: "class",
           status: s.status,
-          location: 'Online',
-          notes: s.description || '',
-          materials: []
+          location: "Online",
+          notes: s.description || "",
+          materials: [],
         })),
       recentActivities: scheduledSessions
-        .filter(s => s.status === 'completed')
+        .filter((s) => s.status === "completed")
         .slice(0, 5)
-        .map(s => ({
+        .map((s) => ({
           id: s.id,
-          type: 'session_completed',
+          type: "session_completed",
           message: `Completed session: ${s.title}`,
           timestamp: s.updatedAt.toISOString(),
-          studentName: 'Class'
+          studentName: "Class",
         })),
-      students: students.map(s => ({
+      students: students.map((s) => ({
         id: s.id,
         name: s.name,
         email: s.email,
         progress: Math.floor(Math.random() * 100),
         lastActivity: s.updatedAt?.toISOString() || new Date().toISOString(),
-        status: 'active',
+        status: "active",
         enrolledCourses: s.enrolledCourses.map((c: any) => c.name),
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(s.name)}&background=random`,
         grades: {},
         totalSessions: 0,
-        nextSession: null
+        nextSession: null,
       })),
-      courses: courses.map(c => ({
+      courses: courses.map((c) => ({
         id: c.id,
         name: c.name,
         description: c.description,
@@ -2979,186 +4292,746 @@ app.get('/api/tutor/dashboard', async (req, res) => {
         nextSession: null,
         progress: Math.floor(Math.random() * 100),
         materials: [],
-        tests: c.tests.map(t => ({
+        tests: c.tests.map((t) => ({
           id: t.id,
           title: t.title,
           dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           submissions: t.submissions.length,
-          totalPoints: 100
+          totalPoints: 100,
         })),
-        color: 'blue'
+        color: "blue",
       })),
-      notifications: notifications.map(n => ({
+      notifications: notifications.map((n) => ({
         id: n.id,
         message: n.message,
         read: n.read,
-        timestamp: n.createdAt.toISOString()
+        timestamp: n.createdAt.toISOString(),
       })),
-      scheduledSessions: scheduledSessions.map(s => ({
+      scheduledSessions: scheduledSessions.map((s) => ({
         id: s.id,
         title: s.title,
         description: s.description,
         courseId: s.courseId,
-        courseName: s.course?.name || 'Unknown Course',
+        courseName: s.course?.name || "Unknown Course",
         scheduledAt: s.scheduledAt.toISOString(),
         duration: s.duration,
         status: s.status,
-        sessionId: s.sessionId
-      }))
-    };
+        sessionId: s.sessionId,
+      })),
+    }
 
-    return res.status(200).json(dashboardData);
+    return res.status(200).json(dashboardData)
   } catch (error) {
-    console.error('Error fetching tutor dashboard:', error);
-    return res.status(500).json({ success: false, error: 'Failed to fetch tutor dashboard' });
+    console.error("Error fetching tutor dashboard:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch tutor dashboard" })
   }
-});
+})
 
-
-// Optimized statistics endpoint
-app.get('/api/admin/stats', async (req, res) => {
+// Database initialization
+async function initializeDatabase(): Promise<void> {
   try {
-    const [
-      tutorsCount,
-      subjectsCount,
-      testimonialsCount,
-      activeAnnouncementsCount
-    ] = await Promise.all([
-      prisma.tutor.count({ where: { isActive: true } }),
-      prisma.subject.count({ where: { isActive: true } }),
-      prisma.testimonial.count({ where: { isActive: true } }),
-      prisma.announcement.count({ where: { isActive: true } })
-    ]);
-
-    res.set('Cache-Control', 'public, max-age=300'); // 5 minutes cache
-    res.json({
-      success: true,
-      data: {
-        tutors: tutorsCount,
-        subjects: subjectsCount,
-        testimonials: testimonialsCount,
-        announcements: activeAnnouncementsCount,
-        lastUpdated: new Date().toISOString()
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching admin stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch statistics'
-    });
-  }
-});
-
-// Database initialization (schema only, no seeding)
-async function initializeDatabase() {
-  try {
-    console.log('Initializing database schema...');
-    const db = await getConnection();
+    console.log("Initializing database schema...")
+    const db = await getConnection()
     const schemaFiles = [
-      path.join(baseDir, 'database', 'schema.sql'),
-      path.join(baseDir, 'database', 'content-schema.sql')
-    ];
+      path.join(baseDir, "database", "schema.sql"),
+      path.join(baseDir, "database", "content-schema.sql"),
+    ]
 
     for (const file of schemaFiles) {
       try {
-        const sql = await fs.readFile(file, 'utf8');
+        const sql = await fs.readFile(file, "utf8")
         const statements = sql
           .split(/;\s*\n/)
-          .map(s => s.trim())
-          .filter(Boolean);
+          .map((s) => s.trim())
+          .filter(Boolean)
 
         for (const stmt of statements) {
           try {
-            await db.exec(stmt + ';');
-          } catch (e) {
-            // Ignore table exists errors in production
-            if (!e.message.includes('already exists')) {
-              console.warn(`Statement execution warning:`, e.message);
+            await db.exec(stmt + ";")
+          } catch (e: any) {
+            if (!e.message.includes("already exists")) {
+              console.warn(`Statement execution warning:`, e.message)
             }
           }
         }
-        console.log(`✓ Executed ${file}`);
-      } catch (e) {
-        console.warn(`⚠️ File ${file} not found:`, e.message);
+        console.log(`✓ Executed ${file}`)
+      } catch (e: any) {
+        console.warn(`⚠️ File ${file} not found:`, e.message)
       }
     }
-    await db.close();
-    console.log('✓ Database schema initialization completed');
+    await db.close()
+    console.log("✓ Database schema initialization completed")
   } catch (e) {
-    console.error('❌ Database initialization failed:', e);
-    throw e;
+    console.error("❌ Database initialization failed:", e)
+    throw e
   }
 }
 
 // Graceful shutdown handlers
-const gracefulShutdown = async (signal) => {
-  console.log(`Received ${signal}. Starting graceful shutdown...`);
+const gracefulShutdown = async (signal: string): Promise<void> => {
+  console.log(`Received ${signal}. Starting graceful shutdown...`)
   try {
-    await prisma.$disconnect();
-    console.log('✓ Database connections closed');
-    process.exit(0);
+    stopScheduledSessionChecker()
+    await prisma.$disconnect()
+    console.log("✓ Database connections closed")
+    process.exit(0)
   } catch (error) {
-    console.error('Error during shutdown:', error);
-    process.exit(1);
+    console.error("Error during shutdown:", error)
+    process.exit(1)
   }
-};
+}
 
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"))
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
 
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  process.exit(1);
-});
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error)
+  process.exit(1)
+})
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
-});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason)
+  process.exit(1)
+})
+
+// Helper functions for bulk upload
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = ""
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    if (char === '"') {
+      inQuotes = !inQuotes
+    } else if (char === "," && !inQuotes) {
+      result.push(current)
+      current = ""
+    } else {
+      current += char
+    }
+  }
+  result.push(current)
+  return result
+}
+
+function parseArrayField(value: string | undefined): string[] {
+  if (!value) return []
+  if (value.startsWith("[") && value.endsWith("]")) {
+    try {
+      return JSON.parse(value)
+    } catch {}
+  }
+  const separator = value.includes("|") ? "|" : ";"
+  return value
+    .split(separator)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+}
+
+function parseBooleanField(value: string | undefined): boolean {
+  if (!value) return false
+  const lower = value.toLowerCase()
+  return lower === "true" || lower === "yes" || lower === "1"
+}
+
+const subjectDepartmentMap: Record<string, string> = {
+  Economics: "Commerce",
+  Accounting: "Commerce",
+  "Business Studies": "Commerce",
+  "Life Science": "Natural Sciences",
+  "Life Sciences": "Natural Sciences",
+  "Physical Science": "Natural Sciences",
+  "Physical Sciences": "Natural Sciences",
+  Geography: "Social Sciences",
+  Tourism: "Social Sciences",
+  English: "Languages",
+  Mathematics: "Mathematics",
+  "Computer Applications Technology": "Technology",
+  CAT: "Technology",
+}
+
+function chooseDepartmentForSubject(subject: string, departments: string[]): string {
+  const mapped = subjectDepartmentMap[subject]
+  if (mapped) return mapped
+  if (departments.length > 0) return departments[0]
+  if (subject.trim().length > 0) return subject
+  return "General"
+}
 
 // Initialize and start server
-const startServer = async () => {
+const startServer = async (): Promise<void> => {
   try {
-    console.log('🚀 Starting Excellence Akademie API Server...');
+    console.log("🚀 Starting Excellence Akademie API Server...")
+
+    // Bulk Upload Routes
+    app.post("/api/admin/content/pricing/bulk-upload", async (req: Request, res: Response) => {
+      try {
+        const { fileContent, fileType } = req.body
+        if (!fileContent) return res.status(400).json({ error: "No file content provided" })
+
+        let pricingData: any[] = []
+        if (fileType === "json") {
+          const data = JSON.parse(fileContent)
+          pricingData = Array.isArray(data) ? data : data.pricing || data.pricingPlans || []
+        } else if (fileType === "csv") {
+          const lines = fileContent.trim().split("\n")
+          if (lines.length < 2) throw new Error("CSV must have header and data rows")
+          const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase())
+          for (let i = 1; i < lines.length; i++) {
+            const values = parseCSVLine(lines[i])
+            if (values.length === 0) continue
+            const row: any = {}
+            headers.forEach((header: string, index: number) => {
+              if (values[index] !== undefined) row[header] = values[index].trim()
+            })
+            pricingData.push({
+              name: row.name || "",
+              price: row.price || "",
+              period: row.period || "month",
+              features: parseArrayField(row.features),
+              notIncluded: parseArrayField(row.notincluded || row["not included"]),
+              color: row.color || "bg-blue-500",
+              icon: row.icon || "Star",
+              popular: parseBooleanField(row.popular),
+              order: Number.parseInt(row.order) || 0,
+            })
+          }
+        } else {
+          return res.status(400).json({ error: "Unsupported file type" })
+        }
+
+        if (!pricingData || pricingData.length === 0) {
+          return res.status(400).json({ error: "No valid pricing data found" })
+        }
+
+        const errors: string[] = []
+        pricingData.forEach((item, index) => {
+          if (!item.name || item.name.trim() === "") errors.push(`Row ${index + 1}: Name is required`)
+          if (!item.price || item.price.trim() === "") errors.push(`Row ${index + 1}: Price is required`)
+        })
+        if (errors.length > 0) return res.status(400).json({ error: "Validation failed", details: errors })
+
+        let updated = 0,
+          created = 0
+        for (const item of pricingData) {
+          const existing = await prisma.pricingPlan.findFirst({ where: { name: item.name } })
+          const planData = {
+            name: item.name,
+            price: item.price,
+            period: item.period || "month",
+            features: JSON.stringify(item.features || []),
+            notIncluded: JSON.stringify(item.notIncluded || []),
+            color: item.color || "bg-blue-500",
+            icon: item.icon || "Star",
+            popular: item.popular || false,
+            order: item.order || 0,
+            isActive: true,
+          }
+          if (existing) {
+            await prisma.pricingPlan.update({ where: { id: existing.id }, data: planData })
+            updated++
+          } else {
+            await prisma.pricingPlan.create({ data: planData })
+            created++
+          }
+        }
+        res.json({ message: "Pricing plans updated successfully", updated, created, total: pricingData.length })
+      } catch (error) {
+        console.error("Bulk pricing upload error:", error)
+        res.status(500).json({
+          error: "Failed to process pricing data",
+          details: error instanceof Error ? error.message : "Unknown error",
+        })
+      }
+    })
+
+    app.post("/api/admin/content/tutors/bulk-upload", async (req: Request, res: Response) => {
+      try {
+        const { fileContent, fileType } = req.body
+        if (!fileContent) return res.status(400).json({ error: "No file content provided" })
+
+        let tutorData: any[] = []
+        if (fileType === "json") {
+          const data = JSON.parse(fileContent)
+          tutorData = Array.isArray(data) ? data : data.tutors || []
+
+          tutorData = tutorData.map((item: any) => {
+            if (!item.subjects && item.courses) {
+              const source = Array.isArray(item.courses) ? item.courses : String(item.courses)
+              return {
+                ...item,
+                subjects: Array.isArray(source) ? source : parseArrayField(source),
+              }
+            }
+            return item
+          })
+        } else if (fileType === "csv") {
+          const lines = fileContent.trim().split("\n")
+          if (lines.length < 2) throw new Error("CSV must have header and data rows")
+          const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase())
+          for (let i = 1; i < lines.length; i++) {
+            const values = parseCSVLine(lines[i])
+            if (values.length === 0) continue
+            const row: any = {}
+            headers.forEach((header: string, index: number) => {
+              if (values[index] !== undefined) row[header] = values[index].trim()
+            })
+
+            const subjectsRaw =
+              row.subjects ||
+              row.subject ||
+              row.courses ||
+              row.course ||
+              row["course name"] ||
+              row["courses"]
+
+            tutorData.push({
+              name: row.name || "",
+              subjects: parseArrayField(subjectsRaw),
+              image: row.image || "",
+              contactName: row.contactname || row["contact name"] || "",
+              contactPhone: row.contactphone || row["contact phone"] || "",
+              contactEmail: row.contactemail || row["contact email"] || "",
+              description: row.description || "",
+              order: Number.parseInt(row.order) || 0,
+            })
+          }
+        } else {
+          return res.status(400).json({ error: "Unsupported file type" })
+        }
+
+        if (!tutorData || tutorData.length === 0) {
+          return res.status(400).json({ error: "No valid tutor data found" })
+        }
+
+        const errors: string[] = []
+        const warnings: string[] = []
+
+        tutorData.forEach((item, index) => {
+          if (!item.name || item.name.trim() === "") errors.push(`Row ${index + 1}: Name is required`)
+          if (!item.subjects || item.subjects.length === 0) {
+            warnings.push(
+              `Row ${index + 1}: No subjects/courses provided; tutor will be saved without subjects`,
+            )
+            item.subjects = []
+          }
+        })
+
+        if (errors.length > 0) return res.status(400).json({ error: "Validation failed", details: errors })
+
+        let updated = 0,
+          created = 0
+        for (const item of tutorData) {
+          const existing = await prisma.tutor.findFirst({ where: { name: item.name } })
+          const tutorDataObj = {
+            name: item.name,
+            subjects: JSON.stringify(item.subjects || []),
+            image: item.image || "",
+            contactName: item.contactName || "",
+            contactPhone: item.contactPhone || "",
+            contactEmail: item.contactEmail || "",
+            description: item.description || "",
+            ratings: JSON.stringify([]),
+            order: item.order || 0,
+            isActive: true,
+          }
+          if (existing) {
+            await prisma.tutor.update({ where: { id: existing.id }, data: tutorDataObj })
+            updated++
+          } else {
+            await prisma.tutor.create({ data: tutorDataObj })
+            created++
+          }
+        }
+        res.json({
+          message: "Tutors updated successfully",
+          updated,
+          created,
+          total: tutorData.length,
+          warnings,
+        })
+      } catch (error) {
+        console.error("Bulk tutor upload error:", error)
+        res.status(500).json({
+          error: "Failed to process tutor data",
+          details: error instanceof Error ? error.message : "Unknown error",
+        })
+      }
+    })
+
+    app.post("/api/admin/content/tutors/bulk-upload", async (req: Request, res: Response) => {
+      try {
+        const { fileContent, fileType } = req.body
+        if (!fileContent) return res.status(400).json({ error: "No file content provided" })
+
+        let tutorData: any[] = []
+        if (fileType === "json") {
+          const data = JSON.parse(fileContent)
+          tutorData = Array.isArray(data) ? data : data.tutors || []
+
+          tutorData = tutorData.map((item: any) => {
+            if (!item.subjects && item.courses) {
+              const source = Array.isArray(item.courses) ? item.courses : String(item.courses)
+              return {
+                ...item,
+                subjects: Array.isArray(source) ? source : parseArrayField(source),
+              }
+            }
+            return item
+          })
+        } else if (fileType === "csv") {
+          const lines = fileContent.trim().split("\n")
+          if (lines.length < 2) throw new Error("CSV must have header and data rows")
+          const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase())
+          for (let i = 1; i < lines.length; i++) {
+            const values = parseCSVLine(lines[i])
+            if (values.length === 0) continue
+            const row: any = {}
+            headers.forEach((header: string, index: number) => {
+              if (values[index] !== undefined) row[header] = values[index].trim()
+            })
+
+            const subjectsRaw =
+              row.subjects ||
+              row.subject ||
+              row.courses ||
+              row.course ||
+              row["course name"] ||
+              row["courses"]
+
+            tutorData.push({
+              name: row.name || "",
+              subjects: parseArrayField(subjectsRaw),
+              image: row.image || "",
+              contactName: row.contactname || row["contact name"] || "",
+              contactPhone: row.contactphone || row["contact phone"] || "",
+              contactEmail: row.contactemail || row["contact email"] || "",
+              description: row.description || "",
+              order: Number.parseInt(row.order) || 0,
+            })
+          }
+        } else {
+          return res.status(400).json({ error: "Unsupported file type" })
+        }
+
+        if (!tutorData || tutorData.length === 0) {
+          return res.status(400).json({ error: "No valid tutor data found" })
+        }
+
+        const errors: string[] = []
+        const warnings: string[] = []
+
+        tutorData.forEach((item, index) => {
+          if (!item.name || item.name.trim() === "") errors.push(`Row ${index + 1}: Name is required`)
+          if (!item.subjects || item.subjects.length === 0) {
+            warnings.push(
+              `Row ${index + 1}: No subjects/courses provided; tutor will be saved without subjects`,
+            )
+            item.subjects = []
+          }
+        })
+
+        if (errors.length > 0) return res.status(400).json({ error: "Validation failed", details: errors })
+
+        let updated = 0,
+          created = 0
+        for (const item of tutorData) {
+          const existing = await prisma.tutor.findFirst({ where: { name: item.name } })
+          const tutorDataObj = {
+            name: item.name,
+            subjects: JSON.stringify(item.subjects || []),
+            image: item.image || "",
+            contactName: item.contactName || "",
+            contactPhone: item.contactPhone || "",
+            contactEmail: item.contactEmail || "",
+            description: item.description || "",
+            ratings: JSON.stringify([]),
+            order: item.order || 0,
+            isActive: true,
+          }
+          if (existing) {
+            await prisma.tutor.update({ where: { id: existing.id }, data: tutorDataObj })
+            updated++
+          } else {
+            await prisma.tutor.create({ data: tutorDataObj })
+            created++
+          }
+        }
+        res.json({
+          message: "Tutors updated successfully",
+          updated,
+          created,
+          total: tutorData.length,
+          warnings,
+        })
+      } catch (error) {
+        console.error("Bulk tutor upload error:", error)
+        res.status(500).json({
+          error: "Failed to process tutor data",
+          details: error instanceof Error ? error.message : "Unknown error",
+        })
+      }
+    })
+
+    app.post("/api/admin/content/tutor-placement/bulk-upload", async (req: Request, res: Response) => {
+      try {
+        const { fileContent, fileType } = req.body
+        if (!fileContent) return res.status(400).json({ error: "No file content provided" })
+
+        let placements: any[] = []
+
+        if (fileType === "json") {
+          const parsed = JSON.parse(fileContent)
+          placements = Array.isArray(parsed) ? parsed : parsed.tutors || parsed.placements || []
+        } else if (fileType === "csv") {
+          const lines = fileContent.trim().split("\n")
+          if (lines.length < 2) throw new Error("CSV must have header and data rows")
+          const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase())
+          for (let i = 1; i < lines.length; i++) {
+            const values = parseCSVLine(lines[i])
+            if (values.length === 0) continue
+            const row: any = {}
+            headers.forEach((header: string, index: number) => {
+              if (values[index] !== undefined) row[header] = values[index].trim()
+            })
+
+            const subjects = parseArrayField(row.subjects || row.subject || row.coursesubjects)
+            const departments = parseArrayField(row.departments || row.department)
+            const courseNames = parseArrayField(row.courses || row.coursenames || row["course names"])
+
+            const courses = courseNames.map((name: string) => ({
+              name,
+              subject: subjects[0] || name,
+            }))
+
+            placements.push({
+              name: row.name || "",
+              subjects,
+              departments,
+              courses,
+            })
+          }
+        } else {
+          return res.status(400).json({ error: "Unsupported file type" })
+        }
+
+        if (!placements || placements.length === 0) {
+          return res.status(400).json({ error: "No placement data found" })
+        }
+
+        const warnings: string[] = []
+        let tutorsMatched = 0
+        let coursesCreated = 0
+
+        try {
+          for (const item of placements) {
+            const tutorName = String(item.name || "").trim()
+            if (!tutorName) {
+              warnings.push("Row with missing tutor name was skipped")
+              continue
+            }
+
+            // Find Content Tutor (for verification)
+            const contentTutor = await prisma.tutor.findFirst({ where: { name: tutorName } })
+            if (!contentTutor) {
+              warnings.push(`Tutor "${tutorName}" not found in content records; skipping placement`)
+              continue
+            }
+
+            // Find System User (for linking)
+            const userTutor = await prisma.user.findFirst({
+              where: {
+                name: tutorName,
+                role: "tutor",
+              },
+            })
+
+            if (!userTutor) {
+              warnings.push(
+                `System user for tutor "${tutorName}" not found; courses will be created but not linked to a user account`,
+              )
+            }
+
+            tutorsMatched++
+
+            const subjects = Array.isArray(item.subjects)
+              ? item.subjects.map((s: any) => String(s || "").trim()).filter((s: string) => s.length > 0)
+              : parseArrayField(item.subjects)
+
+            const departments = Array.isArray(item.departments)
+              ? item.departments.map((d: any) => String(d || "").trim()).filter((d: string) => d.length > 0)
+              : parseArrayField(item.departments)
+
+            const courses = Array.isArray(item.courses) ? item.courses : []
+
+            for (const c of courses) {
+              const title = String(c.name || "").trim()
+              if (!title) continue
+
+              const subject =
+                String(c.subject || (subjects.length > 0 ? subjects[0] : "") || "")
+                  .trim() || "General"
+              const department = chooseDepartmentForSubject(subject, departments)
+              const category = subject || department
+
+              // Check if course exists
+              const existing = await prisma.course.findFirst({
+                where: {
+                  name: title,
+                  department: department,
+                  category: category,
+                },
+              })
+
+              if (existing) continue
+
+              const now = new Date()
+              const end = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
+
+              await prisma.course.create({
+                data: {
+                  name: title,
+                  description: c.description || `${subject} (${department})`,
+                  department,
+                  tutorId: userTutor ? userTutor.id : null,
+                  category,
+                  createdAt: now,
+                },
+              })
+              coursesCreated++
+            }
+          }
+        } catch (error) {
+          console.error("Tutor placement processing error:", error)
+          throw error
+        }
+
+        res.json({
+          message: "Tutor placement processed successfully",
+          placements: placements.length,
+          tutorsMatched,
+          coursesCreated,
+          warnings,
+        })
+      } catch (error) {
+        console.error("Tutor placement upload error:", error)
+        res.status(500).json({
+          error: "Failed to process tutor placement",
+          details: error instanceof Error ? error.message : "Unknown error",
+        })
+      }
+    })
+
+    app.post("/api/admin/content/team/bulk-upload", async (req: Request, res: Response) => {
+      try {
+        const { fileContent, fileType } = req.body
+        if (!fileContent) return res.status(400).json({ error: "No file content provided" })
+
+        let teamData: any[] = []
+        if (fileType === "json") {
+          const data = JSON.parse(fileContent)
+          teamData = Array.isArray(data) ? data : data.team || data.teamMembers || []
+        } else if (fileType === "csv") {
+          const lines = fileContent.trim().split("\n")
+          if (lines.length < 2) throw new Error("CSV must have header and data rows")
+          const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase())
+          for (let i = 1; i < lines.length; i++) {
+            const values = parseCSVLine(lines[i])
+            if (values.length === 0) continue
+            const row: any = {}
+            headers.forEach((header: string, index: number) => {
+              if (values[index] !== undefined) row[header] = values[index].trim()
+            })
+            teamData.push({
+              name: row.name || "",
+              role: row.role || "",
+              bio: row.bio || "",
+              image: row.image || "",
+              order: Number.parseInt(row.order) || 0,
+            })
+          }
+        } else {
+          return res.status(400).json({ error: "Unsupported file type" })
+        }
+
+        if (!teamData || teamData.length === 0) {
+          return res.status(400).json({ error: "No valid team member data found" })
+        }
+
+        const errors: string[] = []
+        teamData.forEach((item, index) => {
+          if (!item.name || item.name.trim() === "") errors.push(`Row ${index + 1}: Name is required`)
+          if (!item.role || item.role.trim() === "") errors.push(`Row ${index + 1}: Role is required`)
+        })
+        if (errors.length > 0) return res.status(400).json({ error: "Validation failed", details: errors })
+
+        let updated = 0,
+          created = 0
+        for (const item of teamData) {
+          const existing = await prisma.teamMember.findFirst({ where: { name: item.name } })
+          const memberData = {
+            name: item.name,
+            role: item.role,
+            bio: item.bio || "",
+            image: item.image || "",
+            order: item.order || 0,
+            isActive: true,
+          }
+          if (existing) {
+            await prisma.teamMember.update({ where: { id: existing.id }, data: memberData })
+            updated++
+          } else {
+            await prisma.teamMember.create({ data: memberData })
+            created++
+          }
+        }
+        res.json({ message: "Team members updated successfully", updated, created, total: teamData.length })
+      } catch (error) {
+        console.error("Bulk team upload error:", error)
+        res.status(500).json({
+          error: "Failed to process team member data",
+          details: error instanceof Error ? error.message : "Unknown error",
+        })
+      }
+    })
 
     // Initialize database schema
-    await initializeDatabase();
+    await initializeDatabase()
 
     // Start scheduled session checker
-    startScheduledSessionChecker();
+    startScheduledSessionChecker()
 
     // Start server
-    const server = httpServer.listen(Number(port), '0.0.0.0', () => {
-      console.log(`✓ Server running on port ${port}`);
-      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`✓ Socket.IO: Enabled`);
-      console.log(`✓ Health check: http://localhost:${port}/api/health`);
-      console.log(`✓ Tutors API: http://localhost:${port}/api/tutors`);
-      console.log(`✓ Ready for connections!`);
-    });
+    const server = httpServer.listen(Number(port), "0.0.0.0", () => {
+      console.log(`✓ Server running on port ${port}`)
+      console.log(`✓ Environment: ${process.env.NODE_ENV || "development"}`)
+      console.log(`✓ Socket.IO: Enabled`)
+      console.log(`✓ Health check: http://localhost:${port}/api/health`)
+      console.log(`✓ Tutors API: http://localhost:${port}/api/tutors`)
+      console.log(`✓ Ready for connections!`)
+    })
 
     // Handle server errors
-    server.on('error', (error) => {
-      if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${port} is in use`);
-        process.exit(1);
+    server.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`❌ Port ${port} is in use`)
+        process.exit(1)
       } else {
-        console.error('❌ Server error:', error);
-        process.exit(1);
+        console.error("❌ Server error:", error)
+        process.exit(1)
       }
-    });
+    })
 
     // Prevent server timeout on Render
-    server.keepAliveTimeout = 120000; // 2 minutes
-    server.headersTimeout = 120000; // 2 minutes
-
+    server.keepAliveTimeout = 120000
+    server.headersTimeout = 120000
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
+    console.error("❌ Failed to start server:", error)
+    process.exit(1)
   }
-};
+}
 
 // Start the application
-startServer();
+startServer()
+
+export { app, io, httpServer }

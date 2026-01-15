@@ -11,17 +11,23 @@ model User {
   id               Int                @id @default(autoincrement())
   name             String
   email            String             @unique(map: "sqlite_autoindex_users_1")
+  personalEmail    String?            @map("personal_email") // For external communications (newsletters, updates)
   password_hash    String
   role             String
   department       String?
+  subjects         String?            // JSON array of subjects/courses taught (for tutors)
   createdAt        DateTime?          @default(now()) @map("created_at")
   updatedAt        DateTime?          @default(now()) @updatedAt @map("updated_at")
-  courses          Course[]
-  enrollments      enrollments[]
-  notifications    Notification[]
-  courseEnrollments CourseEnrollment[]
-  testSubmissions  TestSubmission[]
-  scheduledSessions ScheduledSession[]
+  courses            Course[]
+  enrollments        enrollments[]
+  notifications      Notification[]
+  courseEnrollments  CourseEnrollment[]
+  testSubmissions    TestSubmission[]
+  scheduledSessions  ScheduledSession[]
+  payslips           Payslip[]
+  financialRecords   FinancialRecord[]
+  timetableEntries   TimetableEntry[]
+  timetableDocuments TimetableDocument[]
 
   @@map("users")
 }
@@ -30,8 +36,8 @@ model Course {
   id                Int                @id @default(autoincrement())
   name              String
   description       String?
-  category          String?
-  department        String?
+  category          String?            // This is the subject/course name
+  department        String?            // Auto-assigned based on category
   tutorId           Int?               @map("tutor_id")
   createdAt         DateTime?          @default(now()) @map("created_at")
   updatedAt         DateTime?          @default(now()) @updatedAt @map("updated_at")
@@ -42,6 +48,7 @@ model Course {
   materials         CourseMaterial[]
   announcements     CourseAnnouncement[]
   scheduledSessions ScheduledSession[]
+  timetableEntries  TimetableEntry[]
 
   @@map("courses")
 }
@@ -148,16 +155,6 @@ model Feature {
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-}
-
-model Announcement {
-  id        String   @id @default(uuid())
-  content   String
-  type      String
-  pinned    Boolean  @default(false)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
 model PricingPlan {
@@ -589,4 +586,161 @@ model university_application_content {
   updated_at   DateTime? @default(now())
 
   @@ignore
+}
+
+model Email {
+  id        String   @id @default(uuid())
+  from      String
+  fromName  String   @map("from_name")
+  to        String
+  subject   String
+  body      String
+  htmlBody  String?  @map("html_body")
+  timestamp DateTime @default(now())
+  read      Boolean  @default(false)
+  starred   Boolean  @default(false)
+  folder    String   @default("inbox")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([to, folder])
+  @@index([from, folder])
+  @@map("emails")
+}
+
+model Payslip {
+  id           String   @id @default(uuid())
+  userId       Int      @map("user_id")
+  month        String
+  year         Int
+  basicSalary  Float    @map("basic_salary")
+  allowances   Float    @default(0)
+  deductions   Float    @default(0)
+  netSalary    Float    @map("net_salary")
+  paymentDate  String?  @map("payment_date")
+  status       String   @default("pending")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@map("payslips")
+}
+
+model FinancialRecord {
+  id              String   @id @default(uuid())
+  type            String   // income, expense
+  category        String   // salary, subscription, utilities, etc.
+  amount          Float
+  description     String?
+  date            String
+  userId          Int?     @map("user_id")
+  status          String   @default("completed")
+  referenceNumber String?  @map("reference_number")
+  paymentMethod   String?  @map("payment_method")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@map("financial_records")
+}
+
+model TimetableEntry {
+  id        String   @id @default(uuid())
+  day       String
+  timeSlot  String   @map("time_slot")
+  courseId  Int      @map("course_id")
+  tutorId   Int      @map("tutor_id")
+  room      String?
+  grade     String?
+  students  String?
+  type      String   @default("lecture")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  course    Course   @relation(fields: [courseId], references: [id])
+  tutor     User     @relation(fields: [tutorId], references: [id])
+
+  @@map("timetable_entries")
+}
+
+model TimetableDocument {
+  id         String   @id @default(uuid())
+  filename   String
+  filePath   String   @map("file_path")
+  uploadedBy Int      @map("uploaded_by")
+  processed  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  uploader   User     @relation(fields: [uploadedBy], references: [id])
+
+  @@map("timetable_documents")
+}
+
+model Channel {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  type        String           @default("team") // team, department, general
+  department  String?
+  isPrivate   Boolean          @default(false)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  messages    ChannelMessage[]
+  members     ChannelMember[]
+
+  @@map("channels")
+}
+
+model ChannelMember {
+  id        String   @id @default(uuid())
+  channelId String   @map("channel_id")
+  userId    Int      @map("user_id")
+  role      String   @default("member") // admin, member
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@map("channel_members")
+}
+
+model ChannelMessage {
+  id        String   @id @default(uuid())
+  channelId String   @map("channel_id")
+  userId    Int      @map("user_id")
+  content   String
+  fileUrl   String?  @map("file_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@map("channel_messages")
+}
+
+model DirectMessage {
+  id         String   @id @default(uuid())
+  fromUserId Int      @map("from_user_id")
+  toUserId   Int      @map("to_user_id")
+  content    String
+  fileUrl    String?  @map("file_url")
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([fromUserId, toUserId, createdAt])
+  @@index([toUserId, read])
+  @@map("direct_messages")
+}
+
+model Announcement {
+  id         String   @id @default(uuid())
+  title      String
+  content    String
+  type       String   @default("general") // general, department, urgent
+  department String?
+  authorId   Int      @map("author_id")
+  pinned     Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("announcements_board")
 }

@@ -417,7 +417,7 @@ export default function TutorsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="subject-filter" className="text-blue-100">
-                      Filter by Subject
+                      Filter by Subject/Course
                     </Label>
                     <Select value={selectedSubject} onValueChange={setSelectedSubject}>
                       <SelectTrigger
