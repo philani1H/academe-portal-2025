@@ -1381,13 +1381,40 @@ app.post(
           let isUnique = false
           let attempts = 0
 
+          // Import student number utilities
+          const { generateStudentNumber, generateStudentEmail, PROGRAM_CODES } = await import("../lib/studentNumber.js")
+
+          // Default to Excellence Akademie program
+          const programCode = PROGRAM_CODES.EXCELLENCE_AKADEMIE
+
           while (!isUnique && attempts < 10) {
-            const randomSuffix = Math.floor(1000 + Math.random() * 9000).toString()
-            studentNumber = `${year}${randomSuffix}`
-            studentEmail = `${studentNumber}@excellenceakademie.co.za`
+            // Get the max sequence number for this year and program
+            const maxSequenceUser = await prisma.user.findFirst({
+              where: {
+                studentNumber: {
+                  startsWith: `${year}${programCode.toString().padStart(2, '0')}`
+                }
+              },
+              orderBy: {
+                studentNumber: 'desc'
+              }
+            })
+
+            let sequenceNumber = 1
+            if (maxSequenceUser?.studentNumber) {
+              // Extract sequence from existing student number (positions 6-10)
+              const existingSequence = parseInt(maxSequenceUser.studentNumber.slice(6, 10), 10)
+              sequenceNumber = existingSequence + 1
+            }
+
+            // Generate student number with check digit
+            studentNumber = generateStudentNumber(year, programCode, sequenceNumber)
+            studentEmail = generateStudentEmail(studentNumber)
 
             const existing = await prisma.user.findUnique({ where: { email: studentEmail } })
-            if (!existing) isUnique = true
+            const existingNumber = await prisma.user.findUnique({ where: { studentNumber: studentNumber } })
+
+            if (!existing && !existingNumber) isUnique = true
             attempts++
           }
 
@@ -1403,9 +1430,12 @@ app.post(
           user = await prisma.user.create({
             data: {
               email: studentEmail,
+              studentNumber: studentNumber,
+              programCode: programCode,
               name: name,
               role: "student",
-              department_id: department || null,
+              personalEmail: clean, // Store their personal email for communications
+              department: department || null,
             },
           })
 
