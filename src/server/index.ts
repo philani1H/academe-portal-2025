@@ -1166,10 +1166,43 @@ app.get("/api/auth/me", authenticateJWT as RequestHandler, (req: AuthenticatedRe
   return res.json({ success: true, user: req.user })
 })
 
-// List users
-app.get("/api/users", async (req: Request, res: Response) => {
+// List users - ADMIN ONLY, returns students by default
+app.get("/api/users", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" } })
+    const userRole = req.user?.role
+    const userId = req.user?.id
+
+    // Default: only return students (not tutors, not admins)
+    let where: any = { role: "student" }
+
+    // If tutor is calling, only return their students
+    if (userRole === "tutor" && userId) {
+      // Get tutor's courses
+      const tutorCourses = await prisma.course.findMany({
+        where: { tutorId: userId },
+        select: { id: true }
+      })
+      const courseIds = tutorCourses.map(c => c.id)
+
+      // Get students enrolled in those courses
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: { courseId: { in: courseIds } },
+        select: { userId: true },
+        distinct: ['userId']
+      })
+      const studentIds = enrollments.map(e => e.userId)
+
+      where = {
+        id: { in: studentIds },
+        role: "student"
+      }
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" }
+    })
+
     return res.json({ success: true, data: users })
   } catch (error) {
     console.error("List users error:", error)
@@ -2519,16 +2552,24 @@ app.post("/api/notifications", async (req: Request, res: Response) => {
 })
 
 // List notifications
-app.get("/api/notifications", async (req: Request, res: Response) => {
+app.get("/api/notifications", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { userId } = req.query
-    
-    const where: any = {}
-    // Filter by user if userId is provided
-    if (userId) {
-      where.userId = Number.parseInt(userId as string, 10)
+    const authenticatedUserId = req.user?.id
+    const userRole = req.user?.role
+
+    // CRITICAL: Always filter by authenticated user's ID
+    // Only admins can view other users' notifications
+    let targetUserId = authenticatedUserId
+
+    if (userRole === "admin" && userId) {
+      targetUserId = Number.parseInt(userId as string, 10)
     }
-    
+
+    const where: any = {
+      userId: targetUserId
+    }
+
     const notifications = await prisma.notification.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -3412,18 +3453,29 @@ app.delete("/api/users/:id", async (req: Request, res: Response) => {
 })
 
 // Course routes
-app.get("/api/courses", async (req: Request, res: Response) => {
+app.get("/api/courses", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { limit, offset, category, all, tutorId } = req.query
-    
-    // If all=true, fetch everything
+    const userRole = req.user?.role
+    const userId = req.user?.id
+
+    // Build where clause
+    const where: any = {}
+
+    // CRITICAL: If tutor role, ALWAYS filter by their tutorId (ignore query param)
+    if (userRole === "tutor" && userId) {
+      where.tutorId = userId
+    } else if (tutorId) {
+      // Admin can filter by specific tutorId
+      where.tutorId = Number.parseInt(tutorId as string, 10)
+    }
+
+    if (category) {
+      where.category = String(category)
+    }
+
+    // If all=true, fetch everything (but still filtered by tutor if applicable)
     if (all === 'true') {
-      const where: any = {}
-      // Filter by tutor if tutorId is provided
-      if (tutorId) {
-        where.tutorId = Number.parseInt(tutorId as string, 10)
-      }
-      
       const courses = await prisma.course.findMany({
         where,
         orderBy: { createdAt: 'desc' }
@@ -3442,15 +3494,6 @@ app.get("/api/courses", async (req: Request, res: Response) => {
 
     const limitInt = Math.min(Number.parseInt(limit as string) || 50, 100)
     const offsetInt = Math.max(Number.parseInt(offset as string) || 0, 0)
-
-    const where: any = {}
-    if (category) {
-      where.category = String(category)
-    }
-    // Filter by tutor if tutorId is provided
-    if (tutorId) {
-      where.tutorId = Number.parseInt(tutorId as string, 10)
-    }
 
     const courses = await prisma.course.findMany({
       where,
@@ -4520,15 +4563,44 @@ app.post("/api/students/bulk", async (req: Request, res: Response) => {
 })
 
 // Students list
-app.get("/api/students", async (req: Request, res: Response) => {
+app.get("/api/students", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const userRole = req.user?.role
+    const userId = req.user?.id
+
+    let where: any = { role: "student" }
+
+    // CRITICAL: If tutor, only return THEIR students
+    if (userRole === "tutor" && userId) {
+      // Get tutor's courses
+      const tutorCourses = await prisma.course.findMany({
+        where: { tutorId: userId },
+        select: { id: true }
+      })
+      const courseIds = tutorCourses.map(c => c.id)
+
+      // Get students enrolled in those courses
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: { courseId: { in: courseIds } },
+        select: { userId: true },
+        distinct: ['userId']
+      })
+      const studentIds = enrollments.map(e => e.userId)
+
+      where = {
+        id: { in: studentIds },
+        role: "student"
+      }
+    }
+
     const students = await prisma.user.findMany({
-      where: { role: "student" },
+      where,
       orderBy: { updatedAt: "desc" },
       include: {
         courseEnrollments: { include: { course: true } },
       },
     })
+
     const result = students.map((s) => ({
       id: s.id,
       name: s.name,
