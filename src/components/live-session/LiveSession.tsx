@@ -91,6 +91,15 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
   const [shareMessage, setShareMessage] = useState('');
   const [isSharing, setIsSharing] = useState(false);
 
+  const getSessionLink = () => {
+    const params = new URLSearchParams();
+    if (courseId) params.append('courseId', courseId);
+    if (courseName) params.append('courseName', courseName);
+    if (category) params.append('category', category);
+    params.append('fromStudent', 'true');
+    return `${window.location.origin}/live-session/${sessionId}?${params.toString()}`;
+  };
+
   const handleShareLink = async () => {
     if (!shareEmails.trim()) {
       toast.error('Please enter at least one email address');
@@ -110,12 +119,13 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
           tutorName: user?.name || 'Instructor',
           emails,
           personalMessage: shareMessage,
+          sessionLink: getSessionLink(),
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        toast.success(data.message);
+        toast.success(data.message || 'Session link shared successfully!');
         setShowShareDialog(false);
         setShareEmails('');
         setShareMessage('');
@@ -130,7 +140,7 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
   };
 
   const copySessionLink = () => {
-    const link = `${window.location.origin}/live-session/${sessionId}?courseId=${courseId}`;
+    const link = getSessionLink();
     navigator.clipboard.writeText(link);
     toast.success('Session link copied to clipboard!');
   };
@@ -288,111 +298,163 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
   if (!user) return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">Loading...</div>;
 
   return (
-    <div className="flex h-screen bg-gray-900 text-white overflow-hidden">
-      <div className="flex-1 flex flex-col min-w-0">
-        <LiveSessionHeader
-          sessionName={sessionName}
-          sessionTime={sessionTime}
-          isRecording={isRecording}
-          participantCount={peers.length + 1}
-          onLeave={onLeave}
-          userRole={userRole}
-          isJoined={userRole === 'tutor' ? isLive : true}
-          isSidebarOpen={isSidebarOpen}
-          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-          category={category}
-          tutorName={userRole === 'tutor' ? user.name : undefined}
-        />
-        
-        <div className="flex-1 relative bg-black overflow-hidden flex flex-col">
-            {userRole === 'tutor' && !isLive && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-                    <div className="bg-gray-900 p-8 rounded-xl border border-gray-700 text-center max-w-md">
-                        <h2 className="text-2xl font-bold text-white mb-4">Ready to Start?</h2>
-                        <p className="text-gray-400 mb-6">
-                            You are about to start the live session for <span className="text-indigo-400">{courseName || 'this class'}</span>.
-                            Students will be notified once you go live.
-                        </p>
-                        <div className="flex gap-4 justify-center">
-                            <Button 
-                                variant="outline" 
-                                onClick={onLeave}
-                                className="border-gray-600 text-gray-300 hover:bg-gray-800"
-                            >
-                                Cancel
-                            </Button>
-                            <Button 
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                                onClick={handleGoLive}
-                            >
-                                Go Live
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {showWhiteboard ? (
-                <Whiteboard 
-                    socket={socket}
-                    sessionId={sessionId}
-                    onClose={() => setShowWhiteboard(false)}
-                    isTutor={userRole === 'tutor'}
-                />
-            ) : (
-                <VideoGrid 
-                    localStream={localStream} 
-                    peers={peers} 
-                    userRole={userRole}
-                    isLocalVideoOn={isVideoOn}
-                    layout={layout}
-                />
-            )}
+    <>
+      <div className="flex h-screen bg-gray-900 text-white overflow-hidden flex-col sm:flex-row">
+        <div className="flex-1 flex flex-col min-w-0">
+          <LiveSessionHeader
+            sessionName={sessionName}
+            sessionTime={sessionTime}
+            isRecording={isRecording}
+            participantCount={peers.length + 1}
+            onLeave={onLeave}
+            userRole={userRole}
+            isJoined={userRole === 'tutor' ? isLive : true}
+            isSidebarOpen={isSidebarOpen}
+            onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+            category={category}
+            tutorName={userRole === 'tutor' ? user.name : undefined}
+            onCopyLink={copySessionLink}
+            onShareLink={() => setShowShareDialog(true)}
+          />
+          
+          <div className="flex-1 relative bg-black overflow-hidden flex flex-col">
+              {userRole === 'tutor' && !isLive && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+                      <div className="bg-gray-900 p-6 sm:p-8 rounded-xl border border-gray-700 text-center max-w-md mx-4">
+                          <h2 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4">Ready to Start?</h2>
+                          <p className="text-sm sm:text-base text-gray-400 mb-4 sm:mb-6">
+                              You are about to start the live session for <span className="text-indigo-400">{courseName || 'this class'}</span>.
+                              Students will be notified once you go live.
+                          </p>
+                          <div className="flex gap-3 sm:gap-4 justify-center">
+                              <Button 
+                                  variant="outline" 
+                                  onClick={onLeave}
+                                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                              >
+                                  Cancel
+                              </Button>
+                              <Button 
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                                  onClick={handleGoLive}
+                              >
+                                  Go Live
+                              </Button>
+                          </div>
+                      </div>
+                  </div>
+              )}
+              {showWhiteboard ? (
+                  <Whiteboard 
+                      socket={socket}
+                      sessionId={sessionId}
+                      onClose={() => setShowWhiteboard(false)}
+                      isTutor={userRole === 'tutor'}
+                  />
+              ) : (
+                  <VideoGrid 
+                      localStream={localStream} 
+                      peers={peers} 
+                      userRole={userRole}
+                      isLocalVideoOn={isVideoOn}
+                      layout={layout}
+                  />
+              )}
+          </div>
+
+          <div className="flex-none z-50 relative">
+              <ControlsBar
+                  userRole={userRole}
+                  isAudioOn={isAudioOn}
+                  isVideoOn={isVideoOn}
+                  isScreenSharing={isScreenSharing}
+                  isRecording={isRecording}
+                  showWhiteboard={showWhiteboard}
+                  isHandRaised={isHandRaised}
+                  isSidebarOpen={isSidebarOpen}
+                  messageCount={messages.length}
+                  onToggleAudio={toggleAudio}
+                  onToggleVideo={toggleVideo}
+                  onToggleScreenShare={() => toggleScreenShare().catch(console.error)}
+                  onToggleRecording={isRecording ? stopRecording : startRecording}
+                  onToggleWhiteboard={() => setShowWhiteboard(!showWhiteboard)}
+                  onToggleHandRaise={toggleHandRaise}
+                  onRequestScreenShare={() => toast.info("Request screen share not implemented yet")}
+                  onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+                  onToggleLayout={() => setLayout(prev => prev === 'focus' ? 'grid' : 'focus')}
+                  onLeave={onLeave}
+              />
+          </div>
         </div>
 
-        <div className="flex-none z-50 relative">
-            <ControlsBar
-                userRole={userRole}
-                isAudioOn={isAudioOn}
-                isVideoOn={isVideoOn}
-                isScreenSharing={isScreenSharing}
-                isRecording={isRecording}
-                showWhiteboard={showWhiteboard}
-                isHandRaised={isHandRaised}
-                isSidebarOpen={isSidebarOpen}
-                messageCount={messages.length}
-                onToggleAudio={toggleAudio}
-                onToggleVideo={toggleVideo}
-                onToggleScreenShare={() => toggleScreenShare().catch(console.error)}
-                onToggleRecording={isRecording ? stopRecording : startRecording}
-                onToggleWhiteboard={() => setShowWhiteboard(!showWhiteboard)}
-                onToggleHandRaise={toggleHandRaise}
-                onRequestScreenShare={() => toast.info("Request screen share not implemented yet")}
-                onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-                onToggleLayout={() => setLayout(prev => prev === 'focus' ? 'grid' : 'focus')}
-                onLeave={onLeave}
+        {isSidebarOpen && (
+            <Sidebar
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              messages={messages}
+              participants={participantsList}
+              sharedFiles={sharedFiles}
+              onSendMessage={handleSendMessage}
+              chatInput={chatInput}
+              setChatInput={setChatInput}
+              currentUserId={user.id}
+              userRole={userRole}
+              socket={socket}
+              sessionId={sessionId}
+              onMuteParticipant={handleMuteParticipant}
+              onKickParticipant={handleKickParticipant}
+              onRequestUnmute={handleRequestUnmute}
             />
-        </div>
+        )}
       </div>
 
-      {isSidebarOpen && (
-          <Sidebar
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            messages={messages}
-            participants={participantsList}
-            sharedFiles={sharedFiles}
-            onSendMessage={handleSendMessage}
-            chatInput={chatInput}
-            setChatInput={setChatInput}
-            currentUserId={user.id}
-            userRole={userRole}
-            socket={socket}
-            sessionId={sessionId}
-            onMuteParticipant={handleMuteParticipant}
-            onKickParticipant={handleKickParticipant}
-            onRequestUnmute={handleRequestUnmute}
-          />
+      {/* Share Dialog */}
+      {showShareDialog && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-gray-900 rounded-xl border border-gray-700 p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-4">Share Session Link</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Email Addresses (comma-separated)</label>
+                <input
+                  type="text"
+                  value={shareEmails}
+                  onChange={(e) => setShareEmails(e.target.value)}
+                  placeholder="student1@email.com, student2@email.com"
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 mb-2 block">Personal Message (optional)</label>
+                <textarea
+                  value={shareMessage}
+                  onChange={(e) => setShareMessage(e.target.value)}
+                  placeholder="Add a personal message..."
+                  rows={3}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowShareDialog(false)}
+                  disabled={isSharing}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleShareLink}
+                  disabled={isSharing}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                >
+                  {isSharing ? 'Sending...' : 'Send Invites'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
-    </div>
+    </>
   )
 }

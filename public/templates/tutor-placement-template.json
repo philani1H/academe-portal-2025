@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Roshan (mr mvp)",
+    "subjects": ["Economics", "Geography"],
+    "courses": [
+      { "name": "Economics Grade 10-12", "subject": "Economics", "level": "High School" },
+      { "name": "Geography Grade 10-12", "subject": "Geography", "level": "High School" }
+    ],
+    "departments": ["Social Sciences", "Commerce"]
+  }
+]
+

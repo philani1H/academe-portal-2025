@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import * as XLSX from 'xlsx'
@@ -122,12 +121,17 @@ interface Department {
 interface SystemStats {
   totalUsers: number
   activeUsers: number
+  totalTutors: number
+  activeTutors: number
+  totalStudents: number
+  activeStudents: number
   totalCourses: number
   activeCourses: number
-  newUsersToday: number
-  activeStudents: number
-  activeTutors: number
+  totalDepartments: number
   pendingApprovals: number
+  newUsersToday: number
+  systemUptime: string
+  lastBackup: string
 }
 
 // Mock data removed — Admin dashboard now fetches live data from the API / database on mount.
@@ -137,20 +141,25 @@ interface SystemStats {
 export default function AdminDashboard() {
   // State
   const [user, setUser] = useState({ name: "Admin User", email: "admin@university.edu", role: "admin" })
-  const [tutors, setTutors] = useState<Tutor[]>([])  // Initialize with empty array to prevent null
-  const [students, setStudents] = useState<Student[]>([])  // Initialize with empty array to prevent null
-  const [courses, setCourses] = useState<Course[]>([])  // Initialize with empty array to prevent null
-  const [notifications, setNotifications] = useState<Notification[]>([])  // Initialize with empty array to prevent null
-  const [departments, setDepartments] = useState<Department[]>([])  // Initialize with empty array to prevent null
+  const [tutors, setTutors] = useState<Tutor[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [courses, setCourses] = useState<Course[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [systemStats, setSystemStats] = useState<SystemStats>({
     totalUsers: 0,
     activeUsers: 0,
+    totalTutors: 0,
+    activeTutors: 0,
+    totalStudents: 0,
+    activeStudents: 0,
     totalCourses: 0,
     activeCourses: 0,
-    newUsersToday: 0,
-    activeStudents: 0,
-    activeTutors: 0,
+    totalDepartments: 0,
     pendingApprovals: 0,
+    newUsersToday: 0,
+    systemUptime: '0%',
+    lastBackup: new Date().toISOString()
   })
 
   const [unreadCount, setUnreadCount] = useState(0)
@@ -219,6 +228,19 @@ export default function AdminDashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const [showCoursePlacementDialog, setShowCoursePlacementDialog] = useState(false)
+  const safeGetCourseTutorId = (course: any): string | null => {
+    if (!course) return null
+    const raw = course.tutorId ?? course.tutor_id
+    if (raw === undefined || raw === null) return null
+    return String(raw)
+  }
+
+  const safeFormatDate = (value: any): string => {
+    if (!value) return "Not set"
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return "Not set"
+    return date.toLocaleDateString()
+  }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -273,7 +295,7 @@ export default function AdminDashboard() {
         title: "Placement processed",
         description: `${response.message}. Tutors matched: ${response.tutorsMatched}, Courses created: ${response.coursesCreated}`,
       })
-      await loadCourses()
+      await fetchCourses()
       return {
         updated: response.coursesCreated,
         created: response.coursesCreated,
@@ -316,8 +338,31 @@ export default function AdminDashboard() {
   // Fetch data from API via centralized helper (respects VITE_API_URL)
   const fetchTutors = async () => {
     try {
-      const data = await apiFetch<any[]>(`/api/admin/content/tutors`)
-      setTutors(Array.isArray(data) ? data : [])
+      // Fetch system users with role="tutor" for admin management
+      const data = await apiFetch<any>(`/api/admin/users?role=tutor`)
+      const rows = (data && (data as any).data) ? (data as any).data : data
+      const tutorList = Array.isArray(rows) ? rows : []
+      
+      // Fetch all courses to count per tutor
+      const coursesData = await apiFetch<any[]>(`/api/courses`)
+      const allCourses = Array.isArray(coursesData) ? coursesData : []
+      
+      // Add status field and course counts
+      const tutorsWithStatus = tutorList.map((t: any) => {
+        const tutorCourses = allCourses.filter((c: any) => {
+          const courseTutorId = String(c.tutorId ?? c.tutor_id ?? '')
+          return courseTutorId === String(t.id)
+        })
+        
+        return {
+          ...t,
+          status: 'active',
+          courses: tutorCourses.map((c: any) => String(c.id ?? c.ID)),
+          students: 0, // Will be populated if needed
+        }
+      })
+      
+      setTutors(tutorsWithStatus)
     } catch (e) {
       console.error('Failed to fetch tutors:', e)
       setTutors([])
@@ -326,12 +371,7 @@ export default function AdminDashboard() {
 
   const fetchStudents = async () => {
     try {
-      const data = await apiFetch<any>(`/api/query`, {
-        method: 'POST',
-        body: JSON.stringify({
-          query: 'SELECT id, name, email, role, created_at as createdAt, updated_at as lastActive FROM users WHERE role = "student" ORDER BY created_at DESC'
-        })
-      })
+      const data = await apiFetch<any>(`/api/admin/users?role=student`)
       const rows = (data && (data as any).data) ? (data as any).data : data
       setStudents(Array.isArray(rows) ? rows : [])
     } catch (e) {
@@ -343,7 +383,27 @@ export default function AdminDashboard() {
   const fetchCourses = async () => {
     try {
       const data = await apiFetch<any[]>(`/api/courses`)
-      setCourses(Array.isArray(data) ? data : [])
+      const rows = Array.isArray((data as any)) ? (data as any) : []
+      const mapped = rows.map((r: any) => {
+        const id = r.id ?? r.ID
+        const tutorId = r.tutorId ?? r.tutor_id
+        const startDate = r.startDate ?? r.start_date ?? r.createdAt ?? r.created_at
+        const endDate = r.endDate ?? r.end_date
+        return {
+          id: String(id ?? `c-${Date.now()}`),
+          name: r.name ?? r.title ?? "Course",
+          description: r.description ?? "",
+          department: r.department ?? r.category ?? "General",
+          tutorId: tutorId != null ? String(tutorId) : "",
+          status: (r.status as Course["status"]) ?? "active",
+          students: Number(r.students ?? 0),
+          createdAt: (r.createdAt ?? r.created_at ?? new Date().toISOString()).toString(),
+          startDate: startDate ? startDate.toString() : "",
+          endDate: endDate ? endDate.toString() : "",
+          color: r.color ?? "#4f46e5",
+        } as Course
+      })
+      setCourses(mapped)
     } catch (e) {
       console.error('Failed to fetch courses:', e)
       setCourses([])
@@ -352,12 +412,7 @@ export default function AdminDashboard() {
 
   const fetchNotifications = async () => {
     try {
-      const data = await apiFetch<any>(`/api/query`, {
-        method: 'POST',
-        body: JSON.stringify({
-          query: 'SELECT id, message as title, message, type, created_at as date, read FROM notifications ORDER BY created_at DESC LIMIT 20'
-        })
-      })
+      const data = await apiFetch<any>(`/api/notifications`)
       const rows = (data && (data as any).data) ? (data as any).data : data
       const mapped = Array.isArray(rows) ? rows.map((n: any) => ({
         id: n.id?.toString() || `${Date.now()}`,
@@ -378,32 +433,43 @@ export default function AdminDashboard() {
 
   const fetchDepartmentsAndStats = async () => {
     try {
-      const deptResp = await apiFetch<any>(`/api/query`, {
-        method: 'POST',
-        body: JSON.stringify({
-          query: 'SELECT "General" as name, COUNT(*) as courses FROM courses'
-        })
-      })
+      const deptResp = await apiFetch<any>(`/api/admin/departments`)
       const deptList = (deptResp && (deptResp as any).data) ? (deptResp as any).data : deptResp
       const departments = Array.isArray(deptList) ? deptList.map((d: any, i: number) => ({
         id: d.name?.toLowerCase().replace(/\s+/g, '-') || `dept-${i}`,
         name: d.name || `Department ${i + 1}`,
         courses: Number(d.courses || 0),
-        tutors: 0,
-        students: 0,
+        tutors: Number(d.tutors || 0),
+        students: Number(d.students || 0),
         color: ['#4f46e5', '#059669', '#dc2626', '#7c3aed', '#ea580c'][i % 5]
       })) : []
       setDepartments(departments)
 
       const stats = await apiFetch<any>(`/api/admin/stats`)
       const s = (stats && (stats as any).data) ? (stats as any).data : stats
+      
+      // Ensure we have valid numbers
+      const totalUsers = Number(s?.totalUsers || 0)
+      const activeUsers = Number(s?.activeUsers || 0)
+      const totalTutors = Number(s?.totalTutors || s?.tutors || 0)
+      const totalStudents = Number(s?.totalStudents || 0)
+      const totalCourses = Number(s?.courses || 0)
+      const activeCourses = Number(s?.activeCourses || totalCourses)
+      const activeStudents = Number(s?.activeStudents || 0)
+      const activeTutors = Number(s?.activeTutors || totalTutors)
+      
       setSystemStats({
-        totalUsers: s?.totalUsers || 0,
-        totalTutors: s?.tutors || 0,
-        totalStudents: s?.students || 0,
-        totalCourses: s?.courses || 0,
+        totalUsers,
+        activeUsers,
+        totalTutors,
+        activeTutors,
+        totalStudents,
+        activeStudents,
+        totalCourses,
+        activeCourses,
         totalDepartments: departments.length,
-        activeUsers: Math.floor((s?.totalUsers || 0) * 0.8),
+        pendingApprovals: 0,
+        newUsersToday: 0,
         systemUptime: '99.9%',
         lastBackup: new Date().toISOString()
       })
@@ -412,11 +478,16 @@ export default function AdminDashboard() {
       setDepartments([])
       setSystemStats({
         totalUsers: 0,
-        totalTutors: 0,
-        totalStudents: 0,
-        totalCourses: 0,
-        totalDepartments: 0,
         activeUsers: 0,
+        totalTutors: 0,
+        activeTutors: 0,
+        totalStudents: 0,
+        activeStudents: 0,
+        totalCourses: 0,
+        activeCourses: 0,
+        totalDepartments: 0,
+        pendingApprovals: 0,
+        newUsersToday: 0,
         systemUptime: '0%',
         lastBackup: new Date().toISOString()
       })
@@ -711,6 +782,7 @@ export default function AdminDashboard() {
         tutorId: "",
         startDate: "",
         endDate: "",
+        section: "",
       })
 
       // Create notification
@@ -1004,6 +1076,117 @@ export default function AdminDashboard() {
     }
   }
 
+  const fetchTutorUsersForExport = async () => {
+    try {
+      const data = await apiFetch<any>(`/api/query`, {
+        method: "POST",
+        body: JSON.stringify({
+          query: 'SELECT name, email, department FROM users WHERE role = "tutor" ORDER BY name ASC',
+        }),
+      })
+      const rows = data && (data as any).data ? (data as any).data : data
+      return Array.isArray(rows) ? rows : []
+    } catch (error) {
+      console.error("Failed to load tutor users for export", error)
+      toast({
+        title: "Export failed",
+        description: "Could not load tutor login information",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const handleExportTutorLoginsExcel = async () => {
+    try {
+      const rows = await fetchTutorUsersForExport()
+      const now = new Date()
+      const datePart = now.toISOString().slice(0, 10)
+      const loginRows = rows.map((row: any, index: number) => ({
+        "#": index + 1,
+        Name: row.name,
+        Email: row.email,
+        Department: row.department || "",
+        TemporaryPassword: "Welcome123!",
+        LoginUrl: `${window.location.origin}/tutor/login`,
+      }))
+      const ws = XLSX.utils.json_to_sheet(loginRows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "Tutor Logins")
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+      const blob = new Blob([wbout], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `tutor-logins-${datePart}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Tutor login Excel export failed", error)
+    }
+  }
+
+  const handleExportTutorLoginsPdf = async () => {
+    try {
+      const rows = await fetchTutorUsersForExport()
+      const generatedAt = new Date().toLocaleString()
+      const loginUrl = `${window.location.origin}/tutor/login`
+      const header =
+        "<tr><th>#</th><th>Name</th><th>Email</th><th>Department</th><th>Temporary Password</th><th>Login URL</th></tr>"
+      const body = rows
+        .map(
+          (row: any, index: number) =>
+            `<tr><td>${index + 1}</td><td>${row.name}</td><td>${row.email}</td><td>${row.department || ""}</td><td>Welcome123!</td><td>${loginUrl}</td></tr>`,
+        )
+        .join("")
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Tutor Login Info</title>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 16px; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    p { margin-top: 0; margin-bottom: 16px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    th, td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: left; }
+    th { background-color: #f3f4f6; }
+  </style>
+</head>
+<body>
+  <h1>Tutor Login Information</h1>
+  <p>Generated: ${generatedAt}</p>
+  <table>
+    <thead>
+      ${header}
+    </thead>
+    <tbody>
+      ${body}
+    </tbody>
+  </table>
+</body>
+</html>`
+      const printWindow = window.open("", "_blank")
+      if (!printWindow) return
+      printWindow.document.open()
+      printWindow.document.write(html)
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
+    } catch (error) {
+      console.error("Tutor login PDF export failed", error)
+      toast({
+        title: "Export failed",
+        description: "Could not export tutor login PDF",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleApproveCourse = async (courseId: string) => {
     try {
       // Simulate API call
@@ -1097,7 +1280,7 @@ export default function AdminDashboard() {
       setStudents((prev) =>
         prev.map((student) => ({
           ...student,
-          enrolledCourses: student.enrolledCourses.filter((c) => c !== courseId),
+          enrolledCourses: (student.enrolledCourses || []).filter((c) => c !== courseId),
         }))
       )
 
@@ -1105,7 +1288,7 @@ export default function AdminDashboard() {
       setTutors((prev) =>
         prev.map((tutor) => ({
           ...tutor,
-          courses: tutor.courses.filter((c) => c !== courseId),
+          courses: (tutor.courses || []).filter((c) => c !== courseId),
         }))
       )
 
@@ -2504,33 +2687,46 @@ export default function AdminDashboard() {
                     </DialogContent>
                   </Dialog>
 
-                  <div className="flex gap-2">
-                    <Select onValueChange={(value) => setFilterDepartment(value === "all" ? null : value)}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Filter by department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Departments</SelectItem>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.name}>
-                            {dept.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={handleExportTutorLoginsExcel}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export Logins (Excel)
+                      </Button>
+                      <Button variant="outline" onClick={handleExportTutorLoginsPdf}>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Export Logins (PDF)
+                      </Button>
+                    </div>
 
-                    <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Filter by status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select onValueChange={(value) => setFilterDepartment(value === "all" ? null : value)}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Filter by department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Departments</SelectItem>
+                          {departments.map((dept) => (
+                            <SelectItem key={dept.id} value={dept.name}>
+                              {dept.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Filter by status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Statuses</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                          <SelectItem value="rejected">Rejected</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2968,7 +3164,8 @@ export default function AdminDashboard() {
                     </TableHeader>
                     <TableBody>
                       {filteredCourses.map((course) => {
-                        const tutor = tutors.find((t) => t.id === course.tutorId)
+                        const tutorId = safeGetCourseTutorId(course)
+                        const tutor = tutorId ? tutors.find((t) => String(t.id) === tutorId) : undefined
                         return (
                           <TableRow key={course.id}>
                             <TableCell className="font-medium">
@@ -3018,8 +3215,11 @@ export default function AdminDashboard() {
                             <TableCell>{course.students}</TableCell>
                             <TableCell>
                               <div className="text-xs">
-                                <div>{new Date(course.startDate).toLocaleDateString()}</div>
-                                <div>to {new Date(course.endDate).toLocaleDateString()}</div>
+                                <div>{safeFormatDate((course as any).startDate ?? (course as any).start_date ?? (course as any).createdAt ?? (course as any).created_at)}</div>
+                                <div>
+                                  to{" "}
+                                  {safeFormatDate((course as any).endDate ?? (course as any).end_date)}
+                                </div>
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
@@ -3081,6 +3281,8 @@ export default function AdminDashboard() {
                 title="Bulk Place Tutors into Courses"
                 description="Upload JSON or CSV to auto-create courses and assign departments based on tutor subjects."
                 onUpload={handleCoursePlacementUpload}
+                templateCsvUrl="/templates/tutor-placement-template.csv"
+                templateJsonUrl="/templates/tutor-placement-template.json"
                 csvExample={`name,subjects,courses,departments
 Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-12","Social Sciences|Commerce"`}
                 jsonExample={`[
@@ -4341,7 +4543,7 @@ Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-
                         </TableHeader>
                         <TableBody>
                           {students
-                            .filter((student) => student.enrolledCourses.includes(selectedCourse.id))
+                            .filter((student) => (student.enrolledCourses || []).includes(selectedCourse.id))
                             .map((student) => (
                               <TableRow key={student.id}>
                                 <TableCell className="font-medium">

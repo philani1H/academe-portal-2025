@@ -107,26 +107,26 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                             <SpeakingIndicator isAudioOn={tutorPeer.isAudioOn} isSpeaking={speakingPeers.has(tutorPeer.peerId)} />
                             
                             {/* Tutor Info Badge */}
-                            <div className="absolute bottom-6 left-6 bg-black/60 backdrop-blur-sm rounded-xl px-4 py-2">
-                                <p className="text-white font-semibold text-sm">Tutor</p>
+                            <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 bg-black/60 backdrop-blur-sm rounded-lg sm:rounded-xl px-3 py-1.5 sm:px-4 sm:py-2">
+                                <p className="text-white font-semibold text-xs sm:text-sm">Tutor</p>
                             </div>
                          </div>
                     ) : (
-                         <div className="flex flex-col items-center justify-center gap-4 text-white p-8 text-center max-w-sm">
-                             <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-full h-28 w-28 flex items-center justify-center shadow-2xl">
-                                  <span className="text-5xl font-bold">👨‍🏫</span>
+                         <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 text-white p-6 sm:p-8 text-center max-w-sm mx-4">
+                             <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-full h-20 w-20 sm:h-28 sm:w-28 flex items-center justify-center shadow-2xl">
+                                  <span className="text-4xl sm:text-5xl font-bold">👨‍🏫</span>
                              </div>
-                             <h2 className="text-2xl font-bold">Tutor's camera is off</h2>
-                             <p className="text-gray-300 text-base">The tutor is present but has disabled their video.</p>
+                             <h2 className="text-xl sm:text-2xl font-bold">Tutor's camera is off</h2>
+                             <p className="text-gray-300 text-sm sm:text-base">The tutor is present but has disabled their video.</p>
                          </div>
                     )
                 ) : (
-                    <div className="flex flex-col items-center justify-center gap-4 text-white p-8 text-center max-w-sm">
-                        <div className="bg-gradient-to-br from-gray-700 to-gray-800 rounded-full h-28 w-28 flex items-center justify-center shadow-2xl animate-pulse">
-                            <span className="text-5xl">⏳</span>
+                    <div className="flex flex-col items-center justify-center gap-3 sm:gap-4 text-white p-6 sm:p-8 text-center max-w-sm mx-4">
+                        <div className="bg-gradient-to-br from-gray-700 to-gray-800 rounded-full h-20 w-20 sm:h-28 sm:w-28 flex items-center justify-center shadow-2xl animate-pulse">
+                            <span className="text-4xl sm:text-5xl">⏳</span>
                         </div>
-                        <h2 className="text-2xl font-bold">Waiting for tutor to join...</h2>
-                        <p className="text-gray-400 text-base">The session will start soon.</p>
+                        <h2 className="text-xl sm:text-2xl font-bold">Waiting for tutor to join...</h2>
+                        <p className="text-gray-400 text-sm sm:text-base">The session will start soon.</p>
                     </div>
                 )}
             </div>
@@ -135,63 +135,63 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
 
     // --- TUTOR VIEW (Grid Layout) ---
     return (
-        <div className="flex-1 p-4 h-full relative flex flex-col bg-gradient-to-br from-gray-900 via-gray-800 to-black overflow-hidden">
+        <div className="flex-1 p-2 sm:p-4 h-full relative flex flex-col bg-gradient-to-br from-gray-900 via-gray-800 to-black overflow-hidden">
             {/* Students Grid */}
             {studentPeers.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 auto-rows-fr flex-1 overflow-y-auto content-start pb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 auto-rows-fr flex-1 overflow-y-auto content-start pb-2 sm:pb-4">
                     {studentPeers.map(p => (
-                        <Card key={p.peerId} className="relative overflow-hidden bg-gray-800 border border-gray-700 hover:border-indigo-500 transition-colors duration-300 group min-h-[180px] sm:min-h-[220px]">
+                        <Card key={p.peerId} className="relative overflow-hidden bg-gray-800 border border-gray-700 hover:border-indigo-500 transition-colors duration-300 group min-h-[140px] sm:min-h-[180px] md:min-h-[220px]">
                             {p.isVideoOn && p.stream ? (
                                 <div className="w-full h-full relative">
                                     <VideoPlayer stream={p.stream} />
                                     <SpeakingIndicator isAudioOn={p.isAudioOn} isSpeaking={speakingPeers.has(p.peerId)} />
                                 </div>
                             ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-gray-950 gap-2">
-                                    <div className="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full h-16 w-16 flex items-center justify-center shadow-lg">
-                                        <span className="text-2xl font-bold text-white">👤</span>
+                                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-gray-950 gap-1.5 sm:gap-2">
+                                    <div className="bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full h-12 w-12 sm:h-16 sm:w-16 flex items-center justify-center shadow-lg">
+                                        <span className="text-xl sm:text-2xl font-bold text-white">👤</span>
                                     </div>
-                                    <div className="text-gray-300 text-xs font-medium">Video Off</div>
+                                    <div className="text-gray-300 text-[10px] sm:text-xs font-medium">Video Off</div>
                                 </div>
                             )}
                             
                             {/* Student Badge */}
-                            <div className="absolute bottom-2 left-2 right-2 flex justify-between items-start gap-2">
+                            <div className="absolute bottom-1.5 sm:bottom-2 left-1.5 sm:left-2 right-1.5 sm:right-2 flex justify-between items-start gap-1.5 sm:gap-2">
                                 <div className="flex-1">
-                                    <Badge className="bg-gray-950/80 backdrop-blur-sm text-white text-xs font-semibold px-2 py-1">
+                                    <Badge className="bg-gray-950/80 backdrop-blur-sm text-white text-[10px] sm:text-xs font-semibold px-1.5 py-0.5 sm:px-2 sm:py-1">
                                         Student
                                     </Badge>
                                 </div>
                                 
                                 {/* Audio/Video Status Icons */}
-                                <div className="flex gap-1">
-                                    {!p.isVideoOn && <VideoOff className="h-4 w-4 text-red-400" />}
-                                    {!p.isAudioOn && <MicOff className="h-4 w-4 text-red-400" />}
+                                <div className="flex gap-0.5 sm:gap-1">
+                                    {!p.isVideoOn && <VideoOff className="h-3 w-3 sm:h-4 sm:w-4 text-red-400" />}
+                                    {!p.isAudioOn && <MicOff className="h-3 w-3 sm:h-4 sm:w-4 text-red-400" />}
                                 </div>
                             </div>
 
                             {/* Tutor Control Buttons (Hover) */}
                             {userRole === 'tutor' && (
-                                <div className="absolute inset-0 bg-black/40 backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 p-2">
+                                <div className="absolute inset-0 bg-black/40 backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-1.5 sm:gap-2 p-2">
                                     {p.isAudioOn ? (
                                         <Button
                                             size="sm"
                                             variant="destructive"
                                             onClick={() => onMuteStudent?.(p.peerId)}
-                                            className="rounded-full h-10 w-10 p-0 shadow-lg"
+                                            className="rounded-full h-8 w-8 sm:h-10 sm:w-10 p-0 shadow-lg"
                                             title="Mute Student"
                                         >
-                                            <MicOff className="h-4 w-4" />
+                                            <MicOff className="h-3 w-3 sm:h-4 sm:w-4" />
                                         </Button>
                                     ) : (
                                         <Button
                                             size="sm"
                                             variant="outline"
                                             onClick={() => onUnmuteStudent?.(p.peerId)}
-                                            className="rounded-full h-10 w-10 p-0 shadow-lg bg-gray-950/90"
+                                            className="rounded-full h-8 w-8 sm:h-10 sm:w-10 p-0 shadow-lg bg-gray-950/90"
                                             title="Unmute Student"
                                         >
-                                            <Mic className="h-4 w-4" />
+                                            <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
                                         </Button>
                                     )}
                                 </div>
@@ -200,26 +200,26 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                     ))}
                 </div>
             ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-                    <div className="text-6xl mb-4">👥</div>
-                    <p className="text-lg font-medium">No students have joined yet</p>
-                    <p className="text-sm text-gray-500 mt-2">Waiting for participants...</p>
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-4">
+                    <div className="text-4xl sm:text-6xl mb-3 sm:mb-4">👥</div>
+                    <p className="text-base sm:text-lg font-medium">No students have joined yet</p>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-1 sm:mt-2">Waiting for participants...</p>
                 </div>
             )}
 
             {/* Tutor Self Preview (Bottom Right) */}
-            <div className="absolute bottom-4 right-4 w-48 h-36 sm:w-56 sm:h-40 bg-gradient-to-br from-gray-900 to-gray-950 border-2 border-indigo-500/50 rounded-xl shadow-2xl overflow-hidden z-20 group hover:border-indigo-400 transition-all duration-300 hover:shadow-indigo-500/20">
+            <div className="absolute bottom-2 right-2 sm:bottom-4 sm:right-4 w-32 h-24 sm:w-48 sm:h-36 md:w-56 md:h-40 bg-gradient-to-br from-gray-900 to-gray-950 border-2 border-indigo-500/50 rounded-lg sm:rounded-xl shadow-2xl overflow-hidden z-20 group hover:border-indigo-400 transition-all duration-300 hover:shadow-indigo-500/20">
                  {isLocalVideoOn && localStream ? (
                      <div className="w-full h-full relative">
                          <VideoPlayer stream={localStream} isLocal={true} />
-                         <div className="absolute bottom-2 left-2">
-                             <Badge className="bg-indigo-600/95 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5">You (Tutor)</Badge>
+                         <div className="absolute bottom-1 left-1 sm:bottom-2 sm:left-2">
+                             <Badge className="bg-indigo-600/95 backdrop-blur-sm text-white text-[8px] sm:text-[10px] font-bold px-1.5 py-0.5 sm:px-2">You (Tutor)</Badge>
                          </div>
                      </div>
                  ) : (
-                     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-gray-950 gap-2">
-                         <VideoOff className="h-8 w-8 text-gray-600" />
-                         <span className="text-xs text-gray-500 font-medium">Camera Off</span>
+                     <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-gray-950 gap-1.5 sm:gap-2">
+                         <VideoOff className="h-6 w-6 sm:h-8 sm:w-8 text-gray-600" />
+                         <span className="text-[10px] sm:text-xs text-gray-500 font-medium">Camera Off</span>
                      </div>
                  )}
             </div>

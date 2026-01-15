@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 
 export const useRecording = (
@@ -9,6 +9,19 @@ export const useRecording = (
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (recordingStreamRef.current) {
+        recordingStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   const uploadRecording = async (blob: Blob) => {
     if (!courseId) {
@@ -21,13 +34,16 @@ export const useRecording = (
     
     try {
       const formData = new FormData();
-      formData.append('file', blob, `session-recording-${new Date().toISOString()}.webm`);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      formData.append('file', blob, `session-recording-${timestamp}.webm`);
       formData.append('courseId', courseId);
       formData.append('type', 'video');
       formData.append('name', `Live Session Recording - ${new Date().toLocaleDateString()}`);
 
+      const token = localStorage.getItem('token');
       const response = await fetch('/api/upload/material', {
         method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         body: formData
       });
 
@@ -49,9 +65,13 @@ export const useRecording = (
     document.body.appendChild(a);
     a.style.display = 'none';
     a.href = url;
-    a.download = `session-recording-${new Date().toISOString()}.webm`;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.download = `session-recording-${timestamp}.webm`;
     a.click();
-    window.URL.revokeObjectURL(url);
+    setTimeout(() => {
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    }, 100);
     toast.success("Recording saved to downloads.");
   };
 
@@ -60,16 +80,22 @@ export const useRecording = (
       let streamToRecord: MediaStream;
 
       if (isScreenSharing) {
-        // If screen sharing, prioritize capturing the screen (meeting view)
-        // Note: getDisplayMedia prompts the user.
+        // If screen sharing, capture the screen
         try {
             const displayStream = await navigator.mediaDevices.getDisplayMedia({
-                video: { mediaSource: 'screen' } as any,
-                audio: true
+                video: { 
+                  displaySurface: 'monitor',
+                  cursor: 'always'
+                } as any,
+                audio: {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  sampleRate: 44100
+                } as any
             });
             
             // Mix with mic if available
-            if (localStream) {
+            if (localStream && localStream.getAudioTracks().length > 0) {
                 const audioContext = new AudioContext();
                 const dest = audioContext.createMediaStreamDestination();
                 
@@ -95,9 +121,12 @@ export const useRecording = (
             } else {
                 streamToRecord = displayStream;
             }
+            
+            recordingStreamRef.current = displayStream;
         } catch (err) {
             // User cancelled screen share selection
             console.warn("Screen share cancelled for recording", err);
+            toast.info("Screen recording cancelled");
             return;
         }
       } else {
@@ -113,46 +142,89 @@ export const useRecording = (
 
     } catch (err) {
       console.error("Error starting recording:", err);
-      toast.error("Failed to start recording.");
+      toast.error("Failed to start recording. Please check your permissions.");
     }
-  }, [localStream, isScreenSharing]);
+  }, [localStream, isScreenSharing, courseId]);
 
   const setupRecorder = (stream: MediaStream) => {
-    const recorder = new MediaRecorder(stream);
-    mediaRecorderRef.current = recorder;
-    chunksRef.current = [];
-
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) {
-        chunksRef.current.push(e.data);
-      }
-    };
-
-    recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+    try {
+      // Check for supported MIME types
+      const mimeTypes = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=h264,opus',
+        'video/webm',
+        'video/mp4'
+      ];
       
-      // Stop tracks if they were created specifically for recording (like display media)
-      // But don't stop localStream tracks!
-      stream.getTracks().forEach(track => {
-          // Only stop if it's not the local stream (e.g. it's a display track)
-          // Rough check: if track id is not in localStream
-           if (localStream && !localStream.getTracks().some(t => t.id === track.id)) {
-               track.stop();
-           }
+      let selectedMimeType = '';
+      for (const mimeType of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mimeType)) {
+          selectedMimeType = mimeType;
+          break;
+        }
+      }
+
+      if (!selectedMimeType) {
+        throw new Error('No supported MIME type found for recording');
+      }
+
+      const recorder = new MediaRecorder(stream, {
+        mimeType: selectedMimeType,
+        videoBitsPerSecond: 2500000 // 2.5 Mbps
       });
+      
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
 
-      uploadRecording(blob);
-      setIsRecording(false);
-    };
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
 
-    recorder.start();
-    setIsRecording(true);
-    toast.success(isScreenSharing ? "Recording screen..." : "Recording camera...");
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: selectedMimeType });
+        
+        // Stop recording stream tracks if they were created specifically for recording
+        if (recordingStreamRef.current) {
+          recordingStreamRef.current.getTracks().forEach(track => {
+            // Only stop if it's not the local stream
+            if (!localStream || !localStream.getTracks().some(t => t.id === track.id)) {
+              track.stop();
+            }
+          });
+          recordingStreamRef.current = null;
+        }
+
+        uploadRecording(blob);
+        setIsRecording(false);
+      };
+
+      recorder.onerror = (event: any) => {
+        console.error("MediaRecorder error:", event);
+        toast.error("Recording error occurred");
+        setIsRecording(false);
+      };
+
+      recorder.start(1000); // Collect data every second
+      setIsRecording(true);
+      toast.success(isScreenSharing ? "Recording screen..." : "Recording session...");
+    } catch (err) {
+      console.error("Error setting up recorder:", err);
+      toast.error("Failed to initialize recorder");
+    }
   };
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+        toast.info("Stopping recording...");
+      } catch (err) {
+        console.error("Error stopping recording:", err);
+        toast.error("Failed to stop recording");
+      }
     }
   }, []);
 

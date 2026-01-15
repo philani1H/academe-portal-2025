@@ -1455,9 +1455,16 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{tutor.contactEmail || "No email"}</TableCell>
                   <TableCell>
-                    <Badge variant={tutor.isActive ? "default" : "secondary"}>
-                      {tutor.isActive ? "Active" : "Inactive"}
-                    </Badge>
+                    <div className="flex gap-1">
+                      <Badge variant={tutor.isActive ? "default" : "secondary"}>
+                        {tutor.isActive ? "Active" : "Inactive"}
+                      </Badge>
+                      {(tutor as any).hasSystemAccount && (
+                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                          System User
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -3434,6 +3441,8 @@ John Doe,"Math|Physics|Chemistry","https://example.com/image.jpg","Jane Doe","+2
         title="Bulk Place Tutors"
         description="Upload JSON or CSV to place tutors into departments and courses automatically"
         onUpload={handleBulkTutorPlacementUpload}
+        templateCsvUrl="/templates/tutor-placement-template.csv"
+        templateJsonUrl="/templates/tutor-placement-template.json"
         csvExample={`name,subjects,courses,departments
 Roshan (mr mvp),"Economics|Geography","Economics Grade 10-12|Geography Grade 10-12","Social Sciences|Commerce"`}
         jsonExample={`[

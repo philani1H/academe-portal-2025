@@ -19,13 +19,23 @@ import {
   renderTestCreatedEmail,
   renderStudentApprovedEmail,
   renderStudentRejectedEmail,
-} from "../lib/email"
+} from "../lib/email.js"
+import { v2 as cloudinary } from "cloudinary"
 import crypto from "crypto"
 import multer from "multer"
 import { createRequire } from "module"
 
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dszurpfhf',
+  api_key: process.env.CLOUDINARY_API_KEY || '649648851431394',
+  api_secret: process.env.CLOUDINARY_API_SECRET || 'lVtK5OH5DI1fk3YMluxdXqjVGnY',
+  secure: true
+});
+
 const require = createRequire(import.meta.url)
 const pdfParse = require("pdf-parse")
+const bcrypt = require("bcryptjs")
 
 // Type declarations
 interface AuthenticatedRequest extends Request {
@@ -225,7 +235,8 @@ const corsOptions = {
 }
 
 app.use(cors(corsOptions as cors.CorsOptions))
-app.use(express.json())
+app.use(express.json({ limit: "10mb" }))
+app.use(express.urlencoded({ limit: "10mb", extended: true }))
 
 // Timetable API
 // Remove file-based storage references
@@ -374,6 +385,56 @@ app.post("/api/upload/material", upload.single("file"), async (req: Request, res
   } catch (error) {
     console.error("Upload error:", error)
     res.status(500).json({ error: "Failed to upload material" })
+  }
+})
+
+// Cloudinary delete endpoint
+app.post("/api/cloudinary/delete", async (req: Request, res: Response) => {
+  try {
+    const { publicId, resourceType = 'image' } = req.body
+
+    if (!publicId) {
+      return res.status(400).json({ error: "Public ID is required" })
+    }
+
+    // Cloudinary configuration
+    const cloudName = 'dszurpfhf'
+    const apiKey = '649648851431394'
+    const apiSecret = 'lVtK5OH5DI1fk3YMluxdXqjVGnY'
+
+    // Generate signature for deletion
+    const timestamp = Math.round(new Date().getTime() / 1000)
+    const crypto = await import('crypto')
+    const signature = crypto
+      .createHash('sha1')
+      .update(`public_id=${publicId}&timestamp=${timestamp}${apiSecret}`)
+      .digest('hex')
+
+    // Call Cloudinary API
+    const formData = new URLSearchParams()
+    formData.append('public_id', publicId)
+    formData.append('timestamp', timestamp.toString())
+    formData.append('api_key', apiKey)
+    formData.append('signature', signature)
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/destroy`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    )
+
+    const result = await response.json()
+
+    if (result.result === 'ok') {
+      res.json({ success: true, message: 'Resource deleted successfully' })
+    } else {
+      res.status(400).json({ error: 'Failed to delete resource', details: result })
+    }
+  } catch (error) {
+    console.error("Cloudinary delete error:", error)
+    res.status(500).json({ error: "Failed to delete from Cloudinary" })
   }
 })
 
@@ -1065,25 +1126,33 @@ app.get("/api/tutor/:tutorId/students", async (req: Request, res: Response) => {
 // Admin stats for analytics
 app.get("/api/admin/stats", async (req: Request, res: Response) => {
   try {
-    const [tutorsCount, subjectsCount, testimonialsCount, activeAnnouncementsCount, totalStudents, totalCourses] =
+    const [tutorsCount, subjectsCount, testimonialsCount, activeAnnouncementsCount, totalStudents, totalTutors, totalCourses] =
       await Promise.all([
         prisma.tutor.count({ where: { isActive: true } }),
         prisma.subject.count({ where: { isActive: true } }),
         prisma.testimonial.count({ where: { isActive: true } }),
         prisma.announcement.count({ where: { isActive: true } }),
         prisma.user.count({ where: { role: "student" } }),
+        prisma.user.count({ where: { role: "tutor" } }),
         prisma.course.count().catch(() => 0),
       ])
 
+    const totalUsers = totalStudents + totalTutors
     const activeStudents = Math.round(totalStudents * 0.7)
+    const activeUsers = Math.round(totalUsers * 0.75)
 
     res.set("Cache-Control", "public, max-age=300")
     return res.json({
       success: true,
       data: {
+        totalUsers,
+        activeUsers,
         totalStudents,
         activeStudents,
+        totalTutors,
+        activeTutors: tutorsCount,
         courses: totalCourses,
+        activeCourses: totalCourses,
         tutors: tutorsCount,
         subjects: subjectsCount,
         testimonials: testimonialsCount,
@@ -1099,6 +1168,91 @@ app.get("/api/admin/stats", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Admin stats error:", error)
     return res.status(500).json({ success: false, error: "Failed to load stats" })
+  }
+})
+
+app.get("/api/admin/users", async (req: Request, res: Response) => {
+  try {
+    const roleParam = (req.query.role ?? "").toString().trim()
+    const where = roleParam ? { role: roleParam } : {}
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+    })
+    const data = users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      department: u.department,
+      subjects: u.subjects,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+    }))
+    return res.json({ success: true, data })
+  } catch (error) {
+    console.error("Admin users fetch error:", error)
+    return res.status(500).json({ success: false, error: "Failed to load users" })
+  }
+})
+
+app.get("/api/admin/departments", async (req: Request, res: Response) => {
+  try {
+    // Get course counts by department
+    const courseGroups = await prisma.course.groupBy({
+      by: ["department"],
+      _count: { _all: true },
+    })
+
+    // Get all departments from courses
+    const departments = courseGroups.map(g => g.department || "General")
+
+    // Get student counts by department
+    const studentCounts = await Promise.all(
+      departments.map(async (dept) => {
+        // Count students enrolled in courses of this department
+        const count = await prisma.user.count({
+          where: {
+            role: "student",
+            department: dept
+          }
+        })
+        return { department: dept, count }
+      })
+    )
+
+    // Get tutor counts by department
+    const tutorCounts = await Promise.all(
+      departments.map(async (dept) => {
+        // Count tutors in this department
+        const count = await prisma.user.count({
+          where: {
+            role: "tutor",
+            department: dept
+          }
+        })
+        return { department: dept, count }
+      })
+    )
+
+    // Combine all data
+    const data = courseGroups.map((g) => {
+      const deptName = g.department || "General"
+      const students = studentCounts.find(s => s.department === deptName)?.count || 0
+      const tutors = tutorCounts.find(t => t.department === deptName)?.count || 0
+      
+      return {
+        name: deptName,
+        courses: g._count._all,
+        students,
+        tutors
+      }
+    })
+
+    return res.json({ success: true, data })
+  } catch (error) {
+    console.error("Admin departments fetch error:", error)
+    return res.status(500).json({ success: false, error: "Failed to load departments" })
   }
 })
 
@@ -2142,11 +2296,20 @@ app.post("/api/notifications", async (req: Request, res: Response) => {
 // List notifications
 app.get("/api/notifications", async (req: Request, res: Response) => {
   try {
-    const db = await getConnection()
-    const notifications = await db.all("SELECT * FROM notifications ORDER BY created_at DESC LIMIT 200")
-    await db.close()
+    const notifications = await prisma.notification.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    })
+    const data = notifications.map((n) => ({
+      id: n.id,
+      title: n.title,
+      message: n.message,
+      type: n.type,
+      read: n.read,
+      date: n.createdAt,
+    }))
     res.set("Cache-Control", "public, max-age=120")
-    return res.json({ success: true, data: notifications })
+    return res.json({ success: true, data })
   } catch (error) {
     console.error("Error fetching notifications:", error)
     return res.status(500).json({ success: false, error: "Failed to fetch notifications" })
@@ -3265,13 +3428,27 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "desc" }],
         })
+        
+        // Also fetch system users with role="tutor"
+        const systemTutors = await prisma.user.findMany({
+          where: { role: "tutor" },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            department: true,
+            subjects: true,
+            createdAt: true,
+          },
+        })
+        
         const allSubjects = await prisma.subject.findMany({
           where: { isActive: true },
           select: { name: true, category: true },
         })
         const subjMap = new Map(allSubjects.map((s) => [s.name, s.category]))
 
-        return tutors.map((tutor) => {
+        const processedTutors = tutors.map((tutor) => {
           let ratings: any[] = []
           let subjects: string[] = []
           try {
@@ -3332,8 +3509,12 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
             departments,
             averageRating: avgRating,
             totalReviews: ratings.length,
+            systemUserId: systemTutors.find(st => st.name === tutor.name)?.id || null,
+            hasSystemAccount: systemTutors.some(st => st.name === tutor.name),
           }
         })
+        
+        return processedTutors
       },
       "team-members": () =>
         prisma.teamMember.findMany({
@@ -3524,7 +3705,14 @@ app.post(
       const cfg = contentConfig[type]
       if (!cfg) return res.status(404).json({ success: false, error: "Content type not found" })
       const model = cfg.model()
-      const payload = stringifyJsonFields(req.body || {}, cfg.jsonFields)
+      let rawPayload: Record<string, any> = req.body || {}
+
+      if (type === "tutors") {
+        const { systemUserId, hasSystemAccount, ...clean } = rawPayload
+        rawPayload = clean
+      }
+
+      const payload = stringifyJsonFields(rawPayload, cfg.jsonFields)
 
       if (type === "tutors") {
         const domain = (process.env.TUTOR_EMAIL_DOMAIN || "excellenceakademie.co.za").toString().toLowerCase()
@@ -3573,7 +3761,14 @@ app.put(
       const model = cfg.model()
       const { id, createdAt, updatedAt, averageRating, totalReviews, departments, ...rest } = req.body || {}
       if (!id) return res.status(400).json({ success: false, error: "ID is required" })
-      const data = stringifyJsonFields(rest, cfg.jsonFields)
+      let updatePayload: Record<string, any> = rest
+
+      if (type === "tutors") {
+        const { systemUserId, hasSystemAccount, ...clean } = updatePayload
+        updatePayload = clean
+      }
+
+      const data = stringifyJsonFields(updatePayload, cfg.jsonFields)
 
       if (type === "tutors") {
         const domain = (process.env.TUTOR_EMAIL_DOMAIN || "excellenceakademie.co.za").toString().toLowerCase()
@@ -3682,10 +3877,32 @@ app.post(
           .status(400)
           .json({ success: false, error: "Invalid file data URL. Allowed types: Images, HTML, Markdown, PDF, JSON" })
       const mime = match[1]
+      const base64 = match[match.length - 1]
+      const buffer = Buffer.from(base64, "base64")
+
+      if (mime.startsWith("image/") || mime.startsWith("video/")) {
+        const resourceType = mime.startsWith("video/") ? "video" : "image"
+        const uploadResult = await cloudinary.uploader.upload(`data:${mime};base64,${base64}`, {
+          resource_type: resourceType,
+          folder: "content-manager",
+          public_id: fileName
+            ?.toString()
+            .toLowerCase()
+            .replace(/[^a-z0-9-_]/g, "-"),
+        })
+
+        return res.status(201).json({
+          success: true,
+          url: uploadResult.secure_url,
+          mime: mime,
+          size: uploadResult.bytes,
+          publicId: uploadResult.public_id,
+          resourceType: uploadResult.resource_type,
+        })
+      }
+
       let ext = "bin"
-      if (mime.includes("image")) {
-        ext = mime.includes("svg") ? "svg" : mime.split("/")[1].replace("jpeg", "jpg")
-      } else if (mime.includes("text/html")) {
+      if (mime.includes("text/html")) {
         ext = "html"
       } else if (mime.includes("markdown") || mime.includes("text/plain")) {
         ext = "md"
@@ -3694,15 +3911,13 @@ app.post(
       } else if (mime.includes("json")) {
         ext = "json"
       }
-      const base64 = match[match.length - 1]
-      const buffer = Buffer.from(base64, "base64")
 
       await fs.mkdir(uploadsDir, { recursive: true })
       const safeBase =
         fileName
           ?.toString()
           .toLowerCase()
-          .replace(/[^a-z0-9-_]/g, "-") || "image"
+          .replace(/[^a-z0-9-_]/g, "-") || "file"
       const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       const name = `${safeBase}-${unique}.${ext}`
       const fullPath = path.join(uploadsDir, name)
@@ -3713,6 +3928,38 @@ app.post(
     } catch (error) {
       console.error("Upload error:", error)
       return res.status(500).json({ success: false, error: "Failed to upload image" })
+    }
+  },
+)
+
+app.post(
+  "/api/cloudinary/delete",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { publicId, resourceType } = req.body || {}
+      if (!publicId || typeof publicId !== "string") {
+        return res.status(400).json({ success: false, error: "publicId is required" })
+      }
+
+      const type =
+        resourceType === "video" || resourceType === "raw" ? resourceType : "image"
+
+      const result = await cloudinary.uploader.destroy(publicId, {
+        resource_type: type,
+      })
+
+      if (result.result !== "ok" && result.result !== "not found") {
+        return res
+          .status(500)
+          .json({ success: false, error: "Cloudinary delete failed", details: result })
+      }
+
+      return res.status(200).json({ success: true, result: result.result })
+    } catch (error) {
+      console.error("Cloudinary delete error:", error)
+      return res.status(500).json({ success: false, error: "Failed to delete resource" })
     }
   },
 )
@@ -4445,7 +4692,14 @@ const subjectDepartmentMap: Record<string, string> = {
   Geography: "Social Sciences",
   Tourism: "Social Sciences",
   English: "Languages",
+  "English HL": "Languages",
+  "English FAL": "Languages",
+  "English Home Language": "Languages",
+  "English First Additional Language": "Languages",
   Mathematics: "Mathematics",
+  "Math Literacy": "Mathematics",
+  "Maths Literacy": "Mathematics",
+  "Mathematical Literacy": "Mathematics",
   "Computer Applications Technology": "Technology",
   CAT: "Technology",
 }
@@ -4838,22 +5092,6 @@ const startServer = async (): Promise<void> => {
               continue
             }
 
-            // Find System User (for linking)
-            const userTutor = await prisma.user.findFirst({
-              where: {
-                name: tutorName,
-                role: "tutor",
-              },
-            })
-
-            if (!userTutor) {
-              warnings.push(
-                `System user for tutor "${tutorName}" not found; courses will be created but not linked to a user account`,
-              )
-            }
-
-            tutorsMatched++
-
             const subjects = Array.isArray(item.subjects)
               ? item.subjects.map((s: any) => String(s || "").trim()).filter((s: string) => s.length > 0)
               : parseArrayField(item.subjects)
@@ -4862,31 +5100,134 @@ const startServer = async (): Promise<void> => {
               ? item.departments.map((d: any) => String(d || "").trim()).filter((d: string) => d.length > 0)
               : parseArrayField(item.departments)
 
+            // Find System User (for linking)
+            let userTutor = await prisma.user.findFirst({
+              where: {
+                name: tutorName,
+                role: "tutor",
+              },
+            })
+
+            if (!userTutor && contentTutor.contactEmail) {
+              userTutor = await prisma.user.findUnique({
+                where: { email: contentTutor.contactEmail },
+              })
+            }
+
+            if (!userTutor) {
+              try {
+                const passwordHash = await bcrypt.hash("Welcome123!", 10)
+                let email = contentTutor.contactEmail
+                if (!email || !email.includes("@")) {
+                  email = `${tutorName.replace(/[^a-zA-Z0-9]/g, ".").toLowerCase()}@excellenceakademie.co.za`
+                }
+
+                const existingEmail = await prisma.user.findUnique({ where: { email } })
+                if (existingEmail) {
+                  // Check if existing user is a tutor
+                  if (existingEmail.role === "tutor") {
+                    userTutor = existingEmail
+                    warnings.push(`Using existing tutor account for "${tutorName}" (${email})`)
+                  } else {
+                    warnings.push(
+                      `Could not create user for "${tutorName}": Email ${email} already in use by a ${existingEmail.role}.`,
+                    )
+                  }
+                } else {
+                  userTutor = await prisma.user.create({
+                    data: {
+                      name: tutorName,
+                      email,
+                      password_hash: passwordHash,
+                      role: "tutor",
+                      department: departments[0] || "General",
+                      subjects: JSON.stringify(subjects),
+                    },
+                  })
+                  warnings.push(`✓ System user for "${tutorName}" was created automatically (${email})`)
+                }
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e)
+                warnings.push(
+                  `✗ System user for tutor "${tutorName}" not found and creation failed: ${msg}`,
+                )
+              }
+            } else {
+              warnings.push(`✓ Found existing system user for "${tutorName}"`)
+            }
+
+            tutorsMatched++
+
             const courses = Array.isArray(item.courses) ? item.courses : []
 
-            for (const c of courses) {
+            for (let i = 0; i < courses.length; i++) {
+              const c = courses[i]
               const title = String(c.name || "").trim()
               if (!title) continue
 
               const subject =
                 String(c.subject || (subjects.length > 0 ? subjects[0] : "") || "")
                   .trim() || "General"
-              const department = chooseDepartmentForSubject(subject, departments)
-              const category = subject || department
 
-              // Check if course exists
-              const existing = await prisma.course.findFirst({
+              let department: string
+              if (departments.length > 0) {
+                const subjIndex = subjects.findIndex(
+                  (s: string) => s.toLowerCase() === subject.toLowerCase(),
+                )
+                if (subjIndex >= 0 && subjIndex < departments.length) {
+                  department = departments[subjIndex]
+                } else if (departments.length === 1) {
+                  department = departments[0]
+                } else {
+                  department = departments[0]
+                }
+              } else {
+                department = chooseDepartmentForSubject(subject, [])
+              }
+
+              let category = subject || department
+
+              let existing = await prisma.course.findFirst({
                 where: {
                   name: title,
-                  department: department,
-                  category: category,
                 },
               })
 
-              if (existing) continue
+              if (!existing) {
+                existing = await prisma.course.findFirst({
+                  where: {
+                    name: title,
+                    department: department,
+                    category: category,
+                  },
+                })
+              }
+
+              if (existing) {
+                if (!existing.department || !existing.category) {
+                  department = existing.department || department
+                  category = existing.category || category
+                } else {
+                  department = existing.department
+                  category = existing.category
+                }
+
+                if (userTutor) {
+                  if (existing.tutorId == null) {
+                    await prisma.course.update({
+                      where: { id: existing.id },
+                      data: { tutorId: userTutor.id },
+                    })
+                  } else if (existing.tutorId !== userTutor.id) {
+                    warnings.push(
+                      `Course "${title}" already has a different tutor assigned; keeping existing tutor.`,
+                    )
+                  }
+                }
+                continue
+              }
 
               const now = new Date()
-              const end = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000)
 
               await prisma.course.create({
                 data: {

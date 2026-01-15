@@ -57,44 +57,44 @@ export function Sidebar({
   if (!isOpen) return null
 
   return (
-    <div className="w-full sm:w-80 bg-gradient-to-b from-gray-900 to-gray-800 border-l border-gray-700 flex flex-col h-full">
+    <div className="w-full sm:w-80 md:w-96 bg-gradient-to-b from-gray-900 to-gray-800 border-l border-gray-700 flex flex-col h-full sm:h-auto absolute sm:relative inset-0 sm:inset-auto z-40 sm:z-auto">
       {/* Tabs */}
-      <div className="flex border-b border-gray-700">
+      <div className="flex border-b border-gray-700 bg-gray-900/95 backdrop-blur-sm">
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex-1 py-3 px-2 text-xs font-medium flex items-center justify-center ${
-            activeTab === 'chat' ? 'text-white bg-gray-700' : 'text-gray-400'
+          className={`flex-1 py-2.5 sm:py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 transition-colors ${
+            activeTab === 'chat' ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-gray-200'
           }`}
         >
-          <MessageSquare className="h-4 w-4 mr-1" />
-          Chat
+          <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline">Chat</span>
         </button>
         <button
           onClick={() => setActiveTab('participants')}
-          className={`flex-1 py-3 px-2 text-xs font-medium flex items-center justify-center ${
-            activeTab === 'participants' ? 'text-white bg-gray-700' : 'text-gray-400'
+          className={`flex-1 py-2.5 sm:py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 transition-colors ${
+            activeTab === 'participants' ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-gray-200'
           }`}
         >
-          <Users className="h-4 w-4 mr-1" />
-          People
+          <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline">People</span>
         </button>
         <button
           onClick={() => setActiveTab('files')}
-          className={`flex-1 py-3 px-2 text-xs font-medium flex items-center justify-center ${
-            activeTab === 'files' ? 'text-white bg-gray-700' : 'text-gray-400'
+          className={`flex-1 py-2.5 sm:py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 transition-colors ${
+            activeTab === 'files' ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-gray-200'
           }`}
         >
-          <FileText className="h-4 w-4 mr-1" />
-          Files
+          <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline">Files</span>
         </button>
         <button
           onClick={() => setActiveTab('notes')}
-          className={`flex-1 py-3 px-2 text-xs font-medium flex items-center justify-center ${
-            activeTab === 'notes' ? 'text-white bg-gray-700' : 'text-gray-400'
+          className={`flex-1 py-2.5 sm:py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 transition-colors ${
+            activeTab === 'notes' ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-gray-200'
           }`}
         >
-          <StickyNote className="h-4 w-4 mr-1" />
-          Notes
+          <StickyNote className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <span className="hidden sm:inline">Notes</span>
         </button>
       </div>
 

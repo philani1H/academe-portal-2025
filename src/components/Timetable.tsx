@@ -32,21 +32,65 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
     try {
       setLoading(true);
       const [tutorsRes, coursesRes, timetableRes] = await Promise.all([
-        fetch('/api/admin/content/tutors').then(r => r.json()),
-        fetch('/api/courses').then(r => r.json()),
-        fetch('/api/timetable').then(r => r.json())
+        apiFetch('/api/admin/content/tutors'),
+        apiFetch('/api/courses'),
+        apiFetch('/api/timetable')
       ]);
       
-      setTutors(Array.isArray(tutorsRes) ? tutorsRes : []);
-      setCourses(Array.isArray(coursesRes) ? coursesRes : []);
-      setTimetable(Array.isArray(timetableRes) ? timetableRes : (timetableRes?.data || []));
+      // Handle tutors response
+      const tutorsData = tutorsRes?.data || tutorsRes || [];
+      const tutorsList = Array.isArray(tutorsData) ? tutorsData.map((t: any) => ({
+        id: String(t.id),
+        name: t.name || 'Unknown Tutor',
+        email: t.email || '',
+        subjects: Array.isArray(t.subjects) ? t.subjects : 
+                  typeof t.subjects === 'string' ? t.subjects.split(',').map((s: string) => s.trim()) : 
+                  [],
+        department: t.department || '',
+      })) : [];
       
-      if (tutorsRes && tutorsRes.length > 0) {
-        setSelectedTutor(tutorsRes[0].id);
+      // Handle courses response
+      const coursesData = Array.isArray(coursesRes) ? coursesRes : (coursesRes?.data || []);
+      const coursesList = coursesData.map((c: any) => ({
+        id: String(c.id || c.ID),
+        name: c.name || c.title || 'Unknown Course',
+        subject: c.subject || c.category || c.department || '',
+        tutorId: String(c.tutorId || c.tutor_id || ''),
+        department: c.department || c.category || '',
+      }));
+      
+      // Handle timetable response
+      const timetableData = timetableRes?.data || timetableRes || [];
+      const timetableList = Array.isArray(timetableData) ? timetableData.map((entry: any) => ({
+        id: String(entry.id),
+        tutorId: String(entry.tutorId),
+        tutorName: entry.tutorName || '',
+        courseName: entry.courseName || '',
+        subject: entry.subject || '',
+        grade: entry.grade || 'Grade 10',
+        type: entry.type || 'Group',
+        students: entry.students || '',
+        day: entry.day || '',
+        startTime: entry.startTime || entry.time || '',
+        endTime: entry.endTime || '',
+      })) : [];
+      
+      setTutors(tutorsList);
+      setCourses(coursesList);
+      setTimetable(timetableList);
+      
+      if (tutorsList.length > 0) {
+        setSelectedTutor(tutorsList[0].id);
       }
+      
+      showNotification(`Loaded ${tutorsList.length} tutors, ${coursesList.length} courses, ${timetableList.length} timetable entries`);
     } catch (error) {
       console.error('API Error:', error);
       showNotification('Failed to load data from API', 'error');
+      // Set empty arrays on error
+      setTutors([]);
+      setCourses([]);
+      setTimetable([]);
     } finally {
       setLoading(false);
     }
@@ -153,23 +197,50 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
 
   const autoScheduleClasses = async () => {
     if (!canEdit) return;
+    
+    if (courses.length === 0) {
+      showNotification('No courses available to schedule', 'error');
+      return;
+    }
+    
+    if (tutors.length === 0) {
+      showNotification('No tutors available to schedule', 'error');
+      return;
+    }
+    
     const { startTime, endTime, classDuration, breakDuration } = autoScheduleConfig;
     const newTimetable = [];
     const slots = generateTimeSlots(startTime, endTime, classDuration + breakDuration);
     
-    let tutorIdx = 0, dayIdx = 0;
-    courses.forEach((course) => {
-      const tutor = tutors.find(t => t.id === course.tutorId);
-      if (!tutor) return;
+    if (slots.length === 0) {
+      showNotification('No time slots available with current settings', 'error');
+      return;
+    }
+    
+    let slotIdx = 0;
+    let dayIdx = 0;
+    
+    // Schedule each course
+    courses.forEach((course, courseIdx) => {
+      // Find the tutor for this course
+      const tutor = tutors.find(t => String(t.id) === String(course.tutorId));
+      
+      if (!tutor) {
+        console.warn(`No tutor found for course ${course.name} (tutorId: ${course.tutorId})`);
+        return;
+      }
+      
+      // Get the day and time slot
       const day = days[dayIdx % days.length];
-      const slot = slots[tutorIdx % slots.length];
+      const slot = slots[slotIdx % slots.length];
+      
       if (slot) {
         newTimetable.push({
-          id: `auto-${Date.now()}-${tutorIdx}`,
-          tutorId: tutor.id,
+          id: `auto-${Date.now()}-${courseIdx}`,
+          tutorId: String(tutor.id),
           tutorName: tutor.name,
           courseName: course.name,
-          subject: course.subject,
+          subject: course.subject || course.department || 'General',
           grade: 'Grade 10',
           type: 'Group',
           students: '',
@@ -178,14 +249,26 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
           endTime: addMinutesToTime(slot, classDuration)
         });
       }
-      tutorIdx++;
-      if (tutorIdx % 3 === 0) dayIdx++;
+      
+      // Move to next slot
+      slotIdx++;
+      
+      // After filling all slots in a day, move to next day
+      if (slotIdx % slots.length === 0) {
+        dayIdx++;
+        slotIdx = 0;
+      }
     });
+
+    if (newTimetable.length === 0) {
+      showNotification('Could not schedule any classes. Check tutor assignments.', 'error');
+      return;
+    }
 
     setTimetable(newTimetable);
     await saveTimetable(newTimetable);
     setShowAutoSchedule(false);
-    showNotification(`Auto-scheduled ${newTimetable.length} classes`);
+    showNotification(`Auto-scheduled ${newTimetable.length} classes from ${courses.length} courses`);
   };
 
   const exportToExcel = () => {
@@ -419,13 +502,14 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
                                     )}
                                     <select value={newClass.courseName} onChange={(e) => {
                                       const c = courses.find(x => x.name === e.target.value);
-                                      setNewClass({...newClass, courseName: e.target.value, subject: c?.subject || e.target.value});
+                                      setNewClass({...newClass, courseName: e.target.value, subject: c?.subject || c?.department || e.target.value});
                                     }} className="w-full px-2 py-1 text-sm border rounded">
-                                      <option value="">Course</option>
-                                      {courses.filter(c => !newClass.tutorId || c.tutorId === newClass.tutorId).map(c => 
-                                        <option key={c.id} value={c.name}>{c.name}</option>
-                                      )}
-                                      {selTutor?.subjects?.map(s => <option key={s} value={s}>{s}</option>)}
+                                      <option value="">Select Course</option>
+                                      {courses
+                                        .filter(c => !newClass.tutorId || String(c.tutorId) === String(newClass.tutorId))
+                                        .map(c => 
+                                          <option key={c.id} value={c.name}>{c.name} ({c.subject || c.department})</option>
+                                        )}
                                     </select>
                                     <div className="flex gap-2">
                                       <input type="time" value={newClass.startTime} onChange={(e) => setNewClass({...newClass, startTime: e.target.value})} className="flex-1 px-2 py-1 text-sm border rounded" />
