@@ -16,6 +16,7 @@ interface LiveSessionHeaderProps {
   sessionTime: number
   isJoined: boolean
   isRecording: boolean
+  isUploading?: boolean
   isSidebarOpen: boolean
   onToggleSidebar: () => void
   category?: string
@@ -32,6 +33,7 @@ export function LiveSessionHeader({
   sessionTime,
   isJoined,
   isRecording,
+  isUploading,
   isSidebarOpen,
   onToggleSidebar,
   category,
@@ -91,6 +93,13 @@ export function LiveSessionHeader({
           <div className="flex items-center gap-1 px-1.5 sm:px-3 py-0.5 sm:py-1 bg-red-500/20 rounded-full border border-red-500 flex-shrink-0">
             <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 bg-red-500 rounded-full animate-pulse"></span>
             <span className="text-red-500 text-[10px] sm:text-sm font-bold">REC</span>
+          </div>
+        )}
+
+        {isUploading && (
+          <div className="flex items-center gap-1 px-1.5 sm:px-3 py-0.5 sm:py-1 bg-blue-500/20 rounded-full border border-blue-500 flex-shrink-0">
+            <div className="h-1.5 w-1.5 sm:h-2 sm:w-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <span className="text-blue-500 text-[10px] sm:text-sm font-bold">UPLOADING...</span>
           </div>
         )}
       </div>

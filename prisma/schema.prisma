@@ -11,6 +11,8 @@ model User {
   id               Int                @id @default(autoincrement())
   name             String
   email            String             @unique(map: "sqlite_autoindex_users_1")
+  studentNumber    String?            @unique @map("student_number") // 11-digit numeric ID (YYYYPPSSSSC)
+  programCode      Int?               @map("program_code") // Program code for students (1-99)
   personalEmail    String?            @map("personal_email") // For external communications (newsletters, updates)
   password_hash    String
   role             String

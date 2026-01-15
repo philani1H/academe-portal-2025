@@ -343,7 +343,7 @@ export default function TutorDashboard() {
             tutorId = parsed.id
         }
       }
-      const data = await apiFetch<any>(`/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
+      const data = await apiFetch<any>(`/api/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
       
       // Normalize
       const stats: Analytics = {

@@ -355,10 +355,12 @@ const upload = multer({
 })
 
 // Upload endpoint for course materials
-app.post("/api/upload/material", upload.single("file"), async (req: Request, res: Response) => {
+app.post("/api/upload/material", authenticateJWT as RequestHandler, upload.single("file"), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const file = req.file
     const { courseId, type, name, description } = req.body
+    const userId = req.user?.id
+    const userRole = req.user?.role
 
     if (!file) {
       return res.status(400).json({ error: "No file uploaded" })
@@ -366,6 +368,20 @@ app.post("/api/upload/material", upload.single("file"), async (req: Request, res
     if (!courseId) {
       await fs.unlink(file.path).catch(console.error)
       return res.status(400).json({ error: "Course ID is required" })
+    }
+
+    // If tutor, verify they own the course
+    if (userRole === "tutor" && userId) {
+      const course = await prisma.course.findFirst({
+        where: {
+          id: Number.parseInt(courseId),
+          tutorId: userId
+        }
+      })
+      if (!course) {
+        await fs.unlink(file.path).catch(console.error)
+        return res.status(403).json({ error: "Access denied: You can only upload materials to your own courses" })
+      }
     }
 
     const fileUrl = `/uploads/${file.filename}`
@@ -386,6 +402,61 @@ app.post("/api/upload/material", upload.single("file"), async (req: Request, res
   } catch (error) {
     console.error("Upload error:", error)
     res.status(500).json({ error: "Failed to upload material" })
+  }
+})
+
+// Cloudinary material upload endpoint - saves Cloudinary URL to database
+app.post("/api/upload/cloudinary-material", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId, type, name, url, publicId, format, duration, size, description } = req.body
+    const userId = req.user?.id
+    const userRole = req.user?.role
+
+    if (!courseId) {
+      return res.status(400).json({ error: "Course ID is required" })
+    }
+    if (!url) {
+      return res.status(400).json({ error: "Cloudinary URL is required" })
+    }
+
+    // If tutor, verify they own the course
+    if (userRole === "tutor" && userId) {
+      const course = await prisma.course.findFirst({
+        where: {
+          id: Number.parseInt(courseId),
+          tutorId: userId
+        }
+      })
+      if (!course) {
+        return res.status(403).json({ error: "Access denied: You can only upload materials to your own courses" })
+      }
+    }
+
+    console.log(`Saving Cloudinary material for course ${courseId}: ${url}`)
+
+    const material = await prisma.courseMaterial.create({
+      data: {
+        courseId: Number.parseInt(courseId),
+        name: name || "Live Session Recording",
+        type: type || "video",
+        url: url,
+        description: description || `Cloudinary video - ${format} format${duration ? `, ${Math.round(duration)}s duration` : ''}${size ? `, ${Math.round(size / (1024 * 1024))}MB` : ''}`,
+      },
+    })
+
+    res.json({
+      success: true,
+      material,
+      cloudinary: {
+        publicId,
+        format,
+        duration,
+        size
+      }
+    })
+  } catch (error) {
+    console.error("Cloudinary material save error:", error)
+    res.status(500).json({ error: "Failed to save Cloudinary material to database" })
   }
 })
 
@@ -519,9 +590,26 @@ app.post("/api/tests/generate", async (req: Request, res: Response) => {
   }
 })
 
-app.post("/api/tests/save", async (req: Request, res: Response) => {
+app.post("/api/tests/save", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const body = req.body || {}
+    const userId = req.user?.id
+    const userRole = req.user?.role
+    const courseId = body?.courseId
+
+    // Verify tutor owns the course if they're trying to create a test
+    if (userRole === "tutor" && userId && courseId) {
+      const course = await prisma.course.findFirst({
+        where: {
+          id: Number.parseInt(courseId),
+          tutorId: userId
+        }
+      })
+      if (!course) {
+        return res.status(403).json({ success: false, error: "Access denied: You can only create tests for your own courses" })
+      }
+    }
+
     const id = String(body?.id || Date.now())
     const payload = { id, ...body }
     let existing: any[] = []
@@ -1133,10 +1221,43 @@ app.get("/api/auth/me", authenticateJWT as RequestHandler, (req: AuthenticatedRe
   return res.json({ success: true, user: req.user })
 })
 
-// List users
-app.get("/api/users", async (req: Request, res: Response) => {
+// List users - ADMIN ONLY, returns students by default
+app.get("/api/users", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" } })
+    const userRole = req.user?.role
+    const userId = req.user?.id
+
+    // Default: only return students (not tutors, not admins)
+    let where: any = { role: "student" }
+
+    // If tutor is calling, only return their students
+    if (userRole === "tutor" && userId) {
+      // Get tutor's courses
+      const tutorCourses = await prisma.course.findMany({
+        where: { tutorId: userId },
+        select: { id: true }
+      })
+      const courseIds = tutorCourses.map(c => c.id)
+
+      // Get students enrolled in those courses
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: { courseId: { in: courseIds } },
+        select: { userId: true },
+        distinct: ['userId']
+      })
+      const studentIds = enrollments.map(e => e.userId)
+
+      where = {
+        id: { in: studentIds },
+        role: "student"
+      }
+    }
+
+    const users = await prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" }
+    })
+
     return res.json({ success: true, data: users })
   } catch (error) {
     console.error("List users error:", error)
@@ -1357,9 +1478,30 @@ app.post(
       const results: any[] = []
       const year = new Date().getFullYear()
 
+      // Get the calling user info
+      const callingUserId = req.user?.id
+      const callingUserRole = req.user?.role
+
+      // Get tutor info for email sending
+      let tutorEmail: string | undefined
+      let tutorNameForEmail = tutorName || "Your Tutor"
+
+      if (callingUserRole === "tutor" && callingUserId) {
+        const tutor = await prisma.user.findUnique({ where: { id: callingUserId } })
+        if (tutor) {
+          tutorEmail = tutor.email
+          tutorNameForEmail = tutor.name || tutorNameForEmail
+        }
+      }
+
       let courseId: number | null = null
       if (courseName) {
-        const course = await prisma.course.findFirst({ where: { name: courseName } })
+        // Filter course by tutor if called by a tutor
+        const courseWhere: any = { name: courseName }
+        if (callingUserRole === "tutor" && callingUserId) {
+          courseWhere.tutorId = callingUserId
+        }
+        const course = await prisma.course.findFirst({ where: courseWhere })
         if (course) courseId = course.id
       }
 
@@ -1381,13 +1523,40 @@ app.post(
           let isUnique = false
           let attempts = 0
 
+          // Import student number utilities
+          const { generateStudentNumber, generateStudentEmail, PROGRAM_CODES } = await import("../lib/studentNumber.js")
+
+          // Default to Excellence Akademie program
+          const programCode = PROGRAM_CODES.EXCELLENCE_AKADEMIE
+
           while (!isUnique && attempts < 10) {
-            const randomSuffix = Math.floor(1000 + Math.random() * 9000).toString()
-            studentNumber = `${year}${randomSuffix}`
-            studentEmail = `${studentNumber}@excellenceakademie.co.za`
+            // Get the max sequence number for this year and program
+            const maxSequenceUser = await prisma.user.findFirst({
+              where: {
+                studentNumber: {
+                  startsWith: `${year}${programCode.toString().padStart(2, '0')}`
+                }
+              },
+              orderBy: {
+                studentNumber: 'desc'
+              }
+            })
+
+            let sequenceNumber = 1
+            if (maxSequenceUser?.studentNumber) {
+              // Extract sequence from existing student number (positions 6-10)
+              const existingSequence = parseInt(maxSequenceUser.studentNumber.slice(6, 10), 10)
+              sequenceNumber = existingSequence + 1
+            }
+
+            // Generate student number with check digit
+            studentNumber = generateStudentNumber(year, programCode, sequenceNumber)
+            studentEmail = generateStudentEmail(studentNumber)
 
             const existing = await prisma.user.findUnique({ where: { email: studentEmail } })
-            if (!existing) isUnique = true
+            const existingNumber = await prisma.user.findUnique({ where: { studentNumber: studentNumber } })
+
+            if (!existing && !existingNumber) isUnique = true
             attempts++
           }
 
@@ -1403,9 +1572,12 @@ app.post(
           user = await prisma.user.create({
             data: {
               email: studentEmail,
+              studentNumber: studentNumber,
+              programCode: programCode,
               name: name,
               role: "student",
-              department_id: department || null,
+              personalEmail: clean, // Store their personal email for communications
+              department: department || null,
             },
           })
 
@@ -1452,6 +1624,7 @@ app.post(
             to: clean,
             subject: "Your Student Login Credentials - Excellence Academia",
             content,
+            fromEmail: tutorEmail, // Use tutor's email if available
           })
           results.push({ email: clean, studentNumber, studentEmail, sent: !!send.success })
         } else {
@@ -1460,7 +1633,12 @@ app.post(
               title: "Course Enrollment",
               message: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`,
             })
-            const send = await sendEmail({ to: clean, subject: "Course Enrollment - Excellence Academia", content })
+            const send = await sendEmail({
+              to: clean,
+              subject: "Course Enrollment - Excellence Academia",
+              content,
+              fromEmail: tutorEmail, // Use tutor's email if available
+            })
             results.push({ email: clean, enrolled: true, sent: !!send.success })
           } else {
             results.push({ email: clean, error: "User already exists" })
@@ -1645,17 +1823,40 @@ app.get("/api/health", async (req: Request, res: Response) => {
 app.get("/api/tests", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { courseId, tutorId } = req.query
+    const userId = req.user?.id
+    const userRole = req.user?.role
 
     const where: any = {}
-    if (courseId) {
-      where.courseId = Number.parseInt(courseId as string)
-    }
-    
-    // Filter by tutor - only show tests for courses owned by this tutor
-    if (tutorId) {
-      const tutorIdNum = Number.parseInt(tutorId as string, 10)
+
+    // If tutor role, ALWAYS filter by their tutorId
+    if (userRole === "tutor" && userId) {
+      // Tutors can only see their own tests
       where.course = {
-        tutorId: tutorIdNum
+        tutorId: userId
+      }
+
+      // Additional courseId filter if provided
+      if (courseId) {
+        const courseIdNum = Number.parseInt(courseId as string, 10)
+        // Verify course belongs to this tutor
+        const course = await prisma.course.findFirst({
+          where: { id: courseIdNum, tutorId: userId }
+        })
+        if (!course) {
+          return res.status(403).json({ success: false, error: "Access denied to this course" })
+        }
+        where.courseId = courseIdNum
+      }
+    } else {
+      // Admin or student: can filter by courseId or tutorId
+      if (courseId) {
+        where.courseId = Number.parseInt(courseId as string)
+      }
+      if (tutorId) {
+        const tutorIdNum = Number.parseInt(tutorId as string, 10)
+        where.course = {
+          tutorId: tutorIdNum
+        }
       }
     }
 
@@ -1679,15 +1880,33 @@ app.get("/api/tests", authenticateJWT as RequestHandler, async (req: Authenticat
 })
 
 // Create test
-app.post("/api/tests", async (req: Request, res: Response) => {
+app.post("/api/tests", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { title, description, dueDate, courseId, questions, totalPoints } = req.body
+    const userId = req.user?.id
+    const userRole = req.user?.role
 
     if (!title || !courseId) {
       return res.status(400).json({
         success: false,
         error: "title and courseId are required",
       })
+    }
+
+    // If tutor, verify they own the course
+    if (userRole === "tutor" && userId) {
+      const course = await prisma.course.findFirst({
+        where: {
+          id: Number.parseInt(courseId),
+          tutorId: userId
+        }
+      })
+      if (!course) {
+        return res.status(403).json({
+          success: false,
+          error: "Access denied: You can only create tests for your own courses"
+        })
+      }
     }
 
     const db = await getConnection()
@@ -2388,16 +2607,24 @@ app.post("/api/notifications", async (req: Request, res: Response) => {
 })
 
 // List notifications
-app.get("/api/notifications", async (req: Request, res: Response) => {
+app.get("/api/notifications", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { userId } = req.query
-    
-    const where: any = {}
-    // Filter by user if userId is provided
-    if (userId) {
-      where.userId = Number.parseInt(userId as string, 10)
+    const authenticatedUserId = req.user?.id
+    const userRole = req.user?.role
+
+    // CRITICAL: Always filter by authenticated user's ID
+    // Only admins can view other users' notifications
+    let targetUserId = authenticatedUserId
+
+    if (userRole === "admin" && userId) {
+      targetUserId = Number.parseInt(userId as string, 10)
     }
-    
+
+    const where: any = {
+      userId: targetUserId
+    }
+
     const notifications = await prisma.notification.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -3065,18 +3292,45 @@ app.post(
 app.get("/api/materials", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { courseId } = req.query
+    const userId = req.user?.id
+    const userRole = req.user?.role
 
     const where: any = {}
-    if (courseId) {
+
+    // If tutor role, filter by tutor's courses only
+    if (userRole === "tutor" && userId) {
+      if (courseId) {
+        // Verify the course belongs to this tutor
+        const course = await prisma.course.findFirst({
+          where: {
+            id: Number.parseInt(courseId as string),
+            tutorId: userId
+          }
+        })
+        if (!course) {
+          return res.status(403).json({ success: false, error: "Access denied to this course" })
+        }
+        where.courseId = Number.parseInt(courseId as string)
+      } else {
+        // Get all materials from tutor's courses
+        const tutorCourses = await prisma.course.findMany({
+          where: { tutorId: userId },
+          select: { id: true }
+        })
+        const courseIds = tutorCourses.map(c => c.id)
+        where.courseId = { in: courseIds }
+      }
+    } else if (courseId) {
+      // Admin or student can filter by specific course
       where.courseId = Number.parseInt(courseId as string)
     }
 
     const materials = await prisma.courseMaterial.findMany({
       where,
-      orderBy: { uploadDate: "desc" },
+      orderBy: { createdAt: "desc" },
       include: {
         course: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, tutorId: true },
         },
       },
     })
@@ -3095,6 +3349,24 @@ app.delete(
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params
+      const userId = req.user?.id
+      const userRole = req.user?.role
+
+      // If tutor, verify they own the course this material belongs to
+      if (userRole === "tutor" && userId) {
+        const material = await prisma.courseMaterial.findUnique({
+          where: { id },
+          include: { course: true }
+        })
+
+        if (!material) {
+          return res.status(404).json({ success: false, error: "Material not found" })
+        }
+
+        if (material.course.tutorId !== userId) {
+          return res.status(403).json({ success: false, error: "Access denied: Material belongs to another tutor's course" })
+        }
+      }
 
       await prisma.courseMaterial.delete({
         where: { id },
@@ -3236,18 +3508,29 @@ app.delete("/api/users/:id", async (req: Request, res: Response) => {
 })
 
 // Course routes
-app.get("/api/courses", async (req: Request, res: Response) => {
+app.get("/api/courses", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { limit, offset, category, all, tutorId } = req.query
-    
-    // If all=true, fetch everything
+    const userRole = req.user?.role
+    const userId = req.user?.id
+
+    // Build where clause
+    const where: any = {}
+
+    // CRITICAL: If tutor role, ALWAYS filter by their tutorId (ignore query param)
+    if (userRole === "tutor" && userId) {
+      where.tutorId = userId
+    } else if (tutorId) {
+      // Admin can filter by specific tutorId
+      where.tutorId = Number.parseInt(tutorId as string, 10)
+    }
+
+    if (category) {
+      where.category = String(category)
+    }
+
+    // If all=true, fetch everything (but still filtered by tutor if applicable)
     if (all === 'true') {
-      const where: any = {}
-      // Filter by tutor if tutorId is provided
-      if (tutorId) {
-        where.tutorId = Number.parseInt(tutorId as string, 10)
-      }
-      
       const courses = await prisma.course.findMany({
         where,
         orderBy: { createdAt: 'desc' }
@@ -3266,15 +3549,6 @@ app.get("/api/courses", async (req: Request, res: Response) => {
 
     const limitInt = Math.min(Number.parseInt(limit as string) || 50, 100)
     const offsetInt = Math.max(Number.parseInt(offset as string) || 0, 0)
-
-    const where: any = {}
-    if (category) {
-      where.category = String(category)
-    }
-    // Filter by tutor if tutorId is provided
-    if (tutorId) {
-      where.tutorId = Number.parseInt(tutorId as string, 10)
-    }
 
     const courses = await prisma.course.findMany({
       where,
@@ -4344,15 +4618,44 @@ app.post("/api/students/bulk", async (req: Request, res: Response) => {
 })
 
 // Students list
-app.get("/api/students", async (req: Request, res: Response) => {
+app.get("/api/students", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const userRole = req.user?.role
+    const userId = req.user?.id
+
+    let where: any = { role: "student" }
+
+    // CRITICAL: If tutor, only return THEIR students
+    if (userRole === "tutor" && userId) {
+      // Get tutor's courses
+      const tutorCourses = await prisma.course.findMany({
+        where: { tutorId: userId },
+        select: { id: true }
+      })
+      const courseIds = tutorCourses.map(c => c.id)
+
+      // Get students enrolled in those courses
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: { courseId: { in: courseIds } },
+        select: { userId: true },
+        distinct: ['userId']
+      })
+      const studentIds = enrollments.map(e => e.userId)
+
+      where = {
+        id: { in: studentIds },
+        role: "student"
+      }
+    }
+
     const students = await prisma.user.findMany({
-      where: { role: "student" },
+      where,
       orderBy: { updatedAt: "desc" },
       include: {
         courseEnrollments: { include: { course: true } },
       },
     })
+
     const result = students.map((s) => ({
       id: s.id,
       name: s.name,
