@@ -1357,9 +1357,30 @@ app.post(
       const results: any[] = []
       const year = new Date().getFullYear()
 
+      // Get the calling user info
+      const callingUserId = req.user?.id
+      const callingUserRole = req.user?.role
+
+      // Get tutor info for email sending
+      let tutorEmail: string | undefined
+      let tutorNameForEmail = tutorName || "Your Tutor"
+
+      if (callingUserRole === "tutor" && callingUserId) {
+        const tutor = await prisma.user.findUnique({ where: { id: callingUserId } })
+        if (tutor) {
+          tutorEmail = tutor.email
+          tutorNameForEmail = tutor.name || tutorNameForEmail
+        }
+      }
+
       let courseId: number | null = null
       if (courseName) {
-        const course = await prisma.course.findFirst({ where: { name: courseName } })
+        // Filter course by tutor if called by a tutor
+        const courseWhere: any = { name: courseName }
+        if (callingUserRole === "tutor" && callingUserId) {
+          courseWhere.tutorId = callingUserId
+        }
+        const course = await prisma.course.findFirst({ where: courseWhere })
         if (course) courseId = course.id
       }
 
@@ -1482,6 +1503,7 @@ app.post(
             to: clean,
             subject: "Your Student Login Credentials - Excellence Academia",
             content,
+            fromEmail: tutorEmail, // Use tutor's email if available
           })
           results.push({ email: clean, studentNumber, studentEmail, sent: !!send.success })
         } else {
@@ -1490,7 +1512,12 @@ app.post(
               title: "Course Enrollment",
               message: `<p>You have been enrolled in <strong>${courseName}</strong>.</p>`,
             })
-            const send = await sendEmail({ to: clean, subject: "Course Enrollment - Excellence Academia", content })
+            const send = await sendEmail({
+              to: clean,
+              subject: "Course Enrollment - Excellence Academia",
+              content,
+              fromEmail: tutorEmail, // Use tutor's email if available
+            })
             results.push({ email: clean, enrolled: true, sent: !!send.success })
           } else {
             results.push({ email: clean, error: "User already exists" })

@@ -30,10 +30,13 @@ const testCases = [
 for (const test of testCases) {
   const studentNumber = generateStudentNumber(test.year, test.program, test.seq)
   const email = generateStudentEmail(studentNumber)
+  const expectedDomain = '@excellenceakademie.co.za'
+  const correctDomain = email.endsWith(expectedDomain)
   console.log(`Year ${test.year}, Program ${test.program.toString().padStart(2, '0')}, Seq ${test.seq.toString().padStart(4, '0')}`)
   console.log(`  → Student Number: ${studentNumber}`)
   console.log(`  → Email: ${email}`)
   console.log(`  → Valid: ${validateStudentNumber(studentNumber) ? '✅' : '❌'}`)
+  console.log(`  → Domain: ${correctDomain ? '✅' : '❌'}`)
 }
 
 // Test 2: Validate check digit
@@ -92,10 +95,27 @@ for (const base of bases) {
 console.log('\n📧 Test 5: Email Generation')
 console.log('-'.repeat(60))
 
+const expectedDomain = '@excellenceakademie.co.za'
+console.log(`Expected domain: ${expectedDomain}`)
+console.log('')
+
 for (const test of testCases) {
   const studentNumber = generateStudentNumber(test.year, test.program, test.seq)
   const email = generateStudentEmail(studentNumber)
-  console.log(`${studentNumber} → ${email}`)
+  const correctDomain = email.endsWith(expectedDomain)
+  console.log(`${studentNumber} → ${email} ${correctDomain ? '✅' : '❌'}`)
+}
+
+console.log('\n🎓 Domain Verification')
+console.log('-'.repeat(60))
+const testEmail = generateStudentEmail(generateStudentNumber(2026, 1, 1))
+if (testEmail.includes('@students.excellenceakademie.co.za')) {
+  console.log('❌ WRONG DOMAIN: Using @students.excellenceakademie.co.za')
+  console.log('Should be: @excellenceakademie.co.za')
+} else if (testEmail.includes('@excellenceakademie.co.za')) {
+  console.log('✅ CORRECT DOMAIN: Using @excellenceakademie.co.za')
+} else {
+  console.log('❌ UNKNOWN DOMAIN:', testEmail.split('@')[1])
 }
 
 console.log('\n' + '='.repeat(60))

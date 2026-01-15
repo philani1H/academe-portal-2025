@@ -150,7 +150,7 @@ export function generateStudentEmail(studentNumber: string): string {
     throw new Error(`Invalid student number: ${studentNumber}`)
   }
 
-  return `${studentNumber}@students.excellenceakademie.co.za`
+  return `${studentNumber}@excellenceakademie.co.za`
 }
 
 /**
