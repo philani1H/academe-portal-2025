@@ -331,3 +331,25 @@ model UniversityApplicationContent {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+// Schedule/Timetable Management
+model Schedule {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  courseId    String?
+  userId      String?  // For user-specific schedules
+  userRole    String?  // "student", "tutor", "all"
+  dayOfWeek   String   // "Monday", "Tuesday", etc.
+  startTime   String   // "09:00"
+  endTime     String   // "10:30"
+  location    String?
+  type        String   @default("class") // "class", "exam", "event", "meeting"
+  color       String?
+  isRecurring Boolean  @default(true)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("schedules")
+}

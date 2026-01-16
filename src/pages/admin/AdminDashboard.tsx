@@ -115,6 +115,25 @@ interface Department {
   color: string
 }
 
+interface Schedule {
+  id: string
+  title: string
+  description?: string
+  courseId?: string
+  userId?: string
+  userRole?: string
+  dayOfWeek: string
+  startTime: string
+  endTime: string
+  location?: string
+  type: string
+  color?: string
+  isRecurring: boolean
+  isActive: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 interface SystemStats {
   totalUsers: number
   activeUsers: number
@@ -138,6 +157,7 @@ export default function AdminDashboard() {
   const [courses, setCourses] = useState<Course[]>([])  // Initialize with empty array to prevent null
   const [notifications, setNotifications] = useState<Notification[]>([])  // Initialize with empty array to prevent null
   const [departments, setDepartments] = useState<Department[]>([])  // Initialize with empty array to prevent null
+  const [schedules, setSchedules] = useState<Schedule[]>([])  // Initialize with empty array to prevent null
   const [systemStats, setSystemStats] = useState<SystemStats>({
     totalUsers: 0,
     activeUsers: 0,
@@ -186,7 +206,19 @@ export default function AdminDashboard() {
     name: "",
     color: "#4f46e5",
   })
-  
+
+  const [newSchedule, setNewSchedule] = useState({
+    title: "",
+    description: "",
+    dayOfWeek: "Monday",
+    startTime: "09:00",
+    endTime: "10:30",
+    location: "",
+    type: "class",
+    color: "#3b82f6",
+    userRole: "all",
+  })
+
   const [activeTab, setActiveTab] = useState("dashboard")
   const [showContentManager, setShowContentManager] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -286,6 +318,16 @@ export default function AdminDashboard() {
     }
   }
 
+  const fetchSchedules = async () => {
+    try {
+      const data = await apiFetch<any[]>(`/api/schedules`)
+      setSchedules(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error('Failed to fetch schedules:', e)
+      setSchedules([])
+    }
+  }
+
   const fetchDepartmentsAndStats = async () => {
     try {
       const deptResp = await apiFetch<any>(`/api/query`, {
@@ -340,6 +382,7 @@ export default function AdminDashboard() {
     fetchCourses()
     fetchNotifications()
     fetchDepartmentsAndStats()
+    fetchSchedules()
   }, [])
 
   // Handlers
@@ -1031,6 +1074,18 @@ export default function AdminDashboard() {
               </button>
 
               <button
+                onClick={() => setActiveTab("timetable")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Timetable</span>}
+              </button>
+
+              <button
                 onClick={() => setActiveTab("departments")}
                 className={`flex items-center ${
                   !sidebarOpen ? "justify-center" : "justify-start"
@@ -1217,6 +1272,19 @@ export default function AdminDashboard() {
 
                 <button
                   onClick={() => {
+                    setActiveTab("timetable")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
+                    activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <Calendar className="h-5 w-5 mr-2" />
+                  <span>Timetable</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setActiveTab("departments")
                     setMobileMenuOpen(false)
                   }}
@@ -1290,6 +1358,7 @@ export default function AdminDashboard() {
                     {activeTab === "dashboard" && "Overview of your teaching activities"}
                     {activeTab === "courses" && "Manage your courses and content"}
                     {activeTab === "students" && "Track student progress and enrollment"}
+                    {activeTab === "timetable" && "Manage weekly schedules and classes"}
                     {activeTab === "tests" && "Create and manage assessments"}
                     {activeTab === "notifications" && "Communication and alerts"}
                     {activeTab === "analytics" && "Performance insights and metrics"}
@@ -2708,6 +2777,290 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {/* Timetable Tab */}
+          {activeTab === "timetable" && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold">Weekly Timetable</h2>
+                  <p className="text-muted-foreground mt-1">Manage class schedules for all users</p>
+                </div>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" /> Add Schedule
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Schedule</DialogTitle>
+                      <DialogDescription>
+                        Create a new class or event schedule
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="schedule-title">Title</Label>
+                        <Input
+                          id="schedule-title"
+                          placeholder="e.g., Mathematics 101"
+                          value={newSchedule.title}
+                          onChange={(e) => setNewSchedule({ ...newSchedule, title: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="schedule-description">Description</Label>
+                        <Input
+                          id="schedule-description"
+                          placeholder="e.g., Introduction to Calculus"
+                          value={newSchedule.description}
+                          onChange={(e) => setNewSchedule({ ...newSchedule, description: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="schedule-day">Day of Week</Label>
+                          <Select
+                            value={newSchedule.dayOfWeek}
+                            onValueChange={(value) => setNewSchedule({ ...newSchedule, dayOfWeek: value })}
+                          >
+                            <SelectTrigger id="schedule-day">
+                              <SelectValue placeholder="Select day" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Monday">Monday</SelectItem>
+                              <SelectItem value="Tuesday">Tuesday</SelectItem>
+                              <SelectItem value="Wednesday">Wednesday</SelectItem>
+                              <SelectItem value="Thursday">Thursday</SelectItem>
+                              <SelectItem value="Friday">Friday</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="schedule-type">Type</Label>
+                          <Select
+                            value={newSchedule.type}
+                            onValueChange={(value) => setNewSchedule({ ...newSchedule, type: value })}
+                          >
+                            <SelectTrigger id="schedule-type">
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="class">Class</SelectItem>
+                              <SelectItem value="exam">Exam</SelectItem>
+                              <SelectItem value="event">Event</SelectItem>
+                              <SelectItem value="meeting">Meeting</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="schedule-start">Start Time</Label>
+                          <Input
+                            id="schedule-start"
+                            type="time"
+                            value={newSchedule.startTime}
+                            onChange={(e) => setNewSchedule({ ...newSchedule, startTime: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="schedule-end">End Time</Label>
+                          <Input
+                            id="schedule-end"
+                            type="time"
+                            value={newSchedule.endTime}
+                            onChange={(e) => setNewSchedule({ ...newSchedule, endTime: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="schedule-location">Location</Label>
+                        <Input
+                          id="schedule-location"
+                          placeholder="e.g., Room 101"
+                          value={newSchedule.location}
+                          onChange={(e) => setNewSchedule({ ...newSchedule, location: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="schedule-color">Color</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="schedule-color"
+                            type="color"
+                            className="w-12 h-8 p-1"
+                            value={newSchedule.color}
+                            onChange={(e) => setNewSchedule({ ...newSchedule, color: e.target.value })}
+                          />
+                          <div
+                            className="w-8 h-8 rounded-full"
+                            style={{ backgroundColor: newSchedule.color }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        onClick={async () => {
+                          try {
+                            await apiFetch('/api/schedules', {
+                              method: 'POST',
+                              body: JSON.stringify(newSchedule)
+                            })
+                            toast({
+                              title: "Schedule created",
+                              description: "The schedule has been added successfully"
+                            })
+                            fetchSchedules()
+                            setNewSchedule({
+                              title: "",
+                              description: "",
+                              dayOfWeek: "Monday",
+                              startTime: "09:00",
+                              endTime: "10:30",
+                              location: "",
+                              type: "class",
+                              color: "#3b82f6",
+                              userRole: "all",
+                            })
+                          } catch (error) {
+                            toast({
+                              title: "Error",
+                              description: "Failed to create schedule",
+                              variant: "destructive"
+                            })
+                          }
+                        }}
+                        disabled={!newSchedule.title.trim()}
+                      >
+                        Create Schedule
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Weekly Schedule Overview</CardTitle>
+                  <CardDescription>
+                    View and manage all scheduled classes and events
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {schedules.length > 0 ? (
+                    <div className="space-y-6">
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => {
+                        const daySchedules = schedules.filter((s) => s.dayOfWeek === day).sort((a, b) => a.startTime.localeCompare(b.startTime))
+                        return (
+                          <div key={day} className="space-y-3">
+                            <div className="flex items-center gap-2 pb-2 border-b">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <h3 className="font-semibold text-lg">{day}</h3>
+                              <Badge variant="outline" className="ml-auto">
+                                {daySchedules.length} {daySchedules.length === 1 ? 'class' : 'classes'}
+                              </Badge>
+                            </div>
+                            {daySchedules.length > 0 ? (
+                              <div className="grid gap-3">
+                                {daySchedules.map((schedule) => (
+                                  <Card key={schedule.id} className="overflow-hidden">
+                                    <div className="flex">
+                                      <div
+                                        className="w-2 flex-shrink-0"
+                                        style={{ backgroundColor: schedule.color || '#3b82f6' }}
+                                      />
+                                      <div className="flex-1 p-4">
+                                        <div className="flex items-start justify-between gap-4">
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <h4 className="font-semibold">{schedule.title}</h4>
+                                              <Badge variant="outline" className="text-xs">
+                                                {schedule.type}
+                                              </Badge>
+                                            </div>
+                                            {schedule.description && (
+                                              <p className="text-sm text-muted-foreground mb-2">
+                                                {schedule.description}
+                                              </p>
+                                            )}
+                                            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                                              <span className="flex items-center gap-1">
+                                                <Calendar className="w-3.5 h-3.5" />
+                                                {schedule.startTime} - {schedule.endTime}
+                                              </span>
+                                              {schedule.location && (
+                                                <span className="flex items-center gap-1">
+                                                  <Building className="w-3.5 h-3.5" />
+                                                  {schedule.location}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <Button variant="ghost" size="icon">
+                                                <MoreHorizontal className="h-4 w-4" />
+                                              </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                              <DropdownMenuItem>Edit Schedule</DropdownMenuItem>
+                                              <DropdownMenuSeparator />
+                                              <DropdownMenuItem
+                                                className="text-red-600"
+                                                onClick={async () => {
+                                                  try {
+                                                    await apiFetch(`/api/schedules?id=${schedule.id}`, {
+                                                      method: 'DELETE'
+                                                    })
+                                                    toast({
+                                                      title: "Schedule deleted",
+                                                      description: "The schedule has been removed"
+                                                    })
+                                                    fetchSchedules()
+                                                  } catch (error) {
+                                                    toast({
+                                                      title: "Error",
+                                                      description: "Failed to delete schedule",
+                                                      variant: "destructive"
+                                                    })
+                                                  }
+                                                }}
+                                              >
+                                                Delete Schedule
+                                              </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                          </DropdownMenu>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </Card>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <p className="text-sm">No classes scheduled for {day}</p>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Calendar className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
+                      <h3 className="mt-4 text-lg font-medium">No schedules available</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Create a schedule to get started
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* Departments Tab */}
           {activeTab === "departments" && (
             <div className="space-y-6">
@@ -3682,14 +4035,73 @@ export default function AdminDashboard() {
                 </TabsContent>
                 <TabsContent value="schedule" className="mt-4">
                   <div className="space-y-4">
-                    <h3 className="font-medium">Course Schedule</h3>
-                    <div className="text-center py-6 text-muted-foreground">
-                      <Calendar className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
-                      <h3 className="mt-4 text-lg font-medium">No schedule available</h3>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        Course schedule has not been set up yet
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-medium">Weekly Schedule</h3>
+                      <Badge className="bg-blue-100 text-blue-800">
+                        {schedules.length} Classes
+                      </Badge>
                     </div>
+                    {schedules.length > 0 ? (
+                      <div className="grid gap-4">
+                        {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => {
+                          const daySchedules = schedules.filter((s) => s.dayOfWeek === day)
+                          return daySchedules.length > 0 ? (
+                            <div key={day} className="border rounded-lg p-4">
+                              <h4 className="font-medium text-sm text-muted-foreground mb-3">{day}</h4>
+                              <div className="space-y-2">
+                                {daySchedules.map((schedule) => (
+                                  <div
+                                    key={schedule.id}
+                                    className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                                  >
+                                    <div
+                                      className="w-1 h-12 rounded-full"
+                                      style={{ backgroundColor: schedule.color || '#3b82f6' }}
+                                    />
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2">
+                                        <h5 className="font-medium text-sm">{schedule.title}</h5>
+                                        <Badge
+                                          variant="outline"
+                                          className="text-xs"
+                                        >
+                                          {schedule.type}
+                                        </Badge>
+                                      </div>
+                                      {schedule.description && (
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                          {schedule.description}
+                                        </p>
+                                      )}
+                                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                                        <span className="flex items-center gap-1">
+                                          <Calendar className="w-3 h-3" />
+                                          {schedule.startTime} - {schedule.endTime}
+                                        </span>
+                                        {schedule.location && (
+                                          <span className="flex items-center gap-1">
+                                            <Building className="w-3 h-3" />
+                                            {schedule.location}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Calendar className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
+                        <h3 className="mt-4 text-lg font-medium">No schedule available</h3>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          No classes scheduled yet
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
               </Tabs>
