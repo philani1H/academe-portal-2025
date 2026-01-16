@@ -27,6 +27,7 @@ import {
   Play,
   Eye,
   Search,
+  RefreshCw,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -147,6 +148,23 @@ interface UserType {
   role: "student"
   enrolledCourses: string[]
   avatar?: string
+}
+
+interface Schedule {
+  id: string
+  title: string
+  description?: string
+  courseId?: string
+  userId?: string
+  userRole?: string
+  dayOfWeek: string
+  startTime: string
+  endTime: string
+  location?: string
+  type: string
+  color?: string
+  isRecurring: boolean
+  isActive: boolean
 }
 
 // Mock data
@@ -479,6 +497,7 @@ export default function StudentPortal() {
   const [courses, setCourses] = useState<Course[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loading, setLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
@@ -511,7 +530,7 @@ export default function StudentPortal() {
       const parsed = storedUser ? JSON.parse(storedUser) : null
       const studentId = parsed?.id
       const data = await apiFetch<any>(`/student/dashboard${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ''}`)
-      
+
       if (data?.student) setUser(data.student)
       if (data?.courses) setCourses(data.courses)
       if (data?.notifications) setNotifications(data.notifications)
@@ -527,9 +546,20 @@ export default function StudentPortal() {
     }
   }
 
+  const fetchSchedules = async () => {
+    try {
+      const data = await apiFetch<any[]>(`/api/schedules`)
+      setSchedules(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error('Failed to fetch schedules:', e)
+      setSchedules([])
+    }
+  }
+
   // Effects
   useEffect(() => {
     fetchStudentData()
+    fetchSchedules()
   }, [])
 
   useEffect(() => {
@@ -775,6 +805,18 @@ export default function StudentPortal() {
               </button>
 
               <button
+                onClick={() => setActiveTab("timetable")}
+                className={`flex items-center ${
+                  !sidebarOpen ? "justify-center" : "justify-start"
+                } w-full px-3 py-2 text-sm font-medium rounded-md ${
+                  activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Timetable</span>}
+              </button>
+
+              <button
                 onClick={() => setActiveTab("notifications")}
                 className={`flex items-center ${
                   !sidebarOpen ? "justify-center" : "justify-start"
@@ -946,6 +988,19 @@ export default function StudentPortal() {
 
                 <button
                   onClick={() => {
+                    setActiveTab("timetable")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${
+                    activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <Calendar className="h-5 w-5 mr-2" />
+                  <span>Timetable</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setActiveTab("notifications")
                     setMobileMenuOpen(false)
                   }}
@@ -995,6 +1050,7 @@ export default function StudentPortal() {
                   {activeTab === "assignments" && "Assignments"}
                   {activeTab === "tests" && "Tests & Quizzes"}
                   {activeTab === "grades" && "Grades"}
+                  {activeTab === "timetable" && "Timetable"}
                   {activeTab === "notifications" && "Notifications"}
                 </h1>
               </div>
@@ -1945,6 +2001,105 @@ export default function StudentPortal() {
                       </AccordionItem>
                     ))}
                   </Accordion>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Timetable Tab */}
+          {activeTab === "timetable" && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold">My Timetable</h2>
+                  <p className="text-muted-foreground mt-1">View your weekly class schedule</p>
+                </div>
+                <Button variant="outline" onClick={() => fetchSchedules()}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refresh
+                </Button>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Weekly Schedule</CardTitle>
+                  <CardDescription>
+                    Your classes for the week
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {schedules.length > 0 ? (
+                    <div className="space-y-6">
+                      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => {
+                        const daySchedules = schedules
+                          .filter((s) => s.dayOfWeek === day)
+                          .sort((a, b) => a.startTime.localeCompare(b.startTime))
+
+                        if (daySchedules.length === 0) return null
+
+                        return (
+                          <div key={day} className="space-y-3">
+                            <div className="flex items-center gap-2 pb-2 border-b">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <h3 className="font-semibold text-lg">{day}</h3>
+                              <Badge variant="outline" className="ml-auto">
+                                {daySchedules.length} {daySchedules.length === 1 ? 'class' : 'classes'}
+                              </Badge>
+                            </div>
+                            <div className="grid gap-3">
+                              {daySchedules.map((schedule) => (
+                                <Card key={schedule.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                                  <div className="flex">
+                                    <div
+                                      className="w-2 flex-shrink-0"
+                                      style={{ backgroundColor: schedule.color || '#3b82f6' }}
+                                    />
+                                    <div className="flex-1 p-4">
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <h4 className="font-semibold">{schedule.title}</h4>
+                                            <Badge variant="outline" className="text-xs">
+                                              {schedule.type}
+                                            </Badge>
+                                          </div>
+                                          {schedule.description && (
+                                            <p className="text-sm text-muted-foreground mb-2">
+                                              {schedule.description}
+                                            </p>
+                                          )}
+                                          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                                            <span className="flex items-center gap-1">
+                                              <Clock className="w-3.5 h-3.5" />
+                                              {schedule.startTime} - {schedule.endTime}
+                                            </span>
+                                            {schedule.location && (
+                                              <span className="flex items-center gap-1">
+                                                <GraduationCap className="w-3.5 h-3.5" />
+                                                {schedule.location}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </Card>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Calendar className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
+                      <h3 className="mt-4 text-lg font-medium">No schedule available</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Your class schedule will appear here once it has been set up
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
