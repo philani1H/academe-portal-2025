@@ -32,6 +32,10 @@ import {
   Layout,
   Navigation,
   Footprints,
+  Eye,
+  EyeOff,
+  Video,
+  Image as ImageIcon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -57,6 +61,7 @@ import { apiFetch } from "@/lib/api"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { BulkUploadDialog } from "@/components/BulkUploadDialog"
+import { uploadToCloudinary } from "@/lib/cloudinary"
 
 // Types
 interface HeroContent {
@@ -85,10 +90,14 @@ interface Feature {
 
 interface Announcement {
   id?: string
+  title?: string
   content: string
   type: "info" | "warning" | "success"
   pinned: boolean
-  createdAt?: string
+  isActive?: boolean
+  mediaUrl?: string
+  mediaType?: "image" | "video"
+  created_at?: string
 }
 
 interface PricingPlan {
@@ -312,6 +321,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
   const [editingUniversityApplication, setEditingUniversityApplication] = useState<UniversityApplicationContent | null>(
     null,
   )
+  const [announcementPreviewMode, setAnnouncementPreviewMode] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [uploadingPricing, setUploadingPricing] = useState(false)
@@ -1606,7 +1616,17 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
           <h2 className="text-2xl font-semibold tracking-tight">Announcements</h2>
           <p className="text-muted-foreground">Manage site-wide announcements.</p>
         </div>
-        <Button onClick={() => setEditingAnnouncement({ content: "", type: "info", pinned: false })}>
+        <Button
+          onClick={() =>
+            setEditingAnnouncement({
+              title: "",
+              content: "",
+              type: "info",
+              pinned: false,
+              isActive: true,
+            })
+          }
+        >
           <Plus className="mr-2 h-4 w-4" />
           Add Announcement
         </Button>
@@ -1630,7 +1650,33 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
                   {announcement.type === "info" && <Info className="h-4 w-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm">{announcement.content}</p>
+                  {announcement.title && (
+                    <p className="text-sm font-semibold mb-1 line-clamp-1">{announcement.title}</p>
+                  )}
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {announcement.content}
+                  </p>
+                  {announcement.mediaUrl && (
+                    <div className="mt-2">
+                      {announcement.mediaType === 'video' ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 px-2 py-1.5 rounded-md w-fit border border-border">
+                          <Video className="h-3.5 w-3.5" />
+                          <span className="font-medium">Video Attached</span>
+                        </div>
+                      ) : (
+                        <div className="relative group w-fit">
+                          <img 
+                            src={announcement.mediaUrl} 
+                            alt="Attachment" 
+                            className="h-20 w-32 object-cover rounded-md border border-border bg-muted" 
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-md">
+                            <ImageIcon className="h-5 w-5 text-white" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 mt-2">
                     <Badge variant="outline" className="text-xs capitalize">
                       {announcement.type}
@@ -1643,6 +1689,9 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
                     <Badge variant={announcement.isActive ? "default" : "secondary"} className="text-xs">
                       {announcement.isActive ? "Active" : "Inactive"}
                     </Badge>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {announcement.created_at ? new Date(announcement.created_at).toLocaleString() : ''}
+                    </span>
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -2691,14 +2740,113 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
         {editingAnnouncement && (
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label>Content</Label>
-              <Textarea
-                value={editingAnnouncement.content}
-                onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })}
+              <Label>Title</Label>
+              <Input
+                value={editingAnnouncement.title || ""}
+                onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })}
                 className="bg-input border-border"
-                rows={3}
+                placeholder="Professional announcement headline"
               />
             </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Content (Markdown or HTML)</Label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAnnouncementPreviewMode(!announcementPreviewMode)}
+                  className="h-8 px-2"
+                >
+                  {announcementPreviewMode ? (
+                    <>
+                      <EyeOff className="h-4 w-4 mr-2" />
+                      Edit
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="h-4 w-4 mr-2" />
+                      Preview
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              {announcementPreviewMode ? (
+                <div 
+                  className="min-h-[300px] max-h-[500px] overflow-y-auto p-4 border rounded-md bg-muted/30 prose dark:prose-invert max-w-none"
+                  dangerouslySetInnerHTML={{ __html: editingAnnouncement.content }}
+                />
+              ) : (
+                <Textarea
+                  value={editingAnnouncement.content}
+                  onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })}
+                  className="bg-input border-border font-mono text-sm"
+                  rows={12}
+                  placeholder="Write your full announcement or article here... (Supports Markdown and HTML)"
+                />
+              )}
+              
+              <div className="space-y-1">
+                <Label>Upload MD/HTML</Label>
+                <Input
+                  type="file"
+                  accept=".md,.html,text/markdown,text/html"
+                  className="bg-input border-border"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const text = await fileToText(file)
+                    setEditingAnnouncement({ ...editingAnnouncement, content: text })
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Media URL</Label>
+                <Input
+                  value={editingAnnouncement.mediaUrl || ""}
+                  onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, mediaUrl: e.target.value })}
+                  className="bg-input border-border"
+                  placeholder="https://..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Upload Media</Label>
+                <Input
+                  type="file"
+                  accept="image/*,video/*"
+                  className="bg-input border-border"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    try {
+                      const resourceType = file.type.startsWith("video") ? "video" : "image"
+                      const res = await uploadToCloudinary(file, "announcements", resourceType)
+                      setEditingAnnouncement({
+                        ...editingAnnouncement,
+                        mediaUrl: res.secure_url,
+                        mediaType: resourceType
+                      })
+                    } catch (err) {
+                      toast({ title: "Upload failed", description: String(err), variant: "destructive" })
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            {editingAnnouncement.mediaUrl && (
+              <div className="mt-2">
+                {editingAnnouncement.mediaType === 'video' ? (
+                  <video src={editingAnnouncement.mediaUrl} controls className="max-h-40 rounded" />
+                ) : (
+                  <img src={editingAnnouncement.mediaUrl} alt="Preview" className="max-h-40 rounded object-cover" />
+                )}
+              </div>
+            )}
+
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Type</Label>

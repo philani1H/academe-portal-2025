@@ -89,62 +89,7 @@ const announcementsData = [
   }
 ]
 
-// Pricing plans data from Pricing.tsx
-const pricingPlansData = [
-  {
-    name: "GRADE 12 BASIC",
-    price: "R 150",
-    period: "Monthly",
-    features: JSON.stringify([
-      "Core subjects tutoring",
-      "Basic study materials",
-      "Online resources access",
-      "Group tutoring sessions",
-      "Weekly assessments"
-    ]),
-    notIncluded: JSON.stringify(["1-on-1 tutoring", "Advanced study materials", "Career guidance", "Exam techniques workshop"]),
-    color: "blue",
-    icon: "calendar",
-    popular: false,
-    order: 1
-  },
-  {
-    name: "STANDARD",
-    price: "R 250",
-    period: "Monthly",
-    features: JSON.stringify([
-      "All subjects tutoring",
-      "Comprehensive study guides",
-      "Practice papers & solutions",
-      "Monthly 1-on-1 sessions",
-      "Progress tracking",
-      "Exam preparation support"
-    ]),
-    notIncluded: JSON.stringify(["Career guidance", "Advanced exam techniques"]),
-    color: "indigo",
-    icon: "star",
-    popular: true,
-    order: 2
-  },
-  {
-    name: "PREMIUM",
-    price: "R 350",
-    period: "Monthly",
-    features: JSON.stringify([
-      "All Standard features",
-      "Weekly 1-on-1 sessions",
-      "Career guidance & counseling",
-      "Advanced exam techniques",
-      "Priority support",
-      "University application assistance"
-    ]),
-    notIncluded: JSON.stringify([]),
-    color: "purple",
-    icon: "award",
-    popular: false,
-    order: 3
-  }
-]
+
 
 // Team members data from AboutUs.tsx
 const teamMembersData = [
@@ -412,14 +357,14 @@ async function migrateContent() {
   console.log('Starting content migration...')
 
   try {
-    // Reset relevant tables for idempotent seeding
+    // Reset relevant tables for idempotent seeding (skip pricing - already exists)
     console.log('Clearing existing content tables...')
     await prisma.$transaction([
       prisma.siteSettings.deleteMany(),
       prisma.testimonial.deleteMany(),
       prisma.aboutUsContent.deleteMany(),
       prisma.teamMember.deleteMany(),
-      prisma.pricingPlan.deleteMany(),
+      // prisma.pricingPlan.deleteMany(), // Skip - pricing already exists in database
       prisma.announcement.deleteMany(),
       prisma.feature.deleteMany(),
       prisma.heroContent.deleteMany(),

@@ -4259,8 +4259,9 @@ app.post(
         if (!payload.title) {
           payload.title = contentText.slice(0, 80) || "Announcement"
         }
-        if (!payload.authorId && req.user && typeof req.user.id === "number") {
-          payload.authorId = req.user.id
+        payload.authorId = 1
+        if (payload.department === undefined) {
+          payload.department = null
         }
       }
 

@@ -24,14 +24,14 @@ async function migrateAnnouncements() {
   try {
     // Clear existing announcements with authorId: 1
     console.log('Clearing existing system announcements...')
-    await prisma.announcement.deleteMany({
+    await prisma.announcements.deleteMany({
       where: { authorId: 1 }
     })
 
     // Migrate Announcements
     console.log('Migrating announcements...')
     for (const announcement of announcementsData) {
-      await prisma.announcement.create({
+      await prisma.announcements.create({
         data: { 
           title: announcement.title,          // from data
           content: announcement.content,      // from data
@@ -72,17 +72,15 @@ async function migrateAnnouncements() {
   }
 }
 
-// Run the migration if this file is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  migrateAnnouncements()
-    .then(() => {
-      console.log('✅ Process completed successfully')
-      process.exit(0)
-    })
-    .catch((error) => {
-      console.error('❌ Process failed')
-      process.exit(1)
-    })
-}
+// Run the migration
+migrateAnnouncements()
+  .then(() => {
+    console.log('✅ Process completed successfully')
+    process.exit(0)
+  })
+  .catch((error) => {
+    console.error('❌ Process failed')
+    process.exit(1)
+  })
 
 export default migrateAnnouncements

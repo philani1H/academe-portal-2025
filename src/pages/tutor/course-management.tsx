@@ -370,12 +370,8 @@ export default function CourseManagementPage() {
     }
 
     try {
-      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
       const response = await fetch(`/api/tutor/scheduled-sessions?id=${sessionId}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
       });
 
       if (!response.ok) {

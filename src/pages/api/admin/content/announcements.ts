@@ -4,11 +4,11 @@ import prisma from '@/lib/prisma';
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'GET') {
     try {
-      const announcements = await prisma.announcement.findMany({
+      const announcements = await prisma.announcements.findMany({
         where: { isActive: true },
         orderBy: [
           { pinned: 'desc' },
-          { createdAt: 'desc' }
+          { created_at: 'desc' }
         ]
       });
       
@@ -19,14 +19,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } else if (req.method === 'POST') {
     try {
-      const { content, type, pinned } = req.body;
+      const { title, content, type, pinned, mediaUrl, mediaType } = req.body;
 
-      const announcement = await prisma.announcement.create({
+      const announcement = await prisma.announcements.create({
         data: {
+          title: title || content.slice(0, 50),
           content,
           type,
           pinned: pinned || false,
-          isActive: true
+          mediaUrl,
+          mediaType,
+          isActive: true,
+          authorId: 1, // Hardcoded system admin as requested
+          department: null // No department assignment as requested
         }
       });
 
@@ -39,8 +44,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const { id, ...updateData } = req.body;
       
-      const announcement = await prisma.announcement.update({
-        where: { id },
+      const announcement = await prisma.announcements.update({
+        where: { id: Number(id) },
         data: updateData
       });
 
@@ -53,8 +58,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const { id } = req.query;
       
-      await prisma.announcement.update({
-        where: { id: id as string },
+      await prisma.announcements.update({
+        where: { id: Number(id) },
         data: { isActive: false }
       });
 

@@ -368,9 +368,15 @@ model about_us_content {
 
 model announcements {
   id         Int       @id @default(autoincrement())
+  title      String?
   content    String
   type       String?
   pinned     Boolean?  @default(false)
+  isActive   Boolean   @default(true)
+  authorId   Int?      @default(1)
+  department String?
+  mediaUrl   String?   @map("media_url")
+  mediaType  String?   @map("media_type")
   created_at DateTime? @default(now())
   updated_at DateTime? @default(now())
 }

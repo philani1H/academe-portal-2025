@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from "react"
 import { apiFetch } from "@/lib/api"
 import { motion, AnimatePresence } from "framer-motion"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import ReactPlayer from 'react-player'
 import { CheckCircle, AlertCircle, Info, MessageSquare, Plus, X, Edit, Trash2, Star } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
@@ -33,26 +36,25 @@ interface Feature {
 
 const initialAnnouncements: any[] = []
 
-// Advertisement Script Loader Hook
 const useAdScript = () => {
   useEffect(() => {
-    // Check if script is already loaded
-    if (document.getElementById('aclib')) {
+    if (document.getElementById("thankfuldirection-script")) {
       return
     }
 
-    // Create and load the advertisement script
-    const script = document.createElement('script')
-    script.id = 'aclib'
-    script.type = 'text/javascript'
-    script.src = '//acscdn.com/script/aclib.js'
+    const script = document.createElement("script")
+    script.id = "thankfuldirection-script"
+    script.type = "text/javascript"
+    script.src =
+      "//thankfuldirection.com/bzX.VPsLdpGblY0mYsWccA/yermk9fuxZdUJlHk/PIT/Yo3/NiD/k/y/MrDHYHt/NKjlcD0/OgTnICwBN_wx"
     script.async = true
-    
+    ;(script as any).settings = {}
+    ;(script as any).referrerPolicy = "no-referrer-when-downgrade"
+
     document.head.appendChild(script)
 
     return () => {
-      // Cleanup function to remove script if component unmounts
-      const existingScript = document.getElementById('aclib')
+      const existingScript = document.getElementById("thankfuldirection-script")
       if (existingScript) {
         existingScript.remove()
       }
@@ -60,32 +62,7 @@ const useAdScript = () => {
   }, [])
 }
 
-// Professional Banner Component - 728x90 Leaderboard
 const ProfessionalBanner = ({ className = "", placement = "" }) => {
-  const [adLoaded, setAdLoaded] = useState(false)
-  
-  useEffect(() => {
-    // Wait for aclib script to load and then run the banner
-    const checkAndRunBanner = () => {
-      if (window.aclib && window.aclib.runBanner) {
-        try {
-          window.aclib.runBanner({
-            zoneId: '10397366',
-          })
-          setAdLoaded(true)
-        } catch (error) {
-          console.warn('Ad banner failed to load:', error)
-        }
-      } else {
-        // Retry after a short delay if aclib is not ready
-        setTimeout(checkAndRunBanner, 100)
-      }
-    }
-
-    const timer = setTimeout(checkAndRunBanner, 500)
-    return () => clearTimeout(timer)
-  }, [])
-
   return (
     <div className={`bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 shadow-sm overflow-hidden ${className}`}>
       <div className="p-4">
@@ -97,12 +74,9 @@ const ProfessionalBanner = ({ className = "", placement = "" }) => {
           <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">Advertisement</span>
         </div>
         
-        {/* 728x90 Banner Ad Container */}
         <div className="bg-white rounded-lg border border-blue-200 flex items-center justify-center" style={{ width: '728px', height: '90px', maxWidth: '100%', margin: '0 auto' }}>
-          <div id={`aclib-banner-${placement}`}>
-            {!adLoaded && (
-              <div className="text-gray-400 text-sm">Loading advertisement...</div>
-            )}
+          <div id={`thankfuldirection-banner-${placement}`} className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+            Loading advertisement...
           </div>
         </div>
         
@@ -124,6 +98,7 @@ const Features = () => {
   const [isAdmin, setIsAdmin] = useState(false) // Set to false by default for production
   const [announcements, setAnnouncements] = useState(initialAnnouncements)
   const [newAnnouncement, setNewAnnouncement] = useState("")
+  const [announcementTitle, setAnnouncementTitle] = useState("")
   const [announcementType, setAnnouncementType] = useState("info")
   const [activeTab, setActiveTab] = useState("features")
   const [editingFeature, setEditingFeature] = useState(null)
@@ -158,7 +133,21 @@ const Features = () => {
   const fetchAnnouncements = async () => {
     try {
       const data = await apiFetch<any[]>('/api/admin/content/announcements')
-      setAnnouncements(Array.isArray(data) ? data : [])
+      const normalizedAnnouncements = Array.isArray(data)
+        ? data.map((a) => ({
+            ...a,
+            type: a?.type || "info",
+            pinned: typeof a?.pinned === "boolean" ? a.pinned : !!a?.pinned,
+            mediaUrl: a?.mediaUrl || a?.media_url,
+            mediaType: a?.mediaType || a?.media_type,
+            timestamp:
+              a?.timestamp ||
+              a?.created_at ||
+              a?.createdAt ||
+              new Date().toISOString(),
+          }))
+        : []
+      setAnnouncements(normalizedAnnouncements)
     } catch (error) {
       console.error('Error fetching announcements:', error)
       setAnnouncements([])
@@ -185,34 +174,63 @@ const Features = () => {
     setAdminPassword("")
   }
 
-  // Function to post a new announcement
-  const postAnnouncement = () => {
+  const postAnnouncement = async () => {
     if (newAnnouncement.trim() === "") return
 
-    const newAnnouncementObj = {
-      id: Date.now(),
-      content: newAnnouncement,
-      type: announcementType,
-      timestamp: new Date().toISOString(),
-      pinned: false,
+    try {
+      await apiFetch("/api/admin/content/announcements", {
+        method: "POST",
+        body: JSON.stringify({
+          title: announcementTitle,
+          content: newAnnouncement,
+          type: announcementType,
+          pinned: false,
+          authorId: 1,
+          department: null,
+        }),
+      })
+      setNewAnnouncement("")
+      setAnnouncementTitle("")
+      await fetchAnnouncements()
+    } catch (error) {
+      console.error("Error posting announcement:", error)
+    }
+  }
+
+  // Function to delete an announcement (via API)
+  const deleteAnnouncement = async (id) => {
+    try {
+      await apiFetch(`/api/admin/content/announcements?id=${id}`, { method: "DELETE" })
+      await fetchAnnouncements()
+    } catch (error) {
+      console.error("Error deleting announcement:", error)
+    }
+  }
+
+  // Function to toggle pin status of an announcement (via API)
+  const togglePinAnnouncement = async (id) => {
+    const current = announcements.find((announcement) => announcement.id === id)
+    if (!current) return
+
+    const payload = {
+      id: current.id,
+      content: current.content,
+      type: current.type,
+      pinned: !current.pinned,
+      isActive: current.isActive ?? true,
+      mediaUrl: current.mediaUrl,
+      mediaType: current.mediaType,
     }
 
-    setAnnouncements([newAnnouncementObj, ...announcements])
-    setNewAnnouncement("")
-  }
-
-  // Function to delete an announcement
-  const deleteAnnouncement = (id) => {
-    setAnnouncements(announcements.filter((announcement) => announcement.id !== id))
-  }
-
-  // Function to toggle pin status of an announcement
-  const togglePinAnnouncement = (id) => {
-    setAnnouncements(
-      announcements.map((announcement) =>
-        announcement.id === id ? { ...announcement, pinned: !announcement.pinned } : announcement,
-      ),
-    )
+    try {
+      await apiFetch("/api/admin/content/announcements", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      })
+      await fetchAnnouncements()
+    } catch (error) {
+      console.error("Error updating announcement:", error)
+    }
   }
 
   // Function to start editing a feature
@@ -266,8 +284,9 @@ const Features = () => {
   const sortedAnnouncements = [...announcements].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1
     if (!a.pinned && b.pinned) return 1
-    // Fix: Convert string dates to Date objects before comparison
-    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0
+    const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0
+    return bTime - aTime
   })
 
   return (
@@ -473,6 +492,28 @@ const Features = () => {
                 <CardContent>
                   <div className="space-y-4">
                     <div>
+                      <Label htmlFor="announcement-title">Announcement Title</Label>
+                      <input
+                        id="announcement-title"
+                        type="text"
+                        placeholder="Enter announcement title (optional)"
+                        value={announcementTitle}
+                        onChange={(e) => setAnnouncementTitle(e.target.value)}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="announcement-title">Announcement Title</Label>
+                      <input
+                        id="announcement-title"
+                        type="text"
+                        placeholder="Enter announcement title (optional)"
+                        value={announcementTitle}
+                        onChange={(e) => setAnnouncementTitle(e.target.value)}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </div>
+                    <div>
                       <Label htmlFor="announcement-type">Announcement Type</Label>
                       <Select value={announcementType} onValueChange={setAnnouncementType}>
                         <SelectTrigger id="announcement-type" className="w-full">
@@ -481,6 +522,7 @@ const Features = () => {
                         <SelectContent>
                           <SelectItem value="info">Information</SelectItem>
                           <SelectItem value="warning">Important Alert</SelectItem>
+                          <SelectItem value="success">Success</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -515,21 +557,74 @@ const Features = () => {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.3 }}
-                      className={`p-4 rounded-lg flex items-start space-x-3 relative ${
+                    className={`p-4 rounded-lg flex items-start space-x-3 relative ${
                         announcement.type === "warning"
                           ? "bg-red-50 border border-red-200"
+                          : announcement.type === "success"
+                          ? "bg-green-50 border border-green-200"
                           : "bg-blue-50 border border-blue-200"
                       } ${announcement.pinned ? "border-l-4" : ""}`}
                     >
                       {announcement.type === "warning" ? (
                         <AlertCircle className="w-5 h-5 text-red-500 mt-1 flex-shrink-0" />
+                      ) : announcement.type === "success" ? (
+                        <CheckCircle className="w-5 h-5 text-green-500 mt-1 flex-shrink-0" />
                       ) : (
                         <Info className="w-5 h-5 text-blue-500 mt-1 flex-shrink-0" />
                       )}
                       <div className="space-y-1 flex-1">
-                        <p className={`${announcement.type === "warning" ? "text-red-700" : "text-blue-700"}`}>
-                          {announcement.content}
-                        </p>
+                        {announcement.title && (
+                          <h3
+                            className={`text-lg font-semibold mb-2 ${
+                              announcement.type === "warning"
+                                ? "text-red-800"
+                                : announcement.type === "success"
+                                ? "text-green-900"
+                                : "text-blue-900"
+                            }`}
+                          >
+                            {announcement.title}
+                          </h3>
+                        )}
+                        {announcement.mediaUrl && (
+                          <div className="mb-3 mt-1 rounded-lg overflow-hidden max-w-2xl shadow-sm border border-gray-100">
+                             {announcement.mediaType === 'video' ? (
+                                <ReactPlayer 
+                                  url={announcement.mediaUrl} 
+                                  controls 
+                                  width="100%" 
+                                  height="auto" 
+                                  className="aspect-video"
+                                />
+                             ) : (
+                                <img 
+                                  src={announcement.mediaUrl} 
+                                  alt="Announcement media" 
+                                  className="w-full h-auto object-cover max-h-[400px]"
+                                />
+                             )}
+                          </div>
+                        )}
+                        <div
+                          className={`${
+                            announcement.type === "warning"
+                              ? "text-red-700"
+                              : announcement.type === "success"
+                              ? "text-green-700"
+                              : "text-blue-700"
+                          } prose prose-sm max-w-none`}
+                        >
+                          {typeof announcement.content === "string" &&
+                          /<\/[a-z][\s\S]*>/.test(announcement.content) ? (
+                            <div
+                              dangerouslySetInnerHTML={{ __html: announcement.content }}
+                            />
+                          ) : (
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {announcement.content}
+                            </ReactMarkdown>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500">
                           {new Date(announcement.timestamp).toLocaleString()}
                           {announcement.pinned && (

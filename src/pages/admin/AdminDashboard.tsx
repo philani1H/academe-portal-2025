@@ -12,6 +12,7 @@ import Timetable from "@/components/Timetable"
 
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { apiFetch } from "@/lib/api"
 import { BulkUploadDialog } from "@/components/BulkUploadDialog"
 import { apiFetch } from "@/lib/api"
 
@@ -365,6 +366,8 @@ export default function AdminDashboard() {
   const [isCreatingDepartment, setIsCreatingDepartment] = useState(false)
   const [isSendingNotification, setIsSendingNotification] = useState(false)
   const [isContentManagerOpen, setIsContentManagerOpen] = useState(false)
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false)
+  const [agreementMet, setAgreementMet] = useState(true)
 
   // Effects
   // Collapse sidebar by default on small screens
@@ -373,6 +376,68 @@ export default function AdminDashboard() {
       setSidebarOpen(false)
     }
   }, [])
+
+  useEffect(() => {
+    const loadSystemSettings = async () => {
+      try {
+        const data = await apiFetch<any[]>("/api/admin/content/site-settings")
+        const list = Array.isArray(data) ? data : []
+        const maintRow = list.find((r) => String(r.key).toLowerCase() === "system_maintenance_mode")
+        const agreementRow = list.find((r) => String(r.key).toLowerCase() === "system_agreement_met")
+        if (maintRow) {
+          const v = String(maintRow.value).toLowerCase()
+          setMaintenanceEnabled(v === "true" || v === "1")
+        }
+        if (agreementRow) {
+          const v = String(agreementRow.value).toLowerCase()
+          setAgreementMet(!(v === "false" || v === "0"))
+        }
+      } catch (error) {
+        console.error("Error loading system settings:", error)
+      }
+    }
+    loadSystemSettings()
+  }, [])
+
+  const handleSaveSystemSettings = async () => {
+    try {
+      const settingsPayloads = [
+        {
+          key: "system_maintenance_mode",
+          value: maintenanceEnabled ? "true" : "false",
+          type: "boolean",
+          label: "System Maintenance Mode",
+          category: "system",
+        },
+        {
+          key: "system_agreement_met",
+          value: agreementMet ? "true" : "false",
+          type: "boolean",
+          label: "Agreement Met",
+          category: "system",
+        },
+      ]
+
+      for (const payload of settingsPayloads) {
+        await apiFetch("/api/admin/content/site-settings", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        })
+      }
+
+      toast({
+        title: "System settings saved",
+        description: "Maintenance and agreement flags have been updated.",
+      })
+    } catch (error) {
+      console.error("Error saving system settings:", error)
+      toast({
+        title: "Failed to save system settings",
+        description: "Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
   useEffect(() => {
     // Calculate unread notifications
     setUnreadCount(notifications.filter((n) => !n.read).length)
@@ -2050,7 +2115,7 @@ export default function AdminDashboard() {
                 Invite students or tutors by email. Separate multiple emails with commas or new lines.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4">
+                <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <Button variant={inviteTarget === 'students' ? 'default' : 'outline'} onClick={() => setInviteTarget('students')}>Students</Button>
                 <Button variant={inviteTarget === 'tutors' ? 'default' : 'outline'} onClick={() => setInviteTarget('tutors')}>Tutors</Button>
@@ -4327,7 +4392,16 @@ export default function AdminDashboard() {
                           Automatically approve new tutor registrations
                         </p>
                       </div>
-                      <Switch />
+                      <Switch checked={maintenanceEnabled} onCheckedChange={setMaintenanceEnabled} />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="font-medium">Agreement Met</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Control whether the public site is blocked by the agreement modal
+                        </p>
+                      </div>
+                      <Switch checked={agreementMet} onCheckedChange={setAgreementMet} />
                     </div>
 
                     <div className="flex items-center justify-between">
@@ -4380,7 +4454,7 @@ export default function AdminDashboard() {
                   </div>
                 </CardContent>
                 <CardFooter>
-                  <Button>Save Settings</Button>
+                  <Button onClick={handleSaveSystemSettings}>Save Settings</Button>
                 </CardFooter>
               </Card>
 

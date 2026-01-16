@@ -19,7 +19,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import ContentManagement from "./pages/admin/ContentManagement";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import NoInternetModal from "./components/NoInternetModal";
@@ -52,22 +52,54 @@ const AdminWrapper = ({ children }: { children: React.ReactNode }) => {
 
 const queryClient = new QueryClient();
 
-const App = () => {
-  const isAgreementMet = true; // Set this to true when agreement is met
-  const isMaintenanceMode = false; // Control maintenance mode
+const AppInner = () => {
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith("/admin");
+  const [isAgreementMet, setIsAgreementMet] = useState(true);
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const data = await apiFetch<any[]>("/api/admin/content/site-settings");
+        const list = Array.isArray(data) ? data : [];
+        const maintRow = list.find(
+          (r) => String(r.key).toLowerCase() === "system_maintenance_mode"
+        );
+        const agreementRow = list.find(
+          (r) => String(r.key).toLowerCase() === "system_agreement_met"
+        );
+        if (maintRow) {
+          const v = String(maintRow.value).toLowerCase();
+          setIsMaintenanceMode(v === "true" || v === "1");
+        }
+        if (agreementRow) {
+          const v = String(agreementRow.value).toLowerCase();
+          setIsAgreementMet(!(v === "false" || v === "0"));
+        }
+      } catch (error) {
+        console.error("Error loading site settings:", error);
+      } finally {
+        setSettingsLoaded(true);
+      }
+    };
+    loadSettings();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
         <TooltipProvider>
           <AuthProvider>
-            {isMaintenanceMode && <MaintenanceModal />}
-        {!isAgreementMet && !isMaintenanceMode && <AgreementBlockModal />}
-        <Toaster />
-        <Sonner />
-        <NoInternetModal />
-        <BrowserRouter>
-          <Routes>
+            {!isAdminRoute && isMaintenanceMode && <MaintenanceModal />}
+            {!isAdminRoute && !isAgreementMet && !isMaintenanceMode && (
+              <AgreementBlockModal />
+            )}
+            <Toaster />
+            <Sonner />
+            <NoInternetModal />
+            <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Index />} />
             <Route path="/tutors" element={<Tutors />} />
@@ -105,12 +137,25 @@ const App = () => {
             <Route path="*" element={<NotFound />} />
           </Routes>
           <Analytics />
-        </BrowserRouter>
           </AuthProvider>
         </TooltipProvider>
       </ErrorBoundary>
     </QueryClientProvider>
   );
 };
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <ErrorBoundary>
+      <TooltipProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppInner />
+          </BrowserRouter>
+        </AuthProvider>
+      </TooltipProvider>
+    </ErrorBoundary>
+  </QueryClientProvider>
+);
 
 export default App;
