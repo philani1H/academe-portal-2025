@@ -8,14 +8,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { sessionId, courseId, courseName, tutorName, emails, personalMessage } = req.body;
+    const { sessionId, courseId, courseName, tutorName, emails, personalMessage, sessionLink: clientSessionLink } = req.body;
 
     if (!sessionId || !courseId || !emails || !Array.isArray(emails)) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Generate session link
-    const sessionLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:5173'}/live-session/${sessionId}?courseId=${courseId}`;
+    // Generate session link (prefer client-generated link with full context)
+    const sessionLink =
+      typeof clientSessionLink === 'string' && clientSessionLink.length > 0
+        ? clientSessionLink
+        : `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:5173'}/live-session/${sessionId}?courseId=${courseId}`;
 
     // Send emails to all recipients
     const emailPromises = emails.map(async (email: string) => {

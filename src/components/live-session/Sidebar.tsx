@@ -62,39 +62,59 @@ export function Sidebar({
       <div className="flex border-b border-gray-700 bg-gray-900/95 backdrop-blur-sm">
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex-1 py-2.5 sm:py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 transition-colors ${
-            activeTab === 'chat' ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-gray-200'
+          className={`flex-1 py-3 px-2 text-sm font-medium flex items-center justify-center gap-2 transition-all relative ${
+            activeTab === 'chat' 
+              ? 'text-indigo-400 bg-gray-800/50' 
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
           }`}
         >
-          <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <MessageSquare className="h-4 w-4" />
           <span className="hidden sm:inline">Chat</span>
+          {activeTab === 'chat' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+          )}
         </button>
         <button
           onClick={() => setActiveTab('participants')}
-          className={`flex-1 py-2.5 sm:py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 transition-colors ${
-            activeTab === 'participants' ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-gray-200'
+          className={`flex-1 py-3 px-2 text-sm font-medium flex items-center justify-center gap-2 transition-all relative ${
+            activeTab === 'participants' 
+              ? 'text-indigo-400 bg-gray-800/50' 
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
           }`}
         >
-          <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <Users className="h-4 w-4" />
           <span className="hidden sm:inline">People</span>
+          {activeTab === 'participants' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+          )}
         </button>
         <button
           onClick={() => setActiveTab('files')}
-          className={`flex-1 py-2.5 sm:py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 transition-colors ${
-            activeTab === 'files' ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-gray-200'
+          className={`flex-1 py-3 px-2 text-sm font-medium flex items-center justify-center gap-2 transition-all relative ${
+            activeTab === 'files' 
+              ? 'text-indigo-400 bg-gray-800/50' 
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
           }`}
         >
-          <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <FileText className="h-4 w-4" />
           <span className="hidden sm:inline">Files</span>
+          {activeTab === 'files' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+          )}
         </button>
         <button
           onClick={() => setActiveTab('notes')}
-          className={`flex-1 py-2.5 sm:py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1 transition-colors ${
-            activeTab === 'notes' ? 'text-white bg-gray-700' : 'text-gray-400 hover:text-gray-200'
+          className={`flex-1 py-3 px-2 text-sm font-medium flex items-center justify-center gap-2 transition-all relative ${
+            activeTab === 'notes' 
+              ? 'text-indigo-400 bg-gray-800/50' 
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
           }`}
         >
-          <StickyNote className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+          <StickyNote className="h-4 w-4" />
           <span className="hidden sm:inline">Notes</span>
+          {activeTab === 'notes' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
+          )}
         </button>
       </div>
 

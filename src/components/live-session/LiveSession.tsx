@@ -12,7 +12,7 @@ import { useRecording } from './useRecording'
 import { Whiteboard } from './Whiteboard'
 import { Button } from '@/components/ui/button'
 
-export default function EnhancedLiveSession({ sessionId, sessionName, userRole, onLeave, courseId, courseName, category }: LiveSessionProps) {
+export default function EnhancedLiveSession({ sessionId, sessionName, userRole, onLeave, courseId, courseName, category, tutorName: propTutorName }: LiveSessionProps) {
   // User info
   const [user, setUser] = useState<{id: string, name: string} | null>(null);
   
@@ -25,8 +25,8 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
         if (storedUser) {
             try {
                 const parsed = JSON.parse(storedUser);
-                if (parsed.name && parsed.name !== 'Tutor' && parsed.name !== 'Student') {
-                    setUser({ id: parsed.id, name: parsed.name });
+                if (parsed.name && parsed.name !== 'Tutor' && parsed.name !== 'Student' && parsed.name !== 'Instructor' && parsed.name !== 'Anonymous') {
+                    setUser({ id: parsed.id || `user-${Date.now()}`, name: parsed.name });
                     return;
                 }
             } catch (e) {
@@ -39,10 +39,10 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
             const res = await fetch('/api/auth/me');
             if (res.ok) {
                 const data = await res.json();
-                if (data.user) {
-                    setUser({ id: data.user.id, name: data.user.name });
+                if (data.user && data.user.name) {
+                    setUser({ id: String(data.user.id), name: data.user.name });
                     // Update local storage to keep it fresh
-                    localStorage.setItem('user', JSON.stringify(data.user));
+                    localStorage.setItem('user', JSON.stringify({ ...data.user, id: String(data.user.id) }));
                     return;
                 }
             }
@@ -50,34 +50,49 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
             console.error("Failed to fetch user session", e);
         }
 
-        // 3. Fallback (if everything fails)
-        setUser({ 
-            id: Math.random().toString(36).substr(2, 9), 
-            name: userRole === 'tutor' ? 'Instructor' : 'Student' 
+        // 3. Use propTutorName if this is a tutor
+        if (userRole === 'tutor' && propTutorName) {
+            setUser({
+                id: `tutor-${Date.now()}`,
+                name: propTutorName
+            });
+            return;
+        }
+
+        // 4. Fallback (if everything fails) - DON'T set generic names, wait for user input
+        // This should rarely happen as LiveClass.tsx handles the join screen
+        setUser({
+            id: `${userRole}-${Date.now()}`,
+            name: userRole === 'tutor' ? (propTutorName || 'Instructor') : 'Student'
         });
     };
 
     initUser();
-  }, [userRole]);
+  }, [userRole, propTutorName]);
 
-  const { 
-      localStream, 
-      peers, 
-      socket, 
-      toggleAudio, 
+  // Only initialize WebRTC once we have valid user info
+  const isUserReady = user !== null && user.id && user.name;
+
+  const {
+      localStream,
+      peers,
+      socket,
+      toggleAudio,
       muteAudio,
-      toggleVideo, 
-      toggleScreenShare, 
+      toggleVideo,
+      toggleScreenShare,
       toggleHandRaise,
-      isVideoOn, 
-      isAudioOn, 
+      isVideoOn,
+      isAudioOn,
       isScreenSharing,
-      isHandRaised
+      isHandRaised,
+      connectionStatus,
+      sessionStartTime
   } = useWebRTC({
       sessionId,
-      userId: user?.id || 'unknown',
+      userId: user?.id || '',
       userRole,
-      userName: user?.name || 'Anonymous',
+      userName: user?.name || '',
       courseId,
       courseName,
       category
@@ -91,11 +106,15 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
   const [shareMessage, setShareMessage] = useState('');
   const [isSharing, setIsSharing] = useState(false);
 
+  // Get the actual tutor name - either from props or from current user if tutor
+  const activeTutorName = propTutorName || (userRole === 'tutor' ? user?.name : undefined);
+
   const getSessionLink = () => {
     const params = new URLSearchParams();
     if (courseId) params.append('courseId', courseId);
     if (courseName) params.append('courseName', courseName);
     if (category) params.append('category', category);
+    if (activeTutorName) params.append('tutorName', activeTutorName);
     params.append('fromStudent', 'true');
     return `${window.location.origin}/live-session/${sessionId}?${params.toString()}`;
   };
@@ -116,7 +135,7 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
           sessionId,
           courseId,
           courseName,
-          tutorName: user?.name || 'Instructor',
+          tutorName: activeTutorName || user?.name || 'Instructor',
           emails,
           personalMessage: shareMessage,
           sessionLink: getSessionLink(),
@@ -189,12 +208,27 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
 
   // Timer effect
   useEffect(() => {
-    if (!isLive && userRole === 'tutor') return; // Don't start timer if tutor hasn't gone live
+    // If we have a server-provided start time, use it to calculate elapsed time
+    if (sessionStartTime) {
+      const updateTime = () => {
+        const now = Date.now();
+        const elapsed = Math.floor((now - sessionStartTime) / 1000);
+        setSessionTime(elapsed > 0 ? elapsed : 0);
+      };
+      
+      updateTime(); // Update immediately
+      const timer = setInterval(updateTime, 1000);
+      return () => clearInterval(timer);
+    }
+    
+    // Fallback to local timer if no server time (e.g. tutor before going live)
+    if (!isLive && userRole === 'tutor') return; 
+    
     const timer = setInterval(() => {
       setSessionTime(prev => prev + 1)
     }, 1000)
     return () => clearInterval(timer)
-  }, [isLive, userRole])
+  }, [isLive, userRole, sessionStartTime])
 
   // Admin actions
   const handleMuteParticipant = (targetSocketId: string | number) => {
@@ -245,6 +279,7 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
   useEffect(() => {
       if(socket) {
           socket.on('chat-message', (msg: Message) => {
+              console.log('[LiveSession] Received chat message:', msg);
               setMessages(prev => [...prev, msg]);
           });
       }
@@ -295,7 +330,35 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
       });
   }
 
-  if (!user) return <div className="flex items-center justify-center h-screen bg-gray-900 text-white">Loading...</div>;
+  if (!user) return (
+    <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-4">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+      <p className="text-gray-400">Setting up your session...</p>
+    </div>
+  );
+  
+  // Show media setup status
+  if (!localStream && connectionStatus === 'connecting') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+        <p className="text-xl font-semibold">Setting up camera and microphone...</p>
+        <p className="text-gray-400 text-sm">Please allow access when prompted</p>
+      </div>
+    );
+  }
+  
+  // Show connection status
+  if (connectionStatus === 'disconnected') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-4">
+        <div className="text-red-500 text-6xl mb-4">⚠️</div>
+        <p className="text-xl font-semibold">Connection Lost</p>
+        <p className="text-gray-400">Trying to reconnect...</p>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mt-4"></div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -313,9 +376,11 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
             isSidebarOpen={isSidebarOpen}
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             category={category}
-            tutorName={userRole === 'tutor' ? user.name : undefined}
+            courseName={courseName}
+            tutorName={activeTutorName || (userRole === 'tutor' ? user.name : undefined)}
             onCopyLink={copySessionLink}
             onShareLink={() => setShowShareDialog(true)}
+            connectionStatus={connectionStatus}
           />
           
           <div className="flex-1 relative bg-black overflow-hidden flex flex-col">

@@ -10,8 +10,8 @@ import {
   Hand,
   PhoneOff,
   MessageSquare,
-  Layout,
-  MoreVertical
+  MoreVertical,
+  Circle
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -64,90 +64,112 @@ export function ControlsBar({
   onLeave
 }: ControlsBarProps) {
   return (
-    <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-3 sm:px-4 py-3 border-t border-gray-700 relative z-[100] shadow-2xl shrink-0">
+    <div className="bg-gradient-to-r from-slate-900 via-indigo-950/50 to-slate-900 px-3 sm:px-6 py-3 sm:py-4 border-t border-indigo-500/20 relative z-[100] shadow-2xl shrink-0">
       <div className="flex justify-between items-center w-full max-w-full">
         {/* Left Controls - Basic Audio/Video */}
-        <div className="flex gap-1 sm:gap-2">
+        <div className="flex gap-2 sm:gap-3">
           <Button
             size="sm"
-            variant={isAudioOn ? 'default' : 'destructive'}
             onClick={onToggleAudio}
-            className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 flex-shrink-0"
+            className={`rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 flex-shrink-0 transition-all duration-200 shadow-lg ${
+              isAudioOn
+                ? 'bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white'
+                : 'bg-red-500 hover:bg-red-600 text-white'
+            }`}
             title={isAudioOn ? "Mute Microphone" : "Unmute Microphone"}
           >
-            {isAudioOn ? <Mic className="h-4 w-4 sm:h-5 sm:w-5" /> : <MicOff className="h-4 w-4 sm:h-5 sm:w-5" />}
+            {isAudioOn ? <Mic className="h-5 w-5 sm:h-6 sm:w-6" /> : <MicOff className="h-5 w-5 sm:h-6 sm:w-6" />}
           </Button>
 
           <Button
             size="sm"
-            variant={isVideoOn ? 'default' : 'destructive'}
             onClick={onToggleVideo}
-            className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 flex-shrink-0"
+            className={`rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 flex-shrink-0 transition-all duration-200 shadow-lg ${
+              isVideoOn
+                ? 'bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white'
+                : 'bg-red-500 hover:bg-red-600 text-white'
+            }`}
             title={isVideoOn ? "Turn Off Camera" : "Turn On Camera"}
           >
-            {isVideoOn ? <Video className="h-4 w-4 sm:h-5 sm:w-5" /> : <VideoOff className="h-4 w-4 sm:h-5 sm:w-5" />}
+            {isVideoOn ? <Video className="h-5 w-5 sm:h-6 sm:w-6" /> : <VideoOff className="h-5 w-5 sm:h-6 sm:w-6" />}
           </Button>
         </div>
 
         {/* Center Controls - Mode Specific */}
-        <div className="flex gap-1 sm:gap-2 flex-shrink-0">
+        <div className="flex gap-2 sm:gap-3 flex-shrink-0">
           {userRole === 'tutor' ? (
             <>
               <Button
                 size="sm"
-                variant={isScreenSharing ? 'default' : 'outline'}
                 onClick={onToggleScreenShare}
-                className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 hidden sm:flex"
+                className={`rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 hidden sm:flex transition-all duration-200 shadow-lg ${
+                  isScreenSharing
+                    ? 'bg-green-500 hover:bg-green-600 text-white'
+                    : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30'
+                }`}
                 title="Share Screen"
               >
-                <MonitorUp className="h-4 w-4 sm:h-5 sm:w-5" />
+                <MonitorUp className="h-5 w-5 sm:h-6 sm:w-6" />
               </Button>
 
               <Button
                 size="sm"
-                variant={isRecording ? 'destructive' : 'outline'}
                 onClick={onToggleRecording}
-                className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 hidden sm:flex"
+                className={`rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 hidden sm:flex transition-all duration-200 shadow-lg ${
+                  isRecording
+                    ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+                    : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30'
+                }`}
                 title="Record Session"
               >
-                <div className={`h-2 w-2 sm:h-3 sm:w-3 ${isRecording ? 'rounded-sm bg-white animate-pulse' : 'rounded-full bg-red-500'}`} />
+                <Circle className={`h-4 w-4 sm:h-5 sm:w-5 ${isRecording ? 'fill-white' : 'fill-red-500'}`} />
               </Button>
 
               <Button
                 size="sm"
-                variant={showWhiteboard ? 'default' : 'outline'}
                 onClick={onToggleWhiteboard}
-                className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 hidden sm:flex"
+                className={`rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 hidden sm:flex transition-all duration-200 shadow-lg ${
+                  showWhiteboard
+                    ? 'bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white'
+                    : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30'
+                }`}
                 title="Whiteboard"
               >
-                <Pencil className="h-4 w-4 sm:h-5 sm:w-5" />
+                <Pencil className="h-5 w-5 sm:h-6 sm:w-6" />
               </Button>
             </>
           ) : (
             <Button
               size="sm"
-              variant={isHandRaised ? 'default' : 'outline'}
               onClick={onToggleHandRaise}
-              className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 flex-shrink-0"
+              className={`rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 flex-shrink-0 transition-all duration-200 shadow-lg ${
+                isHandRaised
+                  ? 'bg-yellow-500 hover:bg-yellow-600 text-white animate-bounce'
+                  : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30'
+              }`}
               title="Raise Hand"
             >
-              <Hand className="h-4 w-4 sm:h-5 sm:w-5" />
+              <Hand className="h-5 w-5 sm:h-6 sm:w-6" />
             </Button>
           )}
         </div>
 
         {/* Right Controls - Sidebar, Menu & Leave */}
-        <div className="flex gap-1 sm:gap-2 items-center flex-shrink-0">
+        <div className="flex gap-2 sm:gap-3 items-center flex-shrink-0">
           <Button
             size="sm"
             variant="outline"
             onClick={onToggleSidebar}
-            className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 hidden sm:flex relative"
+            className={`rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 hidden sm:flex relative transition-all duration-200 shadow-lg ${
+              isSidebarOpen
+                ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white border-0'
+                : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30'
+            }`}
             title="Toggle Sidebar"
           >
-            <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5" />
+            <MessageSquare className="h-5 w-5 sm:h-6 sm:w-6" />
             {messageCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full h-5 w-5 flex items-center justify-center font-bold shadow-lg">
                 {messageCount > 9 ? '9+' : messageCount}
               </span>
             )}
@@ -159,29 +181,29 @@ export function ControlsBar({
               <Button
                 size="sm"
                 variant="outline"
-                className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 flex sm:hidden"
+                className="rounded-full w-11 h-11 p-0 flex sm:hidden bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30"
               >
-                <MoreVertical className="h-4 w-4" />
+                <MoreVertical className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-48 bg-slate-900 border-indigo-500/30">
               {userRole === 'tutor' && (
                 <>
-                  <DropdownMenuItem onClick={onToggleScreenShare} className="flex items-center gap-2 cursor-pointer">
+                  <DropdownMenuItem onClick={onToggleScreenShare} className="flex items-center gap-2 cursor-pointer text-indigo-200 focus:bg-indigo-500/20 focus:text-white">
                     <MonitorUp className="h-4 w-4" />
                     {isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onToggleRecording} className="flex items-center gap-2 cursor-pointer">
-                    <div className={`h-2 w-2 rounded-full ${isRecording ? 'bg-white' : 'bg-red-500'}`} />
+                  <DropdownMenuItem onClick={onToggleRecording} className="flex items-center gap-2 cursor-pointer text-indigo-200 focus:bg-indigo-500/20 focus:text-white">
+                    <Circle className={`h-3 w-3 ${isRecording ? 'fill-red-500' : 'fill-red-500'}`} />
                     {isRecording ? 'Stop Recording' : 'Start Recording'}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={onToggleWhiteboard} className="flex items-center gap-2 cursor-pointer">
+                  <DropdownMenuItem onClick={onToggleWhiteboard} className="flex items-center gap-2 cursor-pointer text-indigo-200 focus:bg-indigo-500/20 focus:text-white">
                     <Pencil className="h-4 w-4" />
                     {showWhiteboard ? 'Hide Whiteboard' : 'Show Whiteboard'}
                   </DropdownMenuItem>
                 </>
               )}
-              <DropdownMenuItem onClick={onToggleSidebar} className="flex items-center gap-2 cursor-pointer">
+              <DropdownMenuItem onClick={onToggleSidebar} className="flex items-center gap-2 cursor-pointer text-indigo-200 focus:bg-indigo-500/20 focus:text-white">
                 <MessageSquare className="h-4 w-4" />
                 {isSidebarOpen ? 'Hide Chat' : 'Show Chat'}
               </DropdownMenuItem>
@@ -191,12 +213,11 @@ export function ControlsBar({
           {/* Leave Button */}
           <Button
             size="sm"
-            variant="destructive"
             onClick={onLeave}
-            className="rounded-full w-10 h-10 sm:w-12 sm:h-12 p-0 flex-shrink-0 hover:bg-red-700"
+            className="rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 flex-shrink-0 bg-red-500 hover:bg-red-600 text-white shadow-lg transition-all duration-200"
             title="Leave Session"
           >
-            <PhoneOff className="h-4 w-4 sm:h-5 sm:w-5" />
+            <PhoneOff className="h-5 w-5 sm:h-6 sm:w-6" />
           </Button>
         </div>
       </div>

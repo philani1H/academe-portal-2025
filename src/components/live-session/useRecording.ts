@@ -9,13 +9,26 @@ export const useRecording = (
 ) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const isMountedRef = useRef(true);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
 
+  // Safe state setter
+  const safeSetState = useCallback(<T,>(
+    setter: React.Dispatch<React.SetStateAction<T>>,
+    value: React.SetStateAction<T>
+  ) => {
+    if (isMountedRef.current) {
+      setter(value);
+    }
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
@@ -32,7 +45,7 @@ export const useRecording = (
       return;
     }
 
-    setIsUploading(true);
+    safeSetState(setIsUploading, true);
     const toastId = toast.loading("Uploading recording to cloud storage...");
 
     try {
@@ -83,7 +96,7 @@ export const useRecording = (
       toast.error(`Upload failed: ${errorMessage}. Downloading locally instead.`, { id: toastId, duration: 5000 });
       downloadLocally(blob);
     } finally {
-      setIsUploading(false);
+      safeSetState(setIsUploading, false);
     }
   };
 
@@ -226,17 +239,17 @@ export const useRecording = (
         }
 
         uploadRecording(blob);
-        setIsRecording(false);
+        safeSetState(setIsRecording, false);
       };
 
       recorder.onerror = (event: any) => {
         console.error("MediaRecorder error:", event);
         toast.error("Recording error occurred");
-        setIsRecording(false);
+        safeSetState(setIsRecording, false);
       };
 
       recorder.start(1000); // Collect data every second
-      setIsRecording(true);
+      safeSetState(setIsRecording, true);
       toast.success(isScreenSharing ? "Recording screen..." : "Recording session...");
     } catch (err) {
       console.error("Error setting up recorder:", err);

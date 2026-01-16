@@ -55,6 +55,7 @@ interface SessionData {
   courseName: string
   department: string
   message: string
+  startTime: number
 }
 
 // Resolve base path in both ESM and CJS
@@ -68,18 +69,29 @@ fs.mkdir(uploadsDir, { recursive: true }).catch(console.error)
 // Store active live sessions in memory (courseId -> sessionData)
 const activeSessions = new Map<string, SessionData>()
 
+// Track users in each session with their details (sessionId -> Map<socketId, UserData>)
+const sessionUsers = new Map<string, Map<string, { userId: string, userRole: string, userName: string, isVideoOn: boolean, isAudioOn: boolean, isHandRaised: boolean }>>();
+
 // Scheduled session checker
 let scheduledSessionChecker: NodeJS.Timeout
 
 const startScheduledSessionChecker = (): void => {
   console.log("✓ Starting scheduled session checker...")
 
+  const anyPrisma: any = prisma as any
+  if (!anyPrisma?.scheduledSession || typeof anyPrisma.scheduledSession.findMany !== "function") {
+    console.warn(
+      "⚠ Prisma scheduledSession model not available. Skipping scheduled session checker to avoid crashes.",
+    )
+    return
+  }
+
   scheduledSessionChecker = setInterval(async () => {
     try {
       const now = new Date()
       const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000)
 
-      const scheduledSessions = await prisma.scheduledSession.findMany({
+      const scheduledSessions = await anyPrisma.scheduledSession.findMany({
         where: {
           status: "scheduled",
           scheduledAt: {
@@ -100,7 +112,7 @@ const startScheduledSessionChecker = (): void => {
 
         const sessionId = `${session.courseId}-${Date.now()}`
 
-        await prisma.scheduledSession.update({
+        await anyPrisma.scheduledSession.update({
           where: { id: session.id },
           data: {
             status: "active",
@@ -673,16 +685,83 @@ io.on("connection", (socket) => {
     }
   })
 
+  // Track which sessions each socket is in to prevent duplicate joins
+  const socketSessions = new Set<string>();
+  
   socket.on(
     "join-session",
     ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
+      // Prevent duplicate joins for the same session
+      const sessionKey = `${socket.id}-${sessionId}`;
+      if (socketSessions.has(sessionKey)) {
+        console.log(`[Socket] Duplicate join attempt ignored: ${userName || userId} (${userRole}) in session ${sessionId}`);
+        return;
+      }
+      socketSessions.add(sessionKey);
+
       socket.join(sessionId)
-      console.log(`User ${userId} (${userRole}) joined session ${sessionId}`)
+      console.log(`[Session] ${userName || userId || 'Unknown'} (${userRole}) joined session ${sessionId}`);
+      
+      // Track this user in the session
+      if (!sessionUsers.has(sessionId)) {
+        sessionUsers.set(sessionId, new Map());
+      }
+      sessionUsers.get(sessionId)!.set(socket.id, {
+        userId,
+        userRole,
+        userName,
+        isVideoOn: isVideoOn ?? true,
+        isAudioOn: isAudioOn ?? true,
+        isHandRaised: false
+      });
+      
+      // Notify others that this user joined
       socket
         .to(sessionId)
         .emit("user-joined", { userId, userRole, socketId: socket.id, userName, isVideoOn, isAudioOn })
+
+      // Find active session to send start time
+      let sessionData: SessionData | undefined;
+      // Try to find by courseId first
+      if (courseId) {
+        sessionData = activeSessions.get(String(courseId));
+      }
+      
+      // If not found or mismatch, search by sessionId
+      if (!sessionData || sessionData.sessionId !== sessionId) {
+        for (const session of activeSessions.values()) {
+          if (session.sessionId === sessionId) {
+            sessionData = session;
+            break;
+          }
+        }
+      }
+
+      if (sessionData) {
+        socket.emit("session-info", {
+          startTime: sessionData.startTime,
+          tutorName: sessionData.tutorName,
+          courseName: sessionData.courseName
+        });
+      }
     },
   )
+  
+  // Handle request for existing users in session
+  socket.on("get-session-users", ({ sessionId }) => {
+    const usersInSession = sessionUsers.get(sessionId);
+    if (usersInSession) {
+      const users = Array.from(usersInSession.entries())
+        .filter(([socketId]) => socketId !== socket.id) // Don't include the requester
+        .map(([socketId, userData]) => ({
+          socketId,
+          ...userData
+        }));
+      
+      console.log(`[Session] Sending ${users.length} existing users to ${socket.id} in session ${sessionId}`);
+      socket.emit("existing-users", { users });
+    }
+  });
 
   socket.on("stream-state-change", ({ sessionId, isVideoOn, isAudioOn }) => {
     socket.to(sessionId).emit("stream-state-changed", { socketId: socket.id, isVideoOn, isAudioOn })
@@ -721,6 +800,7 @@ io.on("connection", (socket) => {
         courseName,
         department,
         message: `${tutorName} started a live session for ${courseName}!`,
+        startTime: Date.now(),
       })
 
       io.to(`course:${cId}`).emit("session-live", {
@@ -730,7 +810,16 @@ io.on("connection", (socket) => {
         courseName,
         department,
         message: `${tutorName} started a live session for ${courseName}!`,
+        startTime: Date.now(),
       })
+
+      // Also notify users already in the session room
+      io.to(sessionId).emit("session-info", {
+        startTime: Date.now(),
+        tutorName,
+        courseName
+      })
+      
       console.log(`Broadcasted live session`, { courseId: cId, courseName, sessionId })
 
       if (course && course.courseEnrollments.length > 0) {
@@ -794,12 +883,25 @@ io.on("connection", (socket) => {
     io.to(`course:${courseId}`).emit("session-ended", { courseId, sessionId })
   })
 
-  socket.on("signal", ({ to, signal, from, userRole, isVideoOn, isAudioOn }) => {
-    io.to(to).emit("signal", { signal, from, userRole, isVideoOn, isAudioOn })
+  socket.on("signal", ({ to, signal, from, userRole, userName, isVideoOn, isAudioOn }) => {
+    io.to(to).emit("signal", { signal, from, userRole, userName, isVideoOn, isAudioOn })
   })
 
-  socket.on("whiteboard-draw", ({ sessionId, data }) => {
-    socket.to(sessionId).emit("whiteboard-draw", data)
+  socket.on("whiteboard-draw", (payload: any) => {
+    try {
+      if (!payload) return
+      const sessionId = payload.sessionId
+      if (!sessionId) return
+
+      const data = typeof payload.data !== "undefined" ? payload.data : (() => {
+        const { sessionId: _sid, ...rest } = payload
+        return rest
+      })()
+
+      socket.to(sessionId).emit("whiteboard-draw", data)
+    } catch (err) {
+      console.error("Error handling whiteboard-draw event:", err)
+    }
   })
 
   socket.on("whiteboard-clear", ({ sessionId }) => {
@@ -818,8 +920,37 @@ io.on("connection", (socket) => {
     socket.to(sessionId).emit("shared-notes-update", notes)
   })
 
+  // Admin actions (mute, kick, request-unmute)
+  socket.on("admin-action", ({ action, targetId, sessionId }) => {
+    console.log(`Admin action: ${action} on ${targetId} in session ${sessionId}`)
+    io.to(targetId).emit("admin-command", { action, sessionId })
+  })
+
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id)
+    
+    // Clean up from all sessions
+    sessionUsers.forEach((users, sessionId) => {
+      if (users.has(socket.id)) {
+        users.delete(socket.id);
+        // Notify others in the session
+        socket.to(sessionId).emit("user-left", { socketId: socket.id });
+        console.log(`[Session] User ${socket.id} left session ${sessionId}`);
+
+        // Remove session from memory if empty
+        if (users.size === 0) {
+          sessionUsers.delete(sessionId);
+          console.log(`[Session] Session ${sessionId} is empty, removing from memory`);
+        }
+      }
+    });
+    
+    // Clean up session keys
+    socketSessions.forEach(key => {
+      if (key.startsWith(socket.id)) {
+        socketSessions.delete(key);
+      }
+    });
   })
 })
 

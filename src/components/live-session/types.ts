@@ -8,6 +8,7 @@ export interface LiveSessionProps {
   courseId?: string
   courseName?: string
   category?: string
+  tutorName?: string
 }
 
 export interface Message {
@@ -46,4 +47,5 @@ export interface PeerData {
   isAudioOn: boolean;
   isHandRaised?: boolean;
   isMuted?: boolean;
+  name?: string;
 }
