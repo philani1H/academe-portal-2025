@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { apiFetch } from "@/lib/api"
 import { BulkUploadDialog } from "@/components/BulkUploadDialog"
-import { apiFetch } from "@/lib/api"
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -135,18 +134,25 @@ interface SystemStats {
   lastBackup: string
 }
 
-// Mock data removed — Admin dashboard now fetches live data from the API / database on mount.
-// If an API endpoint is unavailable the UI will gracefully fall back to empty lists.
+interface AdminUserLite {
+  id: number
+  username: string
+  displayName?: string | null
+  email?: string | null
+  personalEmail?: string | null
+  permissions?: string | null
+  createdAt: string
+}
 
 // Main component
 export default function AdminDashboard() {
-  // State
-  const [user, setUser] = useState({ name: "Admin User", email: "admin@university.edu", role: "admin" })
+  const [user, setUser] = useState<{ name: string; email: string; role: string }>({ name: "", email: "", role: "admin" })
   const [tutors, setTutors] = useState<Tutor[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [courses, setCourses] = useState<Course[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  const [admins, setAdmins] = useState<AdminUserLite[]>([])
   const [systemStats, setSystemStats] = useState<SystemStats>({
     totalUsers: 0,
     activeUsers: 0,
@@ -162,6 +168,17 @@ export default function AdminDashboard() {
     systemUptime: '0%',
     lastBackup: new Date().toISOString()
   })
+  const [showAdminProfileDialog, setShowAdminProfileDialog] = useState(false)
+  const [adminProfileForm, setAdminProfileForm] = useState({
+    username: "",
+    displayName: "",
+    personalEmail: "",
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  })
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
 
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
@@ -236,6 +253,7 @@ export default function AdminDashboard() {
   const { toast } = useToast()
   const [showCoursePlacementDialog, setShowCoursePlacementDialog] = useState(false)
   const [showStudentPlacementDialog, setShowStudentPlacementDialog] = useState(false)
+  const [showAdminPlacementDialog, setShowAdminPlacementDialog] = useState(false)
   const safeGetCourseTutorId = (course: any): string | null => {
     if (!course) return null
     const raw = course.tutorId ?? course.tutor_id
@@ -321,6 +339,42 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleAdminPlacementUpload = async (file: File) => {
+    try {
+      const text = await file.text()
+      const fileType = file.name.endsWith(".json") ? "json" : "csv"
+      const response = await apiFetch<{
+        message: string
+        total: number
+        created: number
+        updated: number
+        warnings?: string[]
+      }>("/api/admin/admin-users/bulk-upload", {
+        method: "POST",
+        body: JSON.stringify({ fileContent: text, fileType }),
+      })
+      toast({
+        title: "Admin users processed",
+        description: `${response.message}. Created: ${response.created}, Updated: ${response.updated}`,
+      })
+      await fetchAdmins()
+      return {
+        updated: response.updated,
+        created: response.created,
+        total: response.total,
+        message: response.message,
+        warnings: response.warnings ?? [],
+      }
+    } catch (error) {
+      toast({
+        title: "Admin upload failed",
+        description: error instanceof Error ? error.message : "Failed to process admin users file",
+        variant: "destructive",
+      })
+      throw error instanceof Error ? error : new Error("Failed to process admin users file")
+    }
+  }
+
   const handleStudentPlacementUpload = async (file: File) => {
     try {
       const text = await file.text()
@@ -369,6 +423,22 @@ export default function AdminDashboard() {
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false)
   const [agreementMet, setAgreementMet] = useState(true)
 
+  const normalizeUsernameForPassword = (raw: string) => {
+    const base = raw.toString().trim().toLowerCase().replace(/\s+/g, ".").replace(/[^a-z0-9.]/g, "")
+    return base || "user"
+  }
+
+  const buildStudentPasswordForEmail = (email: string) => {
+    const localPart = email.split("@")[0] || email
+    const normalized = normalizeUsernameForPassword(localPart)
+    return `${normalized}@EA25!`
+  }
+
+  const buildAdminPasswordForUsername = (username: string) => {
+    const normalized = normalizeUsernameForPassword(username)
+    return `${normalized}@EA25!`
+  }
+
   // Effects
   // Collapse sidebar by default on small screens
   useEffect(() => {
@@ -397,6 +467,16 @@ export default function AdminDashboard() {
       }
     }
     loadSystemSettings()
+  }, [])
+
+  useEffect(() => {
+    try {
+      const u = localStorage.getItem("user")
+      if (u) {
+        const parsed = JSON.parse(u)
+        setUser({ name: parsed.name || "", email: parsed.email || "", role: parsed.role || "admin" })
+      }
+    } catch {}
   }, [])
 
   const handleSaveSystemSettings = async () => {
@@ -477,6 +557,40 @@ export default function AdminDashboard() {
     }
   }
 
+  const fetchAdmins = async () => {
+    try {
+      const data = await apiFetch<any>(`/api/admin/admin-users`)
+      const rows = (data && (data as any).data) ? (data as any).data : data
+      const list = Array.isArray(rows) ? rows : []
+      const mapped: AdminUserLite[] = list.map((a: any) => ({
+        id: Number(a.id),
+        username: String(a.username || ""),
+        displayName: a.displayName ?? null,
+        email: a.email ?? null,
+        personalEmail: a.personalEmail ?? null,
+        permissions: a.permissions ?? null,
+        createdAt: (a.createdAt ?? new Date().toISOString()).toString(),
+      }))
+      setAdmins(mapped)
+      try {
+        const u = localStorage.getItem("user")
+        const current = u ? JSON.parse(u) : null
+        const found = current ? mapped.find((a) => a.username === current.name) : null
+        const initial = found || mapped[0] || null
+        if (initial) {
+          setAdminProfileForm((prev) => ({
+            ...prev,
+            username: initial.username,
+            displayName: initial.displayName || initial.username,
+            personalEmail: initial.personalEmail || "",
+          }))
+        }
+      } catch {}
+    } catch (e) {
+      console.error("Failed to fetch admin users:", e)
+      setAdmins([])
+    }
+  }
   const fetchStudents = async () => {
     try {
       const data = await apiFetch<any>(`/api/admin/users?role=student`)
@@ -648,6 +762,7 @@ export default function AdminDashboard() {
     fetchCourses()
     fetchNotifications()
     fetchDepartmentsAndStats()
+    fetchAdmins()
   }, [])
 
   // Handlers
@@ -1454,6 +1569,312 @@ export default function AdminDashboard() {
     }
   }
 
+  const fetchStudentUsersForExport = async () => {
+    try {
+      const rows = filteredStudents.map((student) => {
+        const studentCourses = courses
+          .filter((course) => (student.enrolledCourses || []).includes(course.id))
+          .map((course) => course.name)
+        const anyStudent = student as any
+        return {
+          id: student.id,
+          name: student.name,
+          email: student.email,
+          department: anyStudent.department || "",
+          grade: student.grade ?? "",
+          courses: studentCourses.join(", "),
+        }
+      })
+      return rows
+    } catch (error) {
+      console.error("Failed to prepare student users for export", error)
+      toast({
+        title: "Export failed",
+        description: "Could not prepare student login information",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const handleExportStudentLoginsExcel = async () => {
+    try {
+      const rows = await fetchStudentUsersForExport()
+      const now = new Date()
+      const datePart = now.toISOString().slice(0, 10)
+      const loginRows = rows.map((row: any, index: number) => ({
+        "#": index + 1,
+        "Student Name": row.name,
+        Email: row.email,
+        Department: row.department || "",
+        Grade: row.grade || "",
+        Courses: row.courses || "",
+        TemporaryPassword: buildStudentPasswordForEmail(row.email),
+        LoginUrl: `${window.location.origin}/student-login`,
+      }))
+      const ws = XLSX.utils.json_to_sheet(loginRows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "Student Logins")
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+      const blob = new Blob([wbout], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `student-logins-${datePart}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Student login Excel export failed", error)
+    }
+  }
+
+  const handleExportStudentLoginsPdf = async () => {
+    try {
+      const rows = await fetchStudentUsersForExport()
+      const generatedAt = new Date().toLocaleString()
+      const loginUrl = `${window.location.origin}/student-login`
+      const header =
+        "<tr><th>#</th><th>Student Name</th><th>Email</th><th>Department</th><th>Grade</th><th>Courses</th><th>Temporary Password</th><th>Login URL</th></tr>"
+      const body = rows
+        .map(
+          (row: any, index: number) =>
+            `<tr>` +
+            `<td>${index + 1}</td>` +
+            `<td>${row.name}</td>` +
+            `<td>${row.email}</td>` +
+            `<td>${row.department || ""}</td>` +
+            `<td>${row.grade || ""}</td>` +
+            `<td>${row.courses || ""}</td>` +
+            `<td>${buildStudentPasswordForEmail(row.email)}</td>` +
+            `<td>${loginUrl}</td>` +
+            `</tr>`,
+        )
+        .join("")
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Student Login Credentials</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h1 { color: #4F46E5; margin-bottom: 4px; }
+    h2 { margin-top: 0; margin-bottom: 12px; font-size: 16px; color: #111827; }
+    p { margin-top: 0; margin-bottom: 8px; font-size: 12px; color: #374151; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 16px; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; }
+    th { background-color: #4F46E5; color: #ffffff; }
+    tfoot td { border: none; font-size: 11px; color: #6B7280; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>EXCELLENCE Akademie 25</h1>
+  <h2>Student Login Credentials</h2>
+  <p><strong>Empowering Minds, One Click at a Time!</strong></p>
+  <p>Generated: ${generatedAt}</p>
+  <p>This sheet contains login details for students on the Excellence Akademie platform.</p>
+  <p>Students should visit the login URL below, sign in with the listed email and temporary password, and change their password after first login.</p>
+  <table>
+    <thead>
+      ${header}
+    </thead>
+    <tbody>
+      ${body}
+    </tbody>
+  </table>
+  <table>
+    <tfoot>
+      <tr>
+        <td>
+          This document is confidential and intended for internal use only.<br />
+          Phone: +27 79 386 7427 · Email: ExcellenceAcademia2025@gmail.com · www.excellenceakademie.co.za<br />
+          © 2026 Excellence Academia. All rights reserved.
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>`
+      const printWindow = window.open("", "_blank")
+      if (!printWindow) return
+      printWindow.document.open()
+      printWindow.document.write(html)
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
+    } catch (error) {
+      console.error("Student login PDF export failed", error)
+      toast({
+        title: "Export failed",
+        description: "Could not export student login PDF",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const fetchAdminUsersForExport = async () => {
+    try {
+      const computeDomain = () => {
+        try {
+          const host = window.location.hostname.toLowerCase()
+          if (host === "localhost" || /^[0-9.]+$/.test(host)) return "excellenceakademie.co.za"
+          return host.replace(/^www\./, "")
+        } catch {
+          return "excellenceakademie.co.za"
+        }
+      }
+      const domain = computeDomain()
+      const normalize = (u: string) =>
+        String(u || "")
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, ".")
+          .replace(/^\.+|\.+$/g, "")
+      const rows = filteredAdmins.map((admin) => {
+        const uname = admin.username || ""
+        const companyEmail = `${normalize(uname) || "admin"}@${domain}`
+        return {
+          id: admin.id,
+          username: uname,
+          name: admin.displayName || uname,
+          emailCompany: companyEmail,
+          personalEmail: admin.personalEmail || "",
+          permissions: admin.permissions || "",
+        }
+      })
+      return rows
+    } catch (error) {
+      console.error("Failed to prepare admin users for export", error)
+      toast({
+        title: "Export failed",
+        description: "Could not prepare admin login information",
+        variant: "destructive",
+      })
+      throw error
+    }
+  }
+
+  const handleExportAdminLoginsExcel = async () => {
+    try {
+      const rows = await fetchAdminUsersForExport()
+      const now = new Date()
+      const datePart = now.toISOString().slice(0, 10)
+      const loginRows = rows.map((row: any, index: number) => ({
+        "#": index + 1,
+        Username: row.username,
+        Name: row.name,
+        Email: row.emailCompany,
+        PersonalEmail: row.personalEmail || "",
+        Permissions: row.permissions || "",
+        TemporaryPassword: buildAdminPasswordForUsername(row.username),
+        LoginUrl: `${window.location.origin}/admin-login`,
+      }))
+      const ws = XLSX.utils.json_to_sheet(loginRows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, "Admin Logins")
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" })
+      const blob = new Blob([wbout], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `admin-logins-${datePart}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Admin login Excel export failed", error)
+    }
+  }
+
+  const handleExportAdminLoginsPdf = async () => {
+    try {
+      const rows = await fetchAdminUsersForExport()
+      const generatedAt = new Date().toLocaleString()
+      const loginUrl = `${window.location.origin}/admin-login`
+      const header =
+        "<tr><th>#</th><th>Username</th><th>Name</th><th>Email</th><th>Personal Email</th><th>Permissions</th><th>Temporary Password</th><th>Login URL</th></tr>"
+      const body = rows
+        .map(
+          (row: any, index: number) =>
+            `<tr>` +
+            `<td>${index + 1}</td>` +
+            `<td>${row.username}</td>` +
+            `<td>${row.name}</td>` +
+            `<td>${row.emailCompany}</td>` +
+            `<td>${row.personalEmail || ""}</td>` +
+            `<td>${row.permissions || ""}</td>` +
+            `<td>${buildAdminPasswordForUsername(row.username)}</td>` +
+            `<td>${loginUrl}</td>` +
+            `</tr>`,
+        )
+        .join("")
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Admin Login Credentials</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h1 { color: #4F46E5; margin-bottom: 4px; }
+    h2 { margin-top: 0; margin-bottom: 12px; font-size: 16px; color: #111827; }
+    p { margin-top: 0; margin-bottom: 8px; font-size: 12px; color: #374151; }
+    table { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 16px; }
+    th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; }
+    th { background-color: #4F46E5; color: #ffffff; }
+    tfoot td { border: none; font-size: 11px; color: #6B7280; padding-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>EXCELLENCE Akademie 25</h1>
+  <h2>Admin Login Credentials</h2>
+  <p><strong>Empowering Minds, One Click at a Time!</strong></p>
+  <p>Generated: ${generatedAt}</p>
+  <p>This sheet contains login details for admin users on the Excellence Akademie platform.</p>
+  <p>Admins should visit the login URL below, sign in with the listed username and temporary password, and change their password after first login.</p>
+  <table>
+    <thead>
+      ${header}
+    </thead>
+    <tbody>
+      ${body}
+    </tbody>
+  </table>
+  <table>
+    <tfoot>
+      <tr>
+        <td>
+          This document is confidential and intended for internal use only.<br />
+          Phone: +27 79 386 7427 · Email: ExcellenceAcademia2025@gmail.com · www.excellenceakademie.co.za<br />
+          © 2026 Excellence Academia. All rights reserved.
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>`
+      const printWindow = window.open("", "_blank")
+      if (!printWindow) return
+      printWindow.document.open()
+      printWindow.document.write(html)
+      printWindow.document.close()
+      printWindow.focus()
+      printWindow.print()
+    } catch (error) {
+      console.error("Admin login PDF export failed", error)
+      toast({
+        title: "Export failed",
+        description: "Could not export admin login PDF",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleApproveCourse = async (courseId: string) => {
     try {
       // Simulate API call
@@ -1625,6 +2046,7 @@ export default function AdminDashboard() {
   const pendingTutors = tutors.filter((tutor) => tutor.status === "pending")
   const pendingStudents = students.filter((student) => student.status === "pending")
   const pendingCourses = courses.filter((course) => course.status === "pending")
+  const filteredAdmins = admins
 
   // Render
   if (activeTab === "content") {
@@ -1806,6 +2228,16 @@ export default function AdminDashboard() {
               >
                 <Settings className="h-5 w-5 mr-2 flex-shrink-0" />
                 {sidebarOpen && <span>Settings</span>}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("admins")}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "admins" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  }`}
+              >
+                <Shield className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Admins</span>}
               </button>
             </nav>
           </ScrollArea>
@@ -2043,6 +2475,7 @@ export default function AdminDashboard() {
                   {activeTab === "timetable" && "Manage class schedules and events"}
                   {activeTab === "tests" && "Create and manage assessments"}
                   {activeTab === "notifications" && "Communication and alerts"}
+                  {activeTab === "admins" && "Manage platform admin users"}
                   {activeTab === "analytics" && "Performance insights and metrics"}
                   {activeTab === "materials" && "Upload and organize course materials"}
                   {activeTab === "settings" && "Configure your preferences"}
@@ -3139,26 +3572,38 @@ export default function AdminDashboard() {
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <h2 className="text-2xl font-bold">Students Management</h2>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowStudentPlacementDialog(true)}
-                    className="flex items-center gap-2"
-                  >
-                    <Upload className="h-4 w-4" />
-                    Bulk Upload Students
-                  </Button>
-                  <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Statuses</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex flex-col md:flex-row gap-2">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowStudentPlacementDialog(true)}
+                      className="flex items-center gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Bulk Upload Students
+                    </Button>
+                    <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Statuses</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleExportStudentLoginsExcel}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Export Logins (Excel)
+                    </Button>
+                    <Button variant="outline" onClick={handleExportStudentLoginsPdf}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Export Logins (PDF)
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -3718,6 +4163,266 @@ export default function AdminDashboard() {
                   "Excel: Save as CSV before uploading",
                 ]}
               />
+            </div>
+          )}
+
+          {/* Admin Users Tab */}
+          {activeTab === "admins" && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <h2 className="text-2xl font-bold">Admin Users Management</h2>
+                <div className="flex flex-col md:flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowAdminPlacementDialog(true)}
+                    className="flex items-center gap-2"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Bulk Upload Admin Users
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={handleExportAdminLoginsExcel}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Export Logins (Excel)
+                    </Button>
+                    <Button variant="outline" onClick={handleExportAdminLoginsPdf}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Export Logins (PDF)
+                    </Button>
+                    <Button variant="default" onClick={() => setShowAdminProfileDialog(true)}>
+                      Manage Profile
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Admin Users</CardTitle>
+                  <CardDescription>View and manage admin accounts with access to the platform</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Username</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Personal Email</TableHead>
+                        <TableHead>Permissions</TableHead>
+                        <TableHead>Created</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAdmins.map((admin) => (
+                        <TableRow key={admin.id}>
+                          <TableCell className="font-medium">{admin.username}</TableCell>
+                          <TableCell>{admin.displayName || admin.username}</TableCell>
+                          <TableCell>{admin.email || "-"}</TableCell>
+                          <TableCell>{admin.personalEmail || "-"}</TableCell>
+                          <TableCell>{admin.permissions || "-"}</TableCell>
+                          <TableCell>
+                            {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : "-"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {filteredAdmins.length === 0 && (
+                    <div className="text-center py-12">
+                      <Shield className="mx-auto h-12 w-12 text-muted-foreground opacity-50" />
+                      <h3 className="mt-4 text-lg font-medium">No admin users found</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Use bulk upload to create admin accounts.
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <BulkUploadDialog
+                open={showAdminPlacementDialog}
+                onOpenChange={setShowAdminPlacementDialog}
+                title="Bulk Upload Admin Users"
+                description="Upload JSON or CSV to create or update admin accounts."
+                onUpload={handleAdminPlacementUpload}
+                templateCsvUrl="/templates/admin-users-template.csv"
+                templateJsonUrl="/templates/admin-users-template.json"
+                csvExample={
+                  "username,displayName,email,personalEmail,permissions\n" +
+                  "admin1,Primary Admin,admin1@example.com,,all"
+                }
+                jsonExample={
+                  '[\n' +
+                  '  {\n' +
+                  '    "username": "admin1",\n' +
+                  '    "displayName": "Primary Admin",\n' +
+                  '    "email": "admin1@example.com",\n' +
+                  '    "permissions": "all"\n' +
+                  '  }\n' +
+                  ']\n'
+                }
+                guidelines={[
+                  "Username is required for each admin user.",
+                  "Existing admin users are matched by username and updated.",
+                  "Temporary passwords are generated automatically using the username.",
+                  "CSV: use a header row with username,displayName,email,personalEmail,permissions.",
+                  "Excel: Save as CSV before uploading.",
+                ]}
+              />
+              <Dialog open={showAdminProfileDialog} onOpenChange={setShowAdminProfileDialog}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Admin Profile</DialogTitle>
+                    <DialogDescription>Update username, display name, email, and password</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="admin-username">Username</Label>
+                        <Input
+                          id="admin-username"
+                          value={adminProfileForm.username}
+                          onChange={(e) =>
+                            setAdminProfileForm((p) => ({ ...p, username: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="admin-displayName">Display Name</Label>
+                        <Input
+                          id="admin-displayName"
+                          value={adminProfileForm.displayName}
+                          onChange={(e) =>
+                            setAdminProfileForm((p) => ({ ...p, displayName: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="admin-personalEmail">Personal Email</Label>
+                        <Input
+                          id="admin-personalEmail"
+                          type="email"
+                          value={adminProfileForm.personalEmail}
+                          onChange={(e) =>
+                            setAdminProfileForm((p) => ({ ...p, personalEmail: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="admin-currentPassword">Current Password</Label>
+                        <Input
+                          id="admin-currentPassword"
+                          type="password"
+                          value={adminProfileForm.currentPassword}
+                          onChange={(e) =>
+                            setAdminProfileForm((p) => ({ ...p, currentPassword: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="admin-newPassword">New Password</Label>
+                        <Input
+                          id="admin-newPassword"
+                          type="password"
+                          value={adminProfileForm.newPassword}
+                          onChange={(e) =>
+                            setAdminProfileForm((p) => ({ ...p, newPassword: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="admin-confirmPassword">Confirm Password</Label>
+                        <Input
+                          id="admin-confirmPassword"
+                          type="password"
+                          value={adminProfileForm.confirmPassword}
+                          onChange={(e) =>
+                            setAdminProfileForm((p) => ({ ...p, confirmPassword: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter className="gap-2">
+                    <Button
+                      onClick={async () => {
+                        try {
+                          setSavingProfile(true)
+                          const res = await apiFetch<any>("/api/admin/admin-users/profile", {
+                            method: "PUT",
+                            body: JSON.stringify({
+                              username: adminProfileForm.username,
+                              displayName: adminProfileForm.displayName,
+                              personalEmail: adminProfileForm.personalEmail,
+                            }),
+                          })
+                          toast({ title: "Profile updated" })
+                          try {
+                            const u = localStorage.getItem("user")
+                            const current = u ? JSON.parse(u) : null
+                            if (current) {
+                              current.name = res?.data?.username || adminProfileForm.username
+                              localStorage.setItem("user", JSON.stringify(current))
+                            }
+                          } catch {}
+                          fetchAdmins()
+                        } catch {
+                          toast({ title: "Failed to update profile", variant: "destructive" })
+                        } finally {
+                          setSavingProfile(false)
+                        }
+                      }}
+                      disabled={savingProfile || !adminProfileForm.username.trim()}
+                    >
+                      {savingProfile ? "Saving..." : "Save Profile"}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          if (!adminProfileForm.currentPassword || !adminProfileForm.newPassword) {
+                            toast({ title: "Enter current and new password", variant: "destructive" })
+                            return
+                          }
+                          if (adminProfileForm.newPassword !== adminProfileForm.confirmPassword) {
+                            toast({ title: "Passwords do not match", variant: "destructive" })
+                            return
+                          }
+                          setChangingPassword(true)
+                          await apiFetch<any>("/api/admin/admin-users/change-password", {
+                            method: "POST",
+                            body: JSON.stringify({
+                              currentPassword: adminProfileForm.currentPassword,
+                              newPassword: adminProfileForm.newPassword,
+                            }),
+                          })
+                          toast({ title: "Password changed" })
+                          setAdminProfileForm((p) => ({
+                            ...p,
+                            currentPassword: "",
+                            newPassword: "",
+                            confirmPassword: "",
+                          }))
+                        } catch (e: any) {
+                          toast({
+                            title: "Failed to change password",
+                            description: String(e?.message || ""),
+                            variant: "destructive",
+                          })
+                        } finally {
+                          setChangingPassword(false)
+                        }
+                      }}
+                      disabled={changingPassword}
+                    >
+                      {changingPassword ? "Changing..." : "Change Password"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           )}
 

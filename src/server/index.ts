@@ -938,6 +938,73 @@ async function ensureNotificationsTable(): Promise<void> {
   }
 }
 
+async function ensureAdminUsersTable(): Promise<void> {
+  const db = await getConnection()
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS admin_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        display_name TEXT,
+        email TEXT UNIQUE,
+        personal_email TEXT,
+        password_hash TEXT NOT NULL,
+        permissions TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+  } finally {
+    await db.close()
+  }
+}
+
+async function seedAdminFromEnv(): Promise<void> {
+  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin"
+  const ADMIN_EMAIL = process.env.ADMIN_EMAIL || ""
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123"
+  try {
+    const anyPrisma: any = prisma as any
+    if (anyPrisma.adminUser && typeof anyPrisma.adminUser.findFirst === "function") {
+      const existing =
+        (await anyPrisma.adminUser.findFirst({
+          where: {
+            OR: [{ username: ADMIN_USERNAME }, { email: ADMIN_EMAIL }],
+          },
+        })) || null
+      const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10)
+      const companyEmail = makeCompanyEmail(ADMIN_USERNAME)
+      const personalEmail = ADMIN_EMAIL || null
+      if (!existing) {
+        await anyPrisma.adminUser.create({
+          data: {
+            username: ADMIN_USERNAME,
+            displayName: process.env.ADMIN_DISPLAY_NAME || ADMIN_USERNAME,
+            email: companyEmail,
+            personalEmail: process.env.ADMIN_PERSONAL_EMAIL || personalEmail,
+            permissions: "superadmin",
+            passwordHash,
+          },
+        })
+      } else {
+        await anyPrisma.adminUser.update({
+          where: { id: existing.id },
+          data: {
+            username: ADMIN_USERNAME,
+            email: companyEmail,
+            passwordHash,
+            displayName: process.env.ADMIN_DISPLAY_NAME || ADMIN_USERNAME,
+            personalEmail: process.env.ADMIN_PERSONAL_EMAIL || personalEmail,
+            permissions: existing.permissions || "superadmin",
+          },
+        })
+      }
+    }
+  } catch (e) {
+    console.error("Admin seed error:", e)
+  }
+}
+
 async function ensureTutorRatingsTable(): Promise<void> {
   const db = await getConnection()
   try {
@@ -1423,6 +1490,255 @@ app.get("/api/admin/users", async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, error: "Failed to load users" })
   }
 })
+
+app.get("/api/admin/admin-users", async (req: Request, res: Response) => {
+  try {
+    await ensureAdminUsersTable()
+    const admins = await prisma.adminUser.findMany({
+      orderBy: { createdAt: "desc" },
+    })
+    const data = admins.map((a) => ({
+      id: a.id,
+      username: a.username,
+      displayName: a.displayName,
+      email: a.email,
+      personalEmail: a.personalEmail,
+      permissions: a.permissions,
+      createdAt: a.createdAt,
+    }))
+    return res.json({ success: true, data })
+  } catch (error) {
+    console.error("Admin admin-users fetch error:", error)
+    return res.status(500).json({ success: false, error: "Failed to load admin users" })
+  }
+})
+
+app.post("/api/admin/admin-users/bulk-upload", async (req: Request, res: Response) => {
+  try {
+    await ensureAdminUsersTable()
+    const { fileContent, fileType } = req.body || {}
+    if (!fileContent) return res.status(400).json({ error: "No file content provided" })
+
+    let entries: any[] = []
+
+    if (fileType === "json") {
+      const parsed = JSON.parse(fileContent)
+      entries = Array.isArray(parsed) ? parsed : parsed.admins || parsed.entries || []
+    } else if (fileType === "csv") {
+      const lines = fileContent.trim().split("\n")
+      if (lines.length < 2) throw new Error("CSV must have header and data rows")
+      const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase())
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i])
+        if (values.length === 0) continue
+        const row: any = {}
+        headers.forEach((header: string, index: number) => {
+          if (values[index] !== undefined) row[header] = values[index].trim()
+        })
+        entries.push(row)
+      }
+    } else {
+      return res.status(400).json({ error: "Unsupported file type" })
+    }
+
+    if (!entries || entries.length === 0) {
+      return res.status(400).json({ error: "No admin user data found" })
+    }
+
+    const warnings: string[] = []
+    let created = 0
+    let updated = 0
+
+    for (const item of entries) {
+      const usernameRaw = item.username || item.user || ""
+      const emailRaw = item.email || ""
+      const username = String(usernameRaw || "").trim()
+      const email = String(emailRaw || "").trim() || null
+
+      if (!username) {
+        warnings.push("Row with missing username was skipped")
+        continue
+      }
+
+      const displayName = item.displayName || item.name || username
+      const personalEmail = item.personalEmail || item.personal_email || null
+      const permissions = item.permissions || null
+
+      const existing = await prisma.adminUser.findUnique({
+        where: { username },
+      })
+
+      const normalizedUsername = username.toString().trim().toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")
+      const companyDomain =
+        process.env.COMPANY_DOMAIN ||
+        (() => {
+          const frontend = process.env.FRONTEND_URL
+          if (!frontend) return "excellenceakademie.co.za"
+          try {
+            const host = new URL(frontend).hostname.toLowerCase()
+            return host.replace(/^www\./, "")
+          } catch {
+            return "excellenceakademie.co.za"
+          }
+        })()
+      const companyEmail = email || `${normalizedUsername || "admin"}@${companyDomain}`
+      const finalPersonalEmail = personalEmail || email || null
+
+      if (existing) {
+        await prisma.adminUser.update({
+          where: { username },
+          data: {
+            displayName,
+            email: companyEmail,
+            personalEmail: finalPersonalEmail,
+            permissions,
+          },
+        })
+        updated++
+      } else {
+        const rawPassword = `${normalizedUsername || "admin"}@EA25!`
+        const passwordHash = await bcrypt.hash(rawPassword, 10)
+        await prisma.adminUser.create({
+          data: {
+            username,
+            displayName,
+            email: companyEmail,
+            personalEmail: finalPersonalEmail,
+            permissions,
+            passwordHash,
+          },
+        })
+        created++
+      }
+    }
+
+    return res.json({
+      message: "Admin users processed successfully",
+      total: entries.length,
+      created,
+      updated,
+      warnings,
+    })
+  } catch (error) {
+    console.error("Admin users bulk upload error:", error)
+    return res.status(500).json({ success: false, error: "Failed to process admin users file" })
+  }
+})
+
+app.put(
+  "/api/admin/admin-users/profile",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await ensureAdminUsersTable()
+      const { username: nextUsername, displayName, personalEmail } = req.body || {}
+      const currentUsername = String(req.user?.username || "").trim()
+      if (!currentUsername) return res.status(400).json({ success: false, error: "No current user" })
+      const existing = await prisma.adminUser.findFirst({
+        where: { OR: [{ username: currentUsername }, { email: currentUsername }, { personalEmail: currentUsername }] },
+      })
+      const newUsername = String(nextUsername || currentUsername).trim()
+      if (existing) {
+        if (newUsername !== currentUsername) {
+          const dupe = await prisma.adminUser.findUnique({ where: { username: newUsername } }).catch(() => null as any)
+          if (dupe) return res.status(409).json({ success: false, error: "Username already taken" })
+        }
+        const normalized = newUsername.toLowerCase().trim().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")
+        const companyEmail = `${normalized || "admin"}@${getCompanyDomain()}`
+        const updated = await prisma.adminUser.update({
+          where: { id: existing.id },
+          data: {
+            username: newUsername,
+            displayName: displayName ?? existing.displayName,
+            email: companyEmail,
+            personalEmail: personalEmail ?? existing.personalEmail,
+          },
+        })
+        const token = jwt.sign(
+          { username: updated.username, role: "admin", exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60 },
+          JWT_SECRET,
+        )
+        const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+        res.setHeader("Set-Cookie", `admin_token=${token}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Strict;${secure}`)
+        return res.json({
+          success: true,
+          data: {
+            id: updated.id,
+            username: updated.username,
+            displayName: updated.displayName,
+            email: updated.email,
+            personalEmail: updated.personalEmail,
+          },
+        })
+      } else {
+        const normalized = newUsername.toLowerCase().trim().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")
+        const companyEmail = `${normalized || "admin"}@${getCompanyDomain()}`
+        const passwordHash = await bcrypt.hash(process.env.ADMIN_PASSWORD || "admin123", 10)
+        const created = await prisma.adminUser.create({
+          data: {
+            username: newUsername,
+            displayName: displayName || newUsername,
+            email: companyEmail,
+            personalEmail: personalEmail || null,
+            permissions: "superadmin",
+            passwordHash,
+          },
+        })
+        const token = jwt.sign(
+          { username: created.username, role: "admin", exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60 },
+          JWT_SECRET,
+        )
+        const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+        res.setHeader("Set-Cookie", `admin_token=${token}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Strict;${secure}`)
+        return res.json({
+          success: true,
+          data: {
+            id: created.id,
+            username: created.username,
+            displayName: created.displayName,
+            email: created.email,
+            personalEmail: created.personalEmail,
+          },
+        })
+      }
+    } catch (error) {
+      console.error("Admin profile update error:", error)
+      return res.status(500).json({ success: false, error: "Failed to update profile" })
+    }
+  },
+)
+
+app.post(
+  "/api/admin/admin-users/change-password",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await ensureAdminUsersTable()
+      const { currentPassword, newPassword } = req.body || {}
+      const currentUsername = String(req.user?.username || "").trim()
+      if (!currentUsername) return res.status(400).json({ success: false, error: "No current user" })
+      if (!currentPassword || !newPassword)
+        return res.status(400).json({ success: false, error: "currentPassword and newPassword are required" })
+      const admin = await prisma.adminUser.findFirst({
+        where: { OR: [{ username: currentUsername }, { email: currentUsername }, { personalEmail: currentUsername }] },
+      })
+      if (!admin) return res.status(404).json({ success: false, error: "User not found" })
+      const matches = await bcrypt.compare(String(currentPassword), admin.passwordHash)
+      if (!matches) return res.status(401).json({ success: false, error: "Current password incorrect" })
+      const passwordHash = await bcrypt.hash(String(newPassword), 10)
+      await prisma.adminUser.update({
+        where: { id: admin.id },
+        data: { passwordHash },
+      })
+      return res.json({ success: true })
+    } catch (error) {
+      console.error("Admin change-password error:", error)
+      return res.status(500).json({ success: false, error: "Failed to change password" })
+    }
+  },
+)
 
 app.get("/api/admin/departments", async (req: Request, res: Response) => {
   try {
@@ -2542,16 +2858,122 @@ app.get(
   },
 )
 
-// Admin auth endpoints
-app.post("/api/admin/auth/login", async (req: Request, res: Response) => {
-  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || process.env.ADMIN_EMAIL || "admin"
-  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123"
-  const { username, email, password } = req.body || {}
-  const submittedId = (email || username || "").toString().trim()
+const getCompanyDomain = () => {
+  const fromEnv = process.env.COMPANY_DOMAIN
+  if (fromEnv) return fromEnv.toLowerCase()
+  const frontend = process.env.FRONTEND_URL
+  if (frontend) {
+    try {
+      const host = new URL(frontend).hostname.toLowerCase()
+      return host.replace(/^www\./, "")
+    } catch {}
+  }
+  return "excellenceakademie.co.za"
+}
 
-  if (submittedId && submittedId === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+const makeCompanyEmail = (name: string) => {
+  const base = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+  return `${base}@${getCompanyDomain()}`
+}
+
+app.post("/api/admin/auth/login", async (req: Request, res: Response) => {
+  try {
+    const { username, email, password } = req.body || {}
+    const submittedId = (email || username || "").toString().trim()
+    const submittedPassword = (password || "").toString()
+
+    if (!submittedId || !submittedPassword) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Username or email and password are required" })
+    }
+
+    let adminFromDb: any = null
+    try {
+      const anyPrisma: any = prisma as any
+      if (anyPrisma.adminUser && typeof anyPrisma.adminUser.findFirst === "function") {
+        adminFromDb = await anyPrisma.adminUser.findFirst({
+          where: {
+            OR: [{ username: submittedId }, { email: submittedId }, { personalEmail: submittedId }],
+          },
+        })
+      }
+    } catch (lookupError) {
+      console.error("Admin login DB lookup failed:", lookupError)
+      adminFromDb = null
+    }
+
+    const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "philani chade"
+    const ADMIN_EMAIL_FROM_ENV = process.env.ADMIN_EMAIL
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123"
+    const fallbackCompanyEmail = makeCompanyEmail(ADMIN_USERNAME)
+    const fallbackPersonalEmail =
+      process.env.ADMIN_PERSONAL_EMAIL || ADMIN_EMAIL_FROM_ENV || fallbackCompanyEmail
+    const normalizedSubmittedId = submittedId.toLowerCase()
+    const adminAliasEmail = `admin@${getCompanyDomain()}`
+    const fallbackIds = [
+      ADMIN_USERNAME,
+      ADMIN_EMAIL_FROM_ENV,
+      fallbackCompanyEmail,
+      fallbackPersonalEmail,
+      "admin",
+      adminAliasEmail,
+    ]
+      .filter(Boolean)
+      .map((v) => v.toLowerCase())
+
+    let isValid = false
+    let canonicalId = submittedId
+
+    if (adminFromDb) {
+      const matches = await bcrypt.compare(submittedPassword, adminFromDb.passwordHash)
+      if (matches) {
+        isValid = true
+        canonicalId = adminFromDb.username || submittedId
+      }
+    } else if (
+      fallbackIds.includes(normalizedSubmittedId) &&
+      submittedPassword === ADMIN_PASSWORD
+    ) {
+      isValid = true
+      canonicalId = ADMIN_USERNAME
+
+      try {
+        const anyPrisma: any = prisma as any
+        if (anyPrisma.adminUser && typeof anyPrisma.adminUser.findFirst === "function") {
+          const existingSeed = await anyPrisma.adminUser.findFirst({
+            where: { username: ADMIN_USERNAME },
+          })
+
+          if (!existingSeed) {
+            const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10)
+            await anyPrisma.adminUser.create({
+              data: {
+                username: ADMIN_USERNAME,
+                displayName: process.env.ADMIN_DISPLAY_NAME || ADMIN_USERNAME,
+                email: fallbackCompanyEmail,
+                personalEmail: fallbackPersonalEmail,
+                permissions: "superadmin",
+                passwordHash,
+              },
+            })
+          }
+        }
+      } catch (seedError) {
+        console.error("Error seeding admin user from env:", seedError)
+      }
+    }
+
+    if (!isValid) {
+      return res.status(401).json({ success: false, message: "Invalid credentials" })
+    }
+
     const token = jwt.sign(
-      { username: submittedId, role: "admin", exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60 },
+      { username: canonicalId, role: "admin", exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60 },
       JWT_SECRET,
     )
     const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
@@ -2561,9 +2983,11 @@ app.post("/api/admin/auth/login", async (req: Request, res: Response) => {
     )
     return res
       .status(200)
-      .json({ success: true, message: "Login successful", user: { username: submittedId, role: "admin" } })
+      .json({ success: true, message: "Login successful", user: { username: canonicalId, role: "admin" } })
+  } catch (error) {
+    console.error("Error processing admin login:", error)
+    return res.status(500).json({ success: false, message: "Failed to process login" })
   }
-  return res.status(401).json({ success: false, message: "Invalid credentials" })
 })
 
 app.get(
@@ -5493,6 +5917,105 @@ const startServer = async (): Promise<void> => {
       }
     })
 
+    app.post("/api/admin/content/announcements/bulk-upload", async (req: Request, res: Response) => {
+      try {
+        const { fileContent, fileType } = req.body
+        if (!fileContent) return res.status(400).json({ error: "No file content provided" })
+
+        let items: any[] = []
+        if (fileType === "json") {
+          const data = JSON.parse(fileContent)
+          items = Array.isArray(data) ? data : data.announcements || []
+        } else if (fileType === "csv") {
+          const lines = fileContent.trim().split("\n")
+          if (lines.length < 2) throw new Error("CSV must have header and data rows")
+          const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase())
+          for (let i = 1; i < lines.length; i++) {
+            const values = parseCSVLine(lines[i])
+            if (values.length === 0) continue
+            const row: any = {}
+            headers.forEach((header: string, index: number) => {
+              if (values[index] !== undefined) row[header] = values[index].trim()
+            })
+            items.push({
+              title: row.title || "",
+              content: row.content || "",
+              type: (row.type || "info").toLowerCase(),
+              pinned: parseBooleanField(row.pinned),
+              isActive: parseBooleanField(row.isactive || row.active),
+              mediaUrl: row.mediaurl || row["media url"] || "",
+              mediaType: (row.mediatype || "").toLowerCase() || null,
+            })
+          }
+        } else {
+          return res.status(400).json({ error: "Unsupported file type" })
+        }
+
+        if (!items || items.length === 0) {
+          return res.status(400).json({ error: "No valid announcement data found" })
+        }
+
+        const errors: string[] = []
+        const warnings: string[] = []
+        const validTypes = new Set(["info", "warning", "success"])
+
+        items.forEach((item, index) => {
+          if (!item.content || String(item.content).trim() === "") {
+            errors.push(`Row ${index + 1}: Content is required`)
+          }
+          if (!validTypes.has(String(item.type || "").toLowerCase())) {
+            warnings.push(`Row ${index + 1}: Unknown type "${item.type}", defaulting to "info"`)
+            item.type = "info"
+          }
+          if (item.mediaType && !["image", "video"].includes(item.mediaType)) {
+            warnings.push(`Row ${index + 1}: Unknown mediaType "${item.mediaType}", clearing value`)
+            item.mediaType = null
+          }
+        })
+
+        if (errors.length > 0) return res.status(400).json({ error: "Validation failed", details: errors })
+
+        let updated = 0,
+          created = 0
+
+        for (const item of items) {
+          const title = String(item.title || "").trim() || String(item.content || "").slice(0, 80)
+          const existing = await prisma.announcement.findFirst({ where: { title } })
+          const data = {
+            title,
+            content: String(item.content || "").trim(),
+            type: String(item.type || "info").toLowerCase(),
+            pinned: !!item.pinned,
+            isActive: item.isActive !== undefined ? !!item.isActive : true,
+            mediaUrl: item.mediaUrl || null,
+            mediaType: item.mediaType || null,
+            authorId: 1,
+            department: null,
+          }
+          if (existing) {
+            await prisma.announcement.update({ where: { id: existing.id }, data })
+            updated++
+          } else {
+            await prisma.announcement.create({ data })
+            created++
+          }
+        }
+        res.json({
+          message: "Announcements processed successfully",
+          updated,
+          created,
+          total: items.length,
+          warnings,
+        })
+      } catch (error) {
+        console.error("Bulk announcements upload error:", error)
+        res.status(500).json({
+          error: "Failed to process announcement data",
+          details: error instanceof Error ? error.message : "Unknown error",
+        })
+      }
+    })
+
     app.post("/api/admin/content/tutors/bulk-upload", async (req: Request, res: Response) => {
       try {
         const { fileContent, fileType } = req.body
@@ -6296,6 +6819,8 @@ const startServer = async (): Promise<void> => {
 
     // Initialize database schema
     await initializeDatabase()
+
+    await seedAdminFromEnv()
 
     // Start scheduled session checker
     startScheduledSessionChecker()

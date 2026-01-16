@@ -1,3 +1,5 @@
+import type React from "react";
+import { useState, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -28,9 +30,8 @@ import MaintenanceModal from "./components/MaintenanceModal";
 import { Analytics } from "@vercel/analytics/react";
 
 import Dashboard from "./pages/Dashboard";
-
 import { useAuth, AuthProvider } from "./contexts/AuthContext";
-
+import { apiFetch } from "@/lib/api";
 import UniversityApplication from "./components/UniversityApplication";
 import ExamRewrite from "./components/ExamRewrite";
 import DashboardNavigation from "./components/DashboardNavigation";

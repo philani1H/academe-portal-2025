@@ -1,0 +1,3 @@
+username,displayName,email,personalEmail,permissions
+philani.chade,Philani Chade,philani.chade@excellenceakademie.co.za,ExcellenceAcademia2025@gmail.com,superadmin
+content.manager,Content Manager,content.manager@excellenceakademie.co.za,cm@example.com,content:read,content:write

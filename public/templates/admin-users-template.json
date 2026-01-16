@@ -1,0 +1,16 @@
+[
+  {
+    "username": "philani.chade",
+    "displayName": "Philani Chade",
+    "email": "philani.chade@excellenceakademie.co.za",
+    "personalEmail": "ExcellenceAcademia2025@gmail.com",
+    "permissions": "superadmin"
+  },
+  {
+    "username": "content.manager",
+    "displayName": "Content Manager",
+    "email": "content.manager@excellenceakademie.co.za",
+    "personalEmail": "cm@example.com",
+    "permissions": "content:read,content:write"
+  }
+]

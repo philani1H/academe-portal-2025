@@ -326,6 +326,8 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
   const [loading, setLoading] = useState(true)
   const [uploadingPricing, setUploadingPricing] = useState(false)
   const [showBulkUploadDialog, setShowBulkUploadDialog] = useState(false)
+  const [uploadingAnnouncements, setUploadingAnnouncements] = useState(false)
+  const [showAnnouncementBulkUploadDialog, setShowAnnouncementBulkUploadDialog] = useState(false)
   const [uploadingTutors, setUploadingTutors] = useState(false)
   const [showTutorBulkUploadDialog, setShowTutorBulkUploadDialog] = useState(false)
   const [uploadingTutorPlacement, setUploadingTutorPlacement] = useState(false)
@@ -980,6 +982,43 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
     }
   }
 
+  const handleBulkAnnouncementUpload = async (file: File) => {
+    setUploadingAnnouncements(true)
+    try {
+      const fileContent = await fileToText(file)
+      const fileType = file.name.endsWith(".json") ? "json" : "csv"
+      const response = await apiFetch<{ message: string; updated: number; created: number; warnings?: string[] }>(
+        "/api/admin/content/announcements/bulk-upload",
+        {
+          method: "POST",
+          body: JSON.stringify({ fileContent, fileType }),
+        },
+      )
+      const total = (response.updated ?? 0) + (response.created ?? 0)
+      toast({
+        title: "Success",
+        description: `${response.message}. Updated: ${response.updated}, Created: ${response.created}`,
+      })
+      await fetchAnnouncements()
+      return {
+        updated: response.updated,
+        created: response.created,
+        total,
+        message: response.message,
+        warnings: response.warnings ?? [],
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to upload announcement data",
+        variant: "destructive",
+      })
+      throw error instanceof Error ? error : new Error("Failed to upload announcement data")
+    } finally {
+      setUploadingAnnouncements(false)
+    }
+  }
+
   const handleBulkTutorUpload = async (file: File) => {
     setUploadingTutors(true)
     try {
@@ -1616,20 +1655,26 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
           <h2 className="text-2xl font-semibold tracking-tight">Announcements</h2>
           <p className="text-muted-foreground">Manage site-wide announcements.</p>
         </div>
-        <Button
-          onClick={() =>
-            setEditingAnnouncement({
-              title: "",
-              content: "",
-              type: "info",
-              pinned: false,
-              isActive: true,
-            })
-          }
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add Announcement
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowAnnouncementBulkUploadDialog(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Bulk Upload
+          </Button>
+          <Button
+            onClick={() =>
+              setEditingAnnouncement({
+                title: "",
+                content: "",
+                type: "info",
+                pinned: false,
+                isActive: true,
+              })
+            }
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Announcement
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -2733,158 +2778,155 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
 
   const AnnouncementEditDialog = () => (
     <Dialog open={!!editingAnnouncement} onOpenChange={() => setEditingAnnouncement(null)}>
-      <DialogContent className="max-w-lg bg-card border-border">
+      <DialogContent className="max-w-md max-h-[85vh] bg-card border-border overflow-auto">
         <DialogHeader>
           <DialogTitle>{editingAnnouncement?.id ? "Edit" : "Add"} Announcement</DialogTitle>
         </DialogHeader>
-        {editingAnnouncement && (
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label>Title</Label>
-              <Input
-                value={editingAnnouncement.title || ""}
-                onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })}
-                className="bg-input border-border"
-                placeholder="Professional announcement headline"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Content (Markdown or HTML)</Label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setAnnouncementPreviewMode(!announcementPreviewMode)}
-                  className="h-8 px-2"
-                >
-                  {announcementPreviewMode ? (
-                    <>
-                      <EyeOff className="h-4 w-4 mr-2" />
-                      Edit
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="h-4 w-4 mr-2" />
-                      Preview
-                    </>
-                  )}
-                </Button>
-              </div>
-              
-              {announcementPreviewMode ? (
-                <div 
-                  className="min-h-[300px] max-h-[500px] overflow-y-auto p-4 border rounded-md bg-muted/30 prose dark:prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: editingAnnouncement.content }}
-                />
-              ) : (
-                <Textarea
-                  value={editingAnnouncement.content}
-                  onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })}
-                  className="bg-input border-border font-mono text-sm"
-                  rows={12}
-                  placeholder="Write your full announcement or article here... (Supports Markdown and HTML)"
-                />
-              )}
-              
-              <div className="space-y-1">
-                <Label>Upload MD/HTML</Label>
-                <Input
-                  type="file"
-                  accept=".md,.html,text/markdown,text/html"
-                  className="bg-input border-border"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    const text = await fileToText(file)
-                    setEditingAnnouncement({ ...editingAnnouncement, content: text })
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
+        <ScrollArea className="max-h-[calc(85vh-180px)] pr-4">
+          {editingAnnouncement && (
+            <div className="grid gap-4 py-4">
               <div className="space-y-2">
-                <Label>Media URL</Label>
+                <Label>Title</Label>
                 <Input
-                  value={editingAnnouncement.mediaUrl || ""}
-                  onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, mediaUrl: e.target.value })}
+                  value={editingAnnouncement.title || ""}
+                  onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })}
                   className="bg-input border-border"
-                  placeholder="https://..."
+                  placeholder="Professional announcement headline"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Upload Media</Label>
-                <Input
-                  type="file"
-                  accept="image/*,video/*"
-                  className="bg-input border-border"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    try {
-                      const resourceType = file.type.startsWith("video") ? "video" : "image"
-                      const res = await uploadToCloudinary(file, "announcements", resourceType)
-                      setEditingAnnouncement({
-                        ...editingAnnouncement,
-                        mediaUrl: res.secure_url,
-                        mediaType: resourceType
-                      })
-                    } catch (err) {
-                      toast({ title: "Upload failed", description: String(err), variant: "destructive" })
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            {editingAnnouncement.mediaUrl && (
-              <div className="mt-2">
-                {editingAnnouncement.mediaType === 'video' ? (
-                  <video src={editingAnnouncement.mediaUrl} controls className="max-h-40 rounded" />
+                <div className="flex items-center justify-between">
+                  <Label>Content (Markdown or HTML)</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAnnouncementPreviewMode(!announcementPreviewMode)}
+                    className="h-8 px-2"
+                  >
+                    {announcementPreviewMode ? (
+                      <>
+                        <EyeOff className="h-4 w-4 mr-2" />
+                        Edit
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-4 w-4 mr-2" />
+                        Preview
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {announcementPreviewMode ? (
+                  <div
+                    className="min-h-[300px] max-h-[500px] overflow-y-auto p-4 border rounded-md bg-muted/30 prose dark:prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{ __html: editingAnnouncement.content }}
+                  />
                 ) : (
-                  <img src={editingAnnouncement.mediaUrl} alt="Preview" className="max-h-40 rounded object-cover" />
+                  <Textarea
+                    value={editingAnnouncement.content}
+                    onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })}
+                    className="bg-input border-border font-mono text-sm"
+                    rows={12}
+                    placeholder="Write your full announcement or article here... (Supports Markdown and HTML)"
+                  />
                 )}
-              </div>
-            )}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <Select
-                  value={editingAnnouncement.type}
-                  onValueChange={(val: "info" | "warning" | "success") =>
-                    setEditingAnnouncement({ ...editingAnnouncement, type: val })
-                  }
-                >
-                  <SelectTrigger className="bg-input border-border">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="info">Info</SelectItem>
-                    <SelectItem value="warning">Warning</SelectItem>
-                    <SelectItem value="success">Success</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-4 pt-6">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={editingAnnouncement.pinned}
-                    onCheckedChange={(checked) => setEditingAnnouncement({ ...editingAnnouncement, pinned: checked })}
+                <div className="space-y-1">
+                  <Label>Upload MD/HTML</Label>
+                  <Input
+                    type="file"
+                    accept=".md,.html,text/markdown,text/html"
+                    className="bg-input border-border"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      const text = await fileToText(file)
+                      setEditingAnnouncement({ ...editingAnnouncement, content: text })
+                    }}
                   />
-                  <Label>Pinned</Label>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={!!editingAnnouncement.isActive}
-                    onCheckedChange={(checked) => setEditingAnnouncement({ ...editingAnnouncement, isActive: checked })}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Media URL</Label>
+                  <Input
+                    value={editingAnnouncement.mediaUrl || ""}
+                    onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, mediaUrl: e.target.value })}
+                    className="bg-input border-border"
+                    placeholder="https://..."
                   />
-                  <Label>Active</Label>
+                </div>
+                <div className="space-y-2">
+                  <Label>Upload Media</Label>
+                  <Input
+                    type="file"
+                    accept="image/*,video/*"
+                    className="bg-input border-border"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      try {
+                        const resourceType = file.type.startsWith("video") ? "video" : "image"
+                        const res = await uploadToCloudinary(file, "announcements", resourceType)
+                        setEditingAnnouncement({
+                          ...editingAnnouncement,
+                          mediaUrl: res.secure_url,
+                          mediaType: resourceType
+                        })
+                      } catch (err) {
+                        toast({ title: "Upload failed", description: String(err), variant: "destructive" })
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              {editingAnnouncement.mediaUrl && (
+                <div className="mt-2">
+                  {editingAnnouncement.mediaType === 'video' ? (
+                    <video src={editingAnnouncement.mediaUrl} controls className="max-h-40 rounded" />
+                  ) : (
+                    <img src={editingAnnouncement.mediaUrl} alt="Preview" className="max-h-40 rounded object-cover" />
+                  )}
+                </div>
+              )}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select
+                    value={editingAnnouncement.type}
+                    onValueChange={(val: "info" | "warning" | "success") =>
+                      setEditingAnnouncement({ ...editingAnnouncement, type: val })
+                    }
+                  >
+                    <SelectTrigger className="bg-input border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="info">Info</SelectItem>
+                      <SelectItem value="warning">Warning</SelectItem>
+                      <SelectItem value="success">Success</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-4 pt-6">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={editingAnnouncement.pinned}
+                      onCheckedChange={(checked) => setEditingAnnouncement({ ...editingAnnouncement, pinned: checked })}
+                    />
+                    <Label>Pinned</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={!!editingAnnouncement.isActive}
+                      onCheckedChange={(checked) => setEditingAnnouncement({ ...editingAnnouncement, isActive: checked })}
+                    />
+                    <Label>Active</Label>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </ScrollArea>
         <DialogFooter>
           <Button variant="outline" onClick={() => setEditingAnnouncement(null)}>
             Cancel
@@ -3421,6 +3463,36 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
     URL.revokeObjectURL(url)
   }
 
+  const handleExportAnnouncements = async () => {
+    const data = announcements.map((a) => ({
+      title: a.title || "",
+      content: a.content,
+      type: a.type,
+      pinned: !!a.pinned,
+      isActive: !!a.isActive,
+      mediaUrl: a.mediaUrl || "",
+      mediaType: a.mediaType || "",
+    }))
+    const csvHeader = "title,content,type,pinned,isActive,mediaUrl,mediaType"
+    const escape = (val: string) => {
+      const needsQuotes = /[",\n]/.test(val)
+      const v = val.replace(/"/g, '""')
+      return needsQuotes ? `"${v}"` : v
+    }
+    const csvRows = data.map(
+      (row) =>
+        `${escape(row.title)},${escape(row.content)},${row.type},${row.pinned},${row.isActive},${escape(row.mediaUrl)},${escape(row.mediaType)}`,
+    )
+    const csv = [csvHeader, ...csvRows].join("\n")
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "announcements.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleExportTutors = () => {
     const data = tutors.map((tutor) => ({
       name: tutor.name,
@@ -3633,6 +3705,31 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       />
 
       {/* Bulk upload dialogs */}
+      <BulkUploadDialog
+        open={showAnnouncementBulkUploadDialog}
+        onOpenChange={setShowAnnouncementBulkUploadDialog}
+        title="Bulk Upload Announcements"
+        description="Upload a CSV or JSON file to add or update announcements"
+        onUpload={handleBulkAnnouncementUpload}
+        templateCsvUrl="/templates/announcements-template.csv"
+        templateJsonUrl="/templates/announcements-template.json"
+        csvExample={`title,content,type,pinned,isActive,mediaUrl,mediaType
+Important Update,"School will be closed on Friday","warning",true,true,,
+Welcome,"Welcome to Excellence Akademie!","success",false,true,,
+Article Title,"<p>Rich HTML content allowed</p>","info",false,true,https://example.com/banner.jpg,image`}
+        jsonExample={`[
+  { "title": "Important Update", "content": "School will be closed on Friday", "type": "warning", "pinned": true, "isActive": true },
+  { "title": "Welcome", "content": "Welcome to Excellence Akademie!", "type": "success", "pinned": false, "isActive": true },
+  { "title": "Article Title", "content": "<p>Rich HTML content allowed</p>", "type": "info", "pinned": false, "isActive": true, "mediaUrl": "https://example.com/banner.jpg", "mediaType": "image" }
+]`}
+        guidelines={[
+          "type must be one of: info, warning, success",
+          "pinned and isActive accept true/false/yes/no/1/0",
+          "CSV fields with commas or line breaks should be quoted",
+          "If title is empty, it is generated from the first 80 chars of content",
+        ]}
+        onExport={handleExportAnnouncements}
+      />
       <BulkUploadDialog
         open={showBulkUploadDialog}
         onOpenChange={setShowBulkUploadDialog}

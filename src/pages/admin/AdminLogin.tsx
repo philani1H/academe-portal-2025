@@ -25,18 +25,33 @@ const AdminLogin = () => {
     setError("")
 
     try {
+      const identifier = username.trim()
+      const payload =
+        identifier.includes("@")
+          ? { email: identifier, password }
+          : { username: identifier, password }
+
       const response = await fetch('/api/admin/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(payload),
       })
 
       const data = await response.json()
 
       if (response.ok && data.success) {
+        try {
+          const uname = String(data?.user?.username || identifier)
+          const stored = {
+            name: uname,
+            email: identifier.includes("@") ? identifier : uname,
+            role: "admin",
+          }
+          localStorage.setItem("user", JSON.stringify(stored))
+        } catch {}
         toast({
           title: "Success",
           description: "Login successful! Redirecting to admin dashboard...",
@@ -47,11 +62,17 @@ const AdminLogin = () => {
           navigate('/admin/content')
         }, 1000)
       } else {
-        setError(data.message || 'Login failed')
+        if (response.status === 401) {
+          setError('Invalid credentials')
+        } else if (response.status >= 500) {
+          setError('Server error. Please try again.')
+        } else {
+          setError(data.message || 'Login failed')
+        }
       }
     } catch (error) {
       console.error('Login error:', error)
-      setError('Network error. Please try again.')
+      setError('Server unavailable. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -89,13 +110,13 @@ const AdminLogin = () => {
               )}
               
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username">Username or Email</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                   <Input
                     id="username"
                     type="text"
-                    placeholder="Enter username"
+                    placeholder="Enter username or email"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="pl-10"

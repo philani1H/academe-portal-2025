@@ -11,29 +11,37 @@ const AdminLogin = () => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const formData = new FormData(form);
-    const username = String(formData.get('username') || formData.get('email') || '');
-    const password = String(formData.get('password') || '');
-    if (!username || !password) return;
+    const id = String(formData.get('username') || '').trim();
+    const password = String(formData.get('password') || '').trim();
+    if (!id || !password) return;
     setLoading(true);
     setError(null);
-    apiFetch<{ success: boolean; user?: { username: string; role: string } }>('/admin/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    }).then((res) => {
-      if (!res || (res as any).success === false) {
-        throw new Error('Invalid credentials');
+    try {
+      const res = await apiFetch<{ success: boolean; user?: { username: string; role: string } }>('/api/admin/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username: id, email: id, password }),
+      });
+      if (!res || (res as any)?.success === false) {
+        setError('Invalid credentials');
+        return;
       }
-      // Persist minimal admin user for route guards
-      const user = { id: username, email: `${username}@local`, name: username, role: 'admin' } as any;
+      const user = { id: id, email: id.includes('@') ? id : `${id}@local`, name: id, role: 'admin' } as any;
       try { localStorage.setItem('user', JSON.stringify(user)); } catch {}
       navigate('/admin');
-    }).catch((err) => {
-      setError(err?.message || 'Login failed');
-    }).finally(() => setLoading(false));
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (msg.includes('Invalid credentials') || msg.includes('(401)')) {
+        setError('Invalid credentials');
+      } else {
+        setError('Server unavailable. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -46,7 +54,7 @@ const AdminLogin = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && <div className="text-sm text-red-600">{error}</div>}
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">Username or Email</Label>
               <Input
                 id="username"
                 name="username"
