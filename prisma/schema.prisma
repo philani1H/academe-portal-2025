@@ -3,14 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:../APP-Database.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
   id               Int                @id @default(autoincrement())
   name             String
-  email            String             @unique(map: "sqlite_autoindex_users_1")
+  email            String             @unique
   studentNumber    String?            @unique @map("student_number") // 11-digit numeric ID (YYYYPPSSSSC)
   programCode      Int?               @map("program_code") // Program code for students (1-99)
   personalEmail    String?            @map("personal_email") // For external communications (newsletters, updates)
@@ -105,6 +105,9 @@ model CourseEnrollment {
 model Test {
   id          String           @id @default(uuid())
   title       String
+  description String?
+  dueDate     String?
+  totalPoints Int?             @default(0)
   courseId    Int
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -363,251 +366,6 @@ model UniversityApplicationContent {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-}
-
-
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model about_us_content {
-  id                     String?   @id
-  goal                   String
-  mission                String
-  roles_responsibilities String?
-  is_active              Boolean?  @default(true)
-  created_at             DateTime? @default(now())
-  updated_at             DateTime? @default(now())
-
-  @@ignore
-}
-
-model announcements {
-  id         Int       @id @default(autoincrement())
-  title      String?
-  content    String
-  type       String?
-  pinned     Boolean?  @default(false)
-  isActive   Boolean   @default(true)
-  authorId   Int?      @default(1)
-  department String?
-  mediaUrl   String?   @map("media_url")
-  mediaType  String?   @map("media_type")
-  created_at DateTime? @default(now())
-  updated_at DateTime? @default(now())
-}
-
-model enrollments {
-  id                Int       @id @default(autoincrement())
-  student_id        Int
-  course_id         Int
-  progress          Int?      @default(0)
-  enrollment_status String?
-  last_updated      DateTime? @default(now())
-  created_at        DateTime? @default(now())
-  courses           Course    @relation(fields: [course_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users             User      @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model events {
-  id            String?   @id
-  title         String
-  description   String?
-  date          String
-  time          String?
-  location      String?
-  type          String?
-  attendees     Int?      @default(0)
-  max_attendees Int?      @default(0)
-  status        String?   @default("upcoming")
-  created_at    DateTime? @default(now())
-  updated_at    DateTime? @default(now())
-
-  @@ignore
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model exam_rewrite_content {
-  id                 String?   @id
-  title              String?
-  description        String?
-  heroTitle          String?
-  heroDescription    String?
-  benefits           String?
-  process            String?
-  subjects           String?
-  applicationFormUrl String?
-  grade11FormUrl     String?
-  grade12FormUrl     String?
-  pricingInfo        String?
-  is_active          Boolean?  @default(true)
-  created_at         DateTime? @default(now())
-  updated_at         DateTime? @default(now())
-
-  @@ignore
-}
-
-model features {
-  id          Int       @id @default(autoincrement())
-  title       String
-  description String
-  icon        String
-  benefits    String?
-  created_at  DateTime? @default(now())
-  updated_at  DateTime? @default(now())
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model footer_content {
-  id          String?   @id
-  companyInfo String?
-  socialLinks String?
-  quickLinks  String?
-  contactInfo String?
-  updated_at  DateTime? @default(now())
-
-  @@ignore
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model hero_content {
-  id         String?   @id
-  title      String
-  subtitle   String?
-  buttonText String?
-  buttonLink String?
-  imageUrl   String?
-  updated_at DateTime? @default(now())
-
-  @@ignore
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model navigation_items {
-  id         String?   @id
-  path       String
-  label      String
-  type       String    @default("main")
-  order      Int?      @default(0)
-  is_active  Boolean?  @default(true)
-  created_at DateTime? @default(now())
-  updated_at DateTime? @default(now())
-
-  @@ignore
-}
-
-
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model pricing_plans {
-  id         String?   @id
-  name       String
-  price      Decimal
-  interval   String?
-  features   String
-  isPopular  Boolean?  @default(false)
-  created_at DateTime? @default(now())
-
-  @@ignore
-}
-
-model subjects {
-  id          String    @id
-  name        String    @unique(map: "sqlite_autoindex_subjects_2")
-  description String?
-  icon        String?
-  created_at  DateTime? @default(now())
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model team_members {
-  id         String?   @id
-  name       String
-  role       String
-  bio        String?
-  image      String?
-  is_active  Boolean?  @default(true)
-  order      Int?      @default(0)
-  created_at DateTime? @default(now())
-  updated_at DateTime? @default(now())
-
-  @@ignore
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model testimonials {
-  id         String?   @id
-  name       String
-  role       String?
-  content    String
-  image      String?
-  rating     Int?
-  created_at DateTime? @default(now())
-
-  @@ignore
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model tutor_ratings {
-  id          String?   @id
-  tutor_id    String
-  studentName String
-  rating      Int
-  comment     String?
-  date        DateTime? @default(now())
-  tutors      tutors    @relation(fields: [tutor_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@ignore
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model tutors {
-  id            String?         @id
-  name          String
-  subjects      String
-  image         String?
-  contactName   String?
-  contactPhone  String?
-  contactEmail  String?
-  description   String?
-  created_at    DateTime?       @default(now())
-  tutor_ratings tutor_ratings[]
-
-  @@ignore
-}
-
-model ScheduledSession {
-  id          String   @id @default(uuid())
-  courseId    Int
-  tutorId     Int
-  title       String
-  description String?
-  scheduledAt DateTime
-  duration    Int      // Duration in minutes
-  status      String   @default("scheduled") // scheduled, active, completed, cancelled
-  sessionId   String?  // Will be set when session actually starts
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  course      Course   @relation(fields: [courseId], references: [id])
-  tutor       User     @relation(fields: [tutorId], references: [id])
-
-  @@map("scheduled_sessions")
-}
-
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model university_application_content {
-  id           String?   @id
-  title        String?
-  description  String?
-  services     String?
-  process      String?
-  requirements String?
-  pricing      String?
-  formUrl      String?
-  is_active    Boolean?  @default(true)
-  created_at   DateTime? @default(now())
-  updated_at   DateTime? @default(now())
-
-  @@ignore
 }
 
 model Email {

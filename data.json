@@ -1,0 +1,684 @@
+{
+  "HeroContent": [
+    {
+      "id": "4ca3f784-ec57-43e4-920f-65af0876c4a6",
+      "title": "Welcome to Excellence Akademie",
+      "subtitle": "25 Years of Academic Excellence",
+      "description": "Empowering South African students to reach their full potential through world-class education and personalized guidance",
+      "buttonText": "Choose a Plan",
+      "secondaryButtonText": "Become a Tutor",
+      "trustIndicatorText": "Trusted by over 10,000+ students across South Africa",
+      "universities": "[\"UCT\",\"Wits\",\"UP\",\"UKZN\",\"Stellenbosch\"]",
+      "features": "[{\"title\":\"Expert Instruction\",\"description\":\"Learn from South Africa's finest educators with proven teaching methodologies\",\"icon\":\"award\"},{\"title\":\"Personalized Learning\",\"description\":\"Adaptive curriculum tailored to your unique learning style and pace\",\"icon\":\"users\"},{\"title\":\"Success Guarantee\",\"description\":\"Join thousands of students who improved their grades by 25% or more\",\"icon\":\"star\"}]",
+      "backgroundGradient": "bg-gradient-to-br from-[#0B1340] via-[#1B264F] to-[#3A5199]",
+      "isActive": true,
+      "createdAt": "2025-09-07T06:17:20.568Z",
+      "updatedAt": "2025-09-07T06:17:20.568Z"
+    }
+  ],
+  "Feature": [
+    {
+      "id": "cd1b404a-fcc1-4e6c-ab71-467a2519e7eb",
+      "title": "Comprehensive Curriculum",
+      "description": "Structured learning paths covering all essential topics and concepts required for academic success.",
+      "icon": "curriculum",
+      "benefits": "[\"Complete subject coverage\",\"Aligned with national standards\",\"Regular updates\"]",
+      "isActive": true,
+      "order": 1,
+      "createdAt": "2025-09-07T06:17:20.573Z",
+      "updatedAt": "2025-09-07T06:17:20.573Z"
+    },
+    {
+      "id": "c0f680b3-bd71-4e17-97a5-ae293b7a1c84",
+      "title": "Expert Tutors",
+      "description": "Learn from experienced and qualified tutors who are specialists in their respective fields.",
+      "icon": "tutors",
+      "benefits": "[\"Qualified educators\",\"Subject matter experts\",\"Personalized teaching approaches\"]",
+      "isActive": true,
+      "order": 2,
+      "createdAt": "2025-09-07T06:17:20.576Z",
+      "updatedAt": "2025-09-07T06:17:20.576Z"
+    },
+    {
+      "id": "dca0b953-9d69-4d50-802e-3a36bfe8b8da",
+      "title": "Cost-Effective",
+      "description": "Quality education at competitive rates with flexible pricing options to suit different needs and budgets.",
+      "icon": "cost",
+      "benefits": "[\"Affordable packages\",\"Group discounts\",\"Flexible payment options\"]",
+      "isActive": true,
+      "order": 3,
+      "createdAt": "2025-09-07T06:17:20.579Z",
+      "updatedAt": "2025-09-07T06:17:20.579Z"
+    },
+    {
+      "id": "c2897b7d-415e-4b1f-8d66-dc673fb5620b",
+      "title": "Better Focus",
+      "description": "Personalized attention and customized learning approaches tailored to each student's unique needs and learning style.",
+      "icon": "focus",
+      "benefits": "[\"One-on-one sessions\",\"Customized learning plans\",\"Progress tracking\"]",
+      "isActive": true,
+      "order": 4,
+      "createdAt": "2025-09-07T06:17:20.582Z",
+      "updatedAt": "2025-09-07T06:17:20.582Z"
+    },
+    {
+      "id": "8e46f988-fbea-43f0-85fe-2fad17550b3e",
+      "title": "Technology Integration",
+      "description": "Modern learning tools and platforms for an enhanced educational experience that prepares students for the digital age.",
+      "icon": "technology",
+      "benefits": "[\"Interactive learning tools\",\"Digital resources\",\"Virtual classrooms\"]",
+      "isActive": true,
+      "order": 5,
+      "createdAt": "2025-09-07T06:17:20.586Z",
+      "updatedAt": "2025-09-07T06:17:20.586Z"
+    },
+    {
+      "id": "23a4e9e5-9f99-4714-9535-52eaa2047432",
+      "title": "Global Access",
+      "description": "Connect with tutors and learn from anywhere in the world, eliminating geographical barriers to quality education.",
+      "icon": "global",
+      "benefits": "[\"Remote learning options\",\"Flexible scheduling\",\"International curriculum support\"]",
+      "isActive": true,
+      "order": 6,
+      "createdAt": "2025-09-07T06:17:20.589Z",
+      "updatedAt": "2025-09-07T06:17:20.589Z"
+    }
+  ],
+  "Announcement": [
+    {
+      "id": "279d3e85-4ae9-4d64-b799-f2a875b76559",
+      "content": "Greetings, Class of 2025! Welcome to Excellence Academia, your premier online tutoring centre dedicated to empowering learners through high-quality, personalised education.",
+      "type": "info",
+      "pinned": true,
+      "isActive": true,
+      "createdAt": "2025-09-07T06:17:20.591Z",
+      "updatedAt": "2025-09-07T06:17:20.591Z"
+    },
+    {
+      "id": "c212958b-cb24-46fd-af83-a6e4eab59bba",
+      "content": "New Mathematics and Science tutoring packages now available! Limited spots remaining for the upcoming term.",
+      "type": "info",
+      "pinned": false,
+      "isActive": true,
+      "createdAt": "2025-09-07T06:17:20.595Z",
+      "updatedAt": "2025-09-07T06:17:20.595Z"
+    }
+  ],
+  "PricingPlan": [
+    {
+      "id": "070bdebf-6d57-42af-aff4-87da1f2892c7",
+      "name": "GRADE 12 BASIC",
+      "price": "R 150",
+      "period": "Monthly",
+      "features": "[\"Core subjects tutoring\",\"Basic study materials\",\"Online resources access\",\"Group tutoring sessions\",\"Weekly assessments\"]",
+      "notIncluded": "[\"1-on-1 tutoring\",\"Advanced study materials\",\"Career guidance\",\"Exam techniques workshop\"]",
+      "color": "blue",
+      "icon": "calendar",
+      "popular": false,
+      "isActive": true,
+      "order": 1,
+      "createdAt": "2025-09-07T06:17:20.598Z",
+      "updatedAt": "2025-09-07T06:17:20.598Z"
+    },
+    {
+      "id": "7152f3ab-83c1-4bb4-a494-954af1702fbf",
+      "name": "STANDARD",
+      "price": "R 250",
+      "period": "Monthly",
+      "features": "[\"All subjects tutoring\",\"Comprehensive study guides\",\"Practice papers & solutions\",\"Monthly 1-on-1 sessions\",\"Progress tracking\",\"Exam preparation support\"]",
+      "notIncluded": "[\"Career guidance\",\"Advanced exam techniques\"]",
+      "color": "indigo",
+      "icon": "star",
+      "popular": true,
+      "isActive": true,
+      "order": 2,
+      "createdAt": "2025-09-07T06:17:20.601Z",
+      "updatedAt": "2025-09-07T06:17:20.601Z"
+    },
+    {
+      "id": "67cda22e-7052-45f3-89a4-c957b1043cd8",
+      "name": "PREMIUM",
+      "price": "R 350",
+      "period": "Monthly",
+      "features": "[\"All Standard features\",\"Weekly 1-on-1 sessions\",\"Career guidance & counseling\",\"Advanced exam techniques\",\"Priority support\",\"University application assistance\"]",
+      "notIncluded": "[]",
+      "color": "purple",
+      "icon": "award",
+      "popular": false,
+      "isActive": true,
+      "order": 3,
+      "createdAt": "2025-09-07T06:17:20.605Z",
+      "updatedAt": "2025-09-07T06:17:20.605Z"
+    }
+  ],
+  "Testimonial": [
+    {
+      "id": "fe7b6cd8-6447-4b36-8564-366776b43c0b",
+      "content": "My grades improved significantly after just a few sessions. The tutors are knowledgeable and patient. I went from struggling with mathematics to scoring an A in my final exam!",
+      "author": "Sarah M.",
+      "role": "Mathematics Student",
+      "subject": "Mathematics",
+      "improvement": "C to A",
+      "image": "/placeholder.svg?height=100&width=100",
+      "rating": 5,
+      "isActive": true,
+      "order": 1,
+      "createdAt": "2025-09-07T06:17:20.623Z",
+      "updatedAt": "2025-09-07T06:17:20.623Z"
+    },
+    {
+      "id": "a2da9620-38c9-474f-8224-4354a3f3260f",
+      "content": "The flexible scheduling made it easy to fit tutoring into my busy schedule. The tutors at Excellence Akademie truly care about your success and go the extra mile to ensure you understand the concepts.",
+      "author": "James R.",
+      "role": "Physics Student",
+      "subject": "Physics",
+      "improvement": "D to B+",
+      "image": "/placeholder.svg?height=100&width=100",
+      "rating": 5,
+      "isActive": true,
+      "order": 2,
+      "createdAt": "2025-09-07T06:17:20.626Z",
+      "updatedAt": "2025-09-07T06:17:20.626Z"
+    },
+    {
+      "id": "ce2d74bd-3c4e-4539-85ba-809ca740fc40",
+      "content": "Excellence Akademie helped me prepare for my exams. The tutors are professional and supportive. Their exam preparation strategies were invaluable and helped me achieve results I never thought possible.",
+      "author": "Emily W.",
+      "role": "Language Student",
+      "subject": "English",
+      "improvement": "B- to A+",
+      "image": "/placeholder.svg?height=100&width=100",
+      "rating": 5,
+      "isActive": true,
+      "order": 3,
+      "createdAt": "2025-09-07T06:17:20.630Z",
+      "updatedAt": "2025-09-07T06:17:20.630Z"
+    },
+    {
+      "id": "6e53c5ce-d275-431b-bcab-68e5844d42d1",
+      "content": "I was struggling with Business Studies until I found Excellence Akademie. Their tutors explained complex concepts in a way that was easy to understand. My confidence has grown tremendously!",
+      "author": "Michael K.",
+      "role": "Business Student",
+      "subject": "Business Studies",
+      "improvement": "C to A-",
+      "image": "/placeholder.svg?height=100&width=100",
+      "rating": 5,
+      "isActive": true,
+      "order": 4,
+      "createdAt": "2025-09-07T06:17:20.634Z",
+      "updatedAt": "2025-09-07T06:17:20.634Z"
+    }
+  ],
+  "TeamMember": [
+    {
+      "id": "c70f7ae5-8698-4d18-86d9-89f41cb0c90d",
+      "name": "Roshan",
+      "role": "Founder & CEO",
+      "bio": "Roshan is the visionary behind the platform, driving innovation and excellence.",
+      "image": "https://i.imgur.com/GqzI3ir.jpeg",
+      "isActive": true,
+      "order": 1,
+      "createdAt": "2025-09-07T06:17:20.606Z",
+      "updatedAt": "2025-09-07T06:17:20.606Z"
+    },
+    {
+      "id": "d22d901d-4fc8-4b28-9573-b3153b6e7e1c",
+      "name": "Michael Ashton",
+      "role": "Chief Administrative Officer (CAO)",
+      "bio": "Michael Ashton specializes in administrative excellence, with expertise in GEO, business, and economics tutoring.",
+      "image": "https://i.imgur.com/CntZolm.jpeg",
+      "isActive": true,
+      "order": 2,
+      "createdAt": "2025-09-07T06:17:20.609Z",
+      "updatedAt": "2025-09-07T06:17:20.609Z"
+    },
+    {
+      "id": "d7e8435a-0afd-4bf3-97cf-926e42ed1a29",
+      "name": "Rendani",
+      "role": "Marketing Team Director",
+      "bio": "Rendani leads our marketing initiatives, ensuring our message reaches and resonates with our target audience.",
+      "image": "https://i.imgur.com/WXSc1dB.jpeg",
+      "isActive": true,
+      "order": 3,
+      "createdAt": "2025-09-07T06:17:20.612Z",
+      "updatedAt": "2025-09-07T06:17:20.612Z"
+    },
+    {
+      "id": "7c759ac6-8142-4f57-beee-b45ceb7e5e89",
+      "name": "Jacob",
+      "role": "Chief Technology Officer (CTO)",
+      "bio": "Jacob spearheads the technological advancements of the Excellence Academia 25 platform. With a strong background in software engineering and innovative technologies, he ensures the platform's scalability, security, and strategic alignment across diverse disciplines. Jacob is passionate about leveraging technology to create impactful educational solutions.",
+      "image": "https://i.imgur.com/SwZblK8.jpeg",
+      "isActive": true,
+      "order": 4,
+      "createdAt": "2025-09-07T06:17:20.614Z",
+      "updatedAt": "2025-09-07T06:17:20.614Z"
+    },
+    {
+      "id": "1d7cbee2-4de1-482b-b5cc-96fb778743ab",
+      "name": "Miss K",
+      "role": "Head of Discipline",
+      "bio": "Miss K oversees the application of disciplinary procedures and supports the team's overall discipline management.",
+      "image": "https://i.imgur.com/grXHk5O.jpeg",
+      "isActive": true,
+      "order": 5,
+      "createdAt": "2025-09-07T06:17:20.617Z",
+      "updatedAt": "2025-09-07T06:17:20.617Z"
+    }
+  ],
+  "AboutUsContent": [
+    {
+      "id": "0e241d41-d54b-40e9-9b10-a38c79074ed2",
+      "goal": "Our goal is to connect students with the best tutors who can help them achieve academic success and reach their full potential.",
+      "mission": "Our mission is to provide accessible and personalized learning experiences by offering top-tier tutoring services in a variety of subjects, making education more effective and enjoyable for every student.",
+      "rolesResponsibilities": "{\"roles\":[{\"title\":\"Chief Executive Officer (CEO)\",\"responsibilities\":[\"Set the vision and strategic goals of the company.\",\"Develop and implement long-term business strategies.\",\"Make key decisions regarding operations, finances, and growth opportunities.\",\"Represent the company in public forums, including media, stakeholder meetings, and industry events.\"]},{\"title\":\"Chief Administrative Officer (CAO)\",\"responsibilities\":[\"Oversee human resources, financial management, facilities management, and compliance operations.\",\"Manage day-to-day administrative tasks to ensure operational efficiency.\",\"Establish and implement policies to maintain organizational compliance and governance.\"]},{\"title\":\"Chief Technology Officer (CTO)\",\"responsibilities\":[\"Develop and oversee the organization's technology strategy and solutions.\",\"Manage and maintain the company's technology infrastructure.\",\"Ensure technology initiatives align with the company's business goals.\",\"Stay informed of emerging technologies and integrate them when appropriate.\"]},{\"title\":\"Shareholder\",\"responsibilities\":[\"Hold a portion of the company's shares, entitling them to dividends and a claim on profits.\",\"Exercise voting rights to influence key company decisions.\",\"Maintain the ability to transfer or sell their shares under the conditions set by the company.\"]},{\"title\":\"Non-Executive Director (NED)\",\"responsibilities\":[\"Offer independent expertise and advice to the board.\",\"Assist in driving the company's success by providing oversight on key strategic decisions.\",\"Ensure the company adheres to best practices and governance principles.\"]},{\"title\":\"Employee\",\"responsibilities\":[\"Perform assigned tasks and duties as per their employment agreement.\",\"Abide by company policies and procedures.\",\"Report to their designated supervisor or manager.\"]},{\"title\":\"Head of Discipline\",\"responsibilities\":[\"Ensure disciplinary procedures and policies are consistently applied.\",\"Oversee employee behavior and performance in alignment with company standards.\",\"Provide guidance and corrective actions when necessary.\"]}],\"appendix\":\"This Appendix forms part of the agreement entered into on 3rd January 2025 by Excellence Akademie and the parties outlined below. All parties agree to fulfill their roles and responsibilities as outlined in this document.\"}",
+      "isActive": true,
+      "createdAt": "2025-09-07T06:17:20.620Z",
+      "updatedAt": "2025-09-07T06:17:20.620Z"
+    }
+  ],
+  "SiteSettings": [
+    {
+      "id": "28f1c756-ec59-421e-9078-55e26e2bd6d5",
+      "key": "site_name",
+      "value": "Excellence Akademie",
+      "type": "string",
+      "label": "Site Name",
+      "category": "general",
+      "createdAt": "2025-09-07T06:17:20.638Z",
+      "updatedAt": "2025-09-07T06:17:20.638Z"
+    },
+    {
+      "id": "12042456-0a18-486b-ae9e-3af16568eb28",
+      "key": "site_logo",
+      "value": "https://i.imgur.com/mrQ0rDu.png",
+      "type": "image",
+      "label": "Site Logo",
+      "category": "appearance",
+      "createdAt": "2025-09-07T06:17:20.641Z",
+      "updatedAt": "2025-09-07T06:17:20.641Z"
+    },
+    {
+      "id": "265f9b94-0f72-48dc-ac0e-2d9d3b50b7c5",
+      "key": "contact_email",
+      "value": "info@excellenceakademie.com",
+      "type": "string",
+      "label": "Contact Email",
+      "category": "general",
+      "createdAt": "2025-09-07T06:17:20.642Z",
+      "updatedAt": "2025-09-07T06:17:20.642Z"
+    },
+    {
+      "id": "e562df49-9959-4f63-a5f4-ae2e393274ed",
+      "key": "primary_color",
+      "value": "#1B264F",
+      "type": "string",
+      "label": "Primary Color",
+      "category": "appearance",
+      "createdAt": "2025-09-07T06:17:20.643Z",
+      "updatedAt": "2025-09-07T06:17:20.643Z"
+    }
+  ],
+  "Tutor": [
+    {
+      "id": "687219ca-c3d8-4f95-ba68-4c6b97f7bc06",
+      "name": "Sir Raphael",
+      "subjects": "[\"Maths Literacy\",\"English FAL\",\"History\"]",
+      "image": "https://media-hosting.imagekit.io/b0f14e9cd7c04663/WhatsApp%20Image%202025-05-01%20at%2017.51.06_9b6f06d5.jpg?Expires=1841310263&Key-Pair-Id=K2ZIVPTIP2VGHC&Signature=ljztxmw-I6~Xh722izM58x2kFLzby8tvwS94aMVLD-VoFavdzLkPtLWovsyimHY97gAkebJyTLONPvBLRbebhXEIErl~bj7GkLUUHhxE0vgqBA~h9z~Jqhb3ZxZnfsHD8AmTfOs0Y63e61SjiIQd9gLrMcdFKtf-PFLcmq055kFgZNTt9t4jJNCNF95uJAyeWuCPmHxP7hx9RBk5McLl7pVWKNUC1LVfIQupvFqzJfRGLHLOsB~9K-Dp0tQLKQVI2a11Pogn6bKqnLBuW1eIWid0uV7QTzqRD2dDOB3UCgL2fDzIgTD2~l4D~fFPtF0VAeH-tKfb6YFkdPB5m8ZVEA__",
+      "contactName": "Sir Raphael",
+      "contactPhone": "+27698635814",
+      "contactEmail": "ExcellenceAcademia2025@gmail.com",
+      "description": "Sir Raphael specializes in Maths Literacy, English FAL, and History. He is dedicated to helping students achieve their academic goals through personalized instruction and comprehensive understanding.",
+      "ratings": "[{\"id\":1,\"studentName\":\"Initial Rating\",\"rating\":4,\"comment\":\"Excellent teaching methodology and student engagement.\",\"date\":\"2025-04-02\"}]",
+      "isActive": true,
+      "order": 1,
+      "createdAt": "2025-09-07T06:24:46.405Z",
+      "updatedAt": "2025-09-07T06:24:46.405Z"
+    },
+    {
+      "id": "a06cfe66-b277-4b46-9e24-95853cdbef0e",
+      "name": "Roshan (mr mvp)",
+      "subjects": "[\"Geography\",\"Business Studies\",\"Economics\"]",
+      "image": "https://i.imgur.com/GqzI3ir.jpeg",
+      "contactName": "Roshan",
+      "contactPhone": "+27 79 386 7427",
+      "contactEmail": "ExcellenceAcademia2025@gmail.com",
+      "description": "Roshan, nicknamed (mr mvp), brings a wealth of knowledge in Economics and Geography. He believes in fostering critical thinking skills and a love for learning.",
+      "ratings": "[{\"id\":1,\"studentName\":\"Michael S.\",\"rating\":5,\"comment\":\"Excellent teacher! Made economics easy to understand.\",\"date\":\"2025-03-15\"},{\"id\":2,\"studentName\":\"Sarah J.\",\"rating\":4,\"comment\":\"Very knowledgeable and patient.\",\"date\":\"2025-02-28\"}]",
+      "isActive": true,
+      "order": 2,
+      "createdAt": "2025-09-07T06:24:46.411Z",
+      "updatedAt": "2025-09-07T06:24:46.411Z"
+    },
+    {
+      "id": "3e6093fa-d81b-4a5b-b173-fa2c7f96eac1",
+      "name": "Paballo",
+      "subjects": "[\"Pure Mathematics\",\"Economics\",\"Business\",\"Accounting\"]",
+      "image": "https://i.imgur.com/mreslkv.jpeg",
+      "contactName": "Paballo A.L Sempe",
+      "contactPhone": "+27761328919",
+      "contactEmail": "ExcellenceAcademia2025@gmail.com",
+      "description": "Paballo has a strong background in pure mathematics, economics, and accounting. She focuses on making complex concepts accessible and engaging for students.",
+      "ratings": "[{\"id\":1,\"studentName\":\"David K.\",\"rating\":5,\"comment\":\"Paballo explains math concepts clearly and patiently.\",\"date\":\"2025-03-20\"}]",
+      "isActive": true,
+      "order": 3,
+      "createdAt": "2025-09-07T06:24:46.414Z",
+      "updatedAt": "2025-09-07T06:24:46.414Z"
+    },
+    {
+      "id": "b37f4af3-16b4-452e-b583-99f1a6c9271e",
+      "name": "Promise Chabalala",
+      "subjects": "[\"Afrikaans FAL\",\"English HL\",\"Business Studies\",\"History\"]",
+      "image": "https://i.imgur.com/pf6NDEJ.jpeg",
+      "contactName": "Promise Chabalala",
+      "contactPhone": "+27 67 401 6982",
+      "contactEmail": "ExcellenceAcademia2025@gmail.com",
+      "description": "Promise brings a wealth of knowledge in language and humanities. She believes in fostering critical thinking skills and a love for learning.",
+      "ratings": "[{\"id\":1,\"studentName\":\"Thabo M.\",\"rating\":5,\"comment\":\"Excellent Afrikaans tutor! Very patient and understanding.\",\"date\":\"2025-03-10\"}]",
+      "isActive": true,
+      "order": 4,
+      "createdAt": "2025-09-07T06:24:46.418Z",
+      "updatedAt": "2025-09-07T06:24:46.418Z"
+    }
+  ],
+  "Subject": [
+    {
+      "id": "17716fdc-9e85-44df-a93a-572030b4a03d",
+      "name": "Mathematics",
+      "description": "From algebra to calculus, master any math topic with our expert tutors.",
+      "image": "https://images.unsplash.com/photo-1509228468518-180dd4864904",
+      "category": "STEM",
+      "tutorsCount": 12,
+      "popularTopics": "[\"Algebra\",\"Calculus\",\"Geometry\",\"Trigonometry\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 1,
+      "createdAt": "2025-09-07T06:24:46.422Z",
+      "updatedAt": "2025-09-07T06:24:46.422Z"
+    },
+    {
+      "id": "70412d5e-7103-4343-8203-2f58752fd3d3",
+      "name": "Physical Sciences",
+      "description": "Comprehensive physics and chemistry tutoring to help you excel in your studies.",
+      "image": "https://images.unsplash.com/photo-1532094349884-543bc11b234d",
+      "category": "STEM",
+      "tutorsCount": 8,
+      "popularTopics": "[\"Mechanics\",\"Electricity\",\"Chemical Reactions\",\"Organic Chemistry\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 2,
+      "createdAt": "2025-09-07T06:24:46.424Z",
+      "updatedAt": "2025-09-07T06:24:46.424Z"
+    },
+    {
+      "id": "38a289b9-3b45-4e84-bbff-21d09b43812e",
+      "name": "Life Sciences",
+      "description": "Explore biology and related topics with our experienced life sciences tutors.",
+      "image": "https://images.unsplash.com/photo-1530210124550-912dc1381cb8",
+      "category": "STEM",
+      "tutorsCount": 6,
+      "popularTopics": "[\"Cell Biology\",\"Genetics\",\"Human Physiology\",\"Ecology\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 3,
+      "createdAt": "2025-09-07T06:24:46.425Z",
+      "updatedAt": "2025-09-07T06:24:46.425Z"
+    },
+    {
+      "id": "a8f03792-6230-4e8f-9724-7e8b95a48937",
+      "name": "English",
+      "description": "Improve your language skills, essay writing, and literature analysis.",
+      "image": "https://images.unsplash.com/photo-1457369804613-52c61a468e7d",
+      "category": "Languages",
+      "tutorsCount": 10,
+      "popularTopics": "[\"Grammar\",\"Essay Writing\",\"Literature\",\"Comprehension\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 4,
+      "createdAt": "2025-09-07T06:24:46.429Z",
+      "updatedAt": "2025-09-07T06:24:46.429Z"
+    },
+    {
+      "id": "cff682e3-19ed-40ed-95ba-4a9701f2a1bc",
+      "name": "Afrikaans",
+      "description": "Master Afrikaans language skills with our dedicated language tutors.",
+      "image": "https://images.unsplash.com/photo-1544306094-e2dcf9479da3",
+      "category": "Languages",
+      "tutorsCount": 7,
+      "popularTopics": "[\"Grammar\",\"Comprehension\",\"Literature\",\"Oral Skills\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 5,
+      "createdAt": "2025-09-07T06:24:46.432Z",
+      "updatedAt": "2025-09-07T06:24:46.432Z"
+    },
+    {
+      "id": "c7d70f07-9810-434c-90c3-c996f2923a6a",
+      "name": "Accounting",
+      "description": "Learn accounting principles, financial statements, and business calculations.",
+      "image": "https://images.unsplash.com/photo-1554224155-6726b3ff858f",
+      "category": "Commerce",
+      "tutorsCount": 9,
+      "popularTopics": "[\"Financial Statements\",\"Cash Flow\",\"Inventory Valuation\",\"Companies\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 6,
+      "createdAt": "2025-09-07T06:24:46.434Z",
+      "updatedAt": "2025-09-07T06:24:46.434Z"
+    },
+    {
+      "id": "7452e3de-e089-4a72-95c0-84df77aa49dd",
+      "name": "Economics",
+      "description": "Understand economic principles, market dynamics, and financial systems.",
+      "image": "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3",
+      "category": "Commerce",
+      "tutorsCount": 8,
+      "popularTopics": "[\"Microeconomics\",\"Macroeconomics\",\"Economic Development\",\"Inflation\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 7,
+      "createdAt": "2025-09-07T06:24:46.438Z",
+      "updatedAt": "2025-09-07T06:24:46.438Z"
+    },
+    {
+      "id": "a25a7fa7-ec77-4211-92a0-fd4a6162e2b8",
+      "name": "Business Studies",
+      "description": "Master business concepts, entrepreneurship, and management principles.",
+      "image": "https://media.geeksforgeeks.org/wp-content/uploads/20230613172545/Commerce-Landing-page-copy.webp",
+      "category": "Commerce",
+      "tutorsCount": 7,
+      "popularTopics": "[\"Entrepreneurship\",\"Business Ventures\",\"Business Roles\",\"Operations\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 8,
+      "createdAt": "2025-09-07T06:24:46.442Z",
+      "updatedAt": "2025-09-07T06:24:46.442Z"
+    },
+    {
+      "id": "2c2ea8f3-d435-4520-b6b3-9ca4e561518b",
+      "name": "Geography",
+      "description": "Explore physical and human geography with our expert tutors.",
+      "image": "https://images.unsplash.com/photo-1519500099198-fd81846bc57f",
+      "category": "Humanities",
+      "tutorsCount": 5,
+      "popularTopics": "[\"Climate\",\"Geomorphology\",\"Population\",\"Economic Geography\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 9,
+      "createdAt": "2025-09-07T06:24:46.446Z",
+      "updatedAt": "2025-09-07T06:24:46.446Z"
+    },
+    {
+      "id": "cdb83d50-1fe8-48ca-ba7d-5ffcde92309c",
+      "name": "History",
+      "description": "Discover historical events and develop critical analysis skills.",
+      "image": "https://images.unsplash.com/photo-1481627834876-b7833e8f5570",
+      "category": "Humanities",
+      "tutorsCount": 4,
+      "popularTopics": "[\"World Wars\",\"South African History\",\"Cold War\",\"Apartheid\"]",
+      "difficulty": "[\"Grade 10\",\"Grade 11\",\"Grade 12\"]",
+      "isActive": true,
+      "order": 10,
+      "createdAt": "2025-09-07T06:24:46.449Z",
+      "updatedAt": "2025-09-07T06:24:46.449Z"
+    }
+  ],
+  "NavigationItem": [
+    {
+      "id": "c9d62f8f-38ec-4871-b141-38ba21cffbc5",
+      "path": "/",
+      "label": "Home",
+      "type": "main",
+      "isActive": true,
+      "order": 1,
+      "createdAt": "2025-09-07T06:24:46.453Z",
+      "updatedAt": "2025-09-07T06:24:46.453Z"
+    },
+    {
+      "id": "87efd309-a9a8-4d67-b13d-12416a22b355",
+      "path": "/subjects",
+      "label": "Subjects",
+      "type": "main",
+      "isActive": true,
+      "order": 2,
+      "createdAt": "2025-09-07T06:24:46.454Z",
+      "updatedAt": "2025-09-07T06:24:46.454Z"
+    },
+    {
+      "id": "f8cb200a-e6b6-48d6-906d-065630c1aad5",
+      "path": "/tutors",
+      "label": "Tutors",
+      "type": "main",
+      "isActive": true,
+      "order": 3,
+      "createdAt": "2025-09-07T06:24:46.457Z",
+      "updatedAt": "2025-09-07T06:24:46.457Z"
+    },
+    {
+      "id": "18af9cbc-8e52-4aa2-a01e-c3bf01baa89a",
+      "path": "/testimonials",
+      "label": "Testimonials",
+      "type": "main",
+      "isActive": true,
+      "order": 4,
+      "createdAt": "2025-09-07T06:24:46.459Z",
+      "updatedAt": "2025-09-07T06:24:46.459Z"
+    },
+    {
+      "id": "3edb358c-4cc1-4302-9b7a-9dcf6f47106f",
+      "path": "/university-application",
+      "label": "University Application",
+      "type": "main",
+      "isActive": true,
+      "order": 5,
+      "createdAt": "2025-09-07T06:24:46.462Z",
+      "updatedAt": "2025-09-07T06:24:46.462Z"
+    },
+    {
+      "id": "ad93fd20-e53b-4589-b3b5-ee41b1e736f6",
+      "path": "/exam-rewrite",
+      "label": "Check Offer !",
+      "type": "main",
+      "isActive": true,
+      "order": 6,
+      "createdAt": "2025-09-07T06:24:46.465Z",
+      "updatedAt": "2025-09-07T06:24:46.465Z"
+    },
+    {
+      "id": "0bb4413b-f984-4453-87f4-e79338ab0824",
+      "path": "/contact-us",
+      "label": "Contact",
+      "type": "main",
+      "isActive": true,
+      "order": 7,
+      "createdAt": "2025-09-07T06:24:46.469Z",
+      "updatedAt": "2025-09-07T06:24:46.469Z"
+    },
+    {
+      "id": "7d2e92ec-38ff-40b9-89fa-face92f2d17e",
+      "path": "/about-us",
+      "label": "About Us",
+      "type": "main",
+      "isActive": true,
+      "order": 8,
+      "createdAt": "2025-09-07T06:24:46.473Z",
+      "updatedAt": "2025-09-07T06:24:46.473Z"
+    },
+    {
+      "id": "70652d87-ae5c-426a-9e6d-289898670359",
+      "path": "/student-login",
+      "label": "Student Portal",
+      "type": "mobile",
+      "isActive": true,
+      "order": 1,
+      "createdAt": "2025-09-07T06:24:46.477Z",
+      "updatedAt": "2025-09-07T06:24:46.477Z"
+    },
+    {
+      "id": "dcef4d9c-1be5-4f16-b59d-48112f793a6e",
+      "path": "/tutor-login",
+      "label": "Tutor Portal",
+      "type": "mobile",
+      "isActive": true,
+      "order": 2,
+      "createdAt": "2025-09-07T06:24:46.479Z",
+      "updatedAt": "2025-09-07T06:24:46.479Z"
+    },
+    {
+      "id": "aef9cff4-08da-4bf7-89b0-ddfc2f485e12",
+      "path": "/admin/login",
+      "label": "Admin",
+      "type": "mobile",
+      "isActive": true,
+      "order": 3,
+      "createdAt": "2025-09-07T06:24:46.483Z",
+      "updatedAt": "2025-09-07T06:24:46.483Z"
+    }
+  ],
+  "BecomeTutorContent": [
+    {
+      "id": "00442b61-6c5d-4b42-b8cf-1a8e5226fb8d",
+      "title": "Become a Tutor",
+      "description": "Join our team of exceptional educators and help students achieve their academic goals.",
+      "requirements": "[\"Bachelor's degree or higher\",\"Teaching experience preferred\",\"Strong subject knowledge\",\"Excellent communication skills\",\"Passion for education\"]",
+      "benefits": "[\"Flexible working hours\",\"Competitive compensation\",\"Professional development\",\"Supportive community\",\"Make a difference\"]",
+      "applicationUrl": "https://forms.app/6798e6f5f155c70002152541",
+      "formEmbedCode": "<script src=\"https://forms.app/static/embed.js\"></script>",
+      "isActive": true,
+      "createdAt": "2025-09-07T06:24:46.489Z",
+      "updatedAt": "2025-09-07T06:24:46.489Z"
+    }
+  ],
+  "ExamRewriteContent": [
+    {
+      "id": "66fb8a63-1a55-426c-970c-7d1b933f41d2",
+      "title": "Exam Rewrite Program",
+      "description": "Transform your academic future with our comprehensive exam rewrite program",
+      "heroTitle": "Second Chances, First-Class Results",
+      "heroDescription": "Don't let one exam define your future. Our expert tutors will help you achieve the grades you deserve.",
+      "benefits": "[\"Expert tutoring in all subjects\",\"Personalized study plans\",\"Practice exams and mock tests\",\"Flexible scheduling\",\"Proven success rate\"]",
+      "process": "[{\"title\":\"Assessment\",\"description\":\"We evaluate your current knowledge and identify areas for improvement\"},{\"title\":\"Planning\",\"description\":\"Create a personalized study plan tailored to your needs\"},{\"title\":\"Learning\",\"description\":\"Work with expert tutors to master the content\"},{\"title\":\"Practice\",\"description\":\"Take practice exams to build confidence\"},{\"title\":\"Success\",\"description\":\"Achieve the grades you need for your future\"}]",
+      "subjects": "[\"Mathematics\",\"Physical Sciences\",\"Life Sciences\",\"English\",\"Afrikaans\",\"Accounting\",\"Economics\",\"Business Studies\",\"Geography\",\"History\"]",
+      "applicationFormUrl": "https://docs.google.com/forms/d/e/1FAIpQLScZUhGQsFhbgqLRdZ3PrZwr64pBIBgxKyY8EyQSE4REUxwWeA/viewform",
+      "grade11FormUrl": "",
+      "grade12FormUrl": "",
+      "pricingInfo": "{\"basic\":{\"price\":\"R 150\",\"period\":\"Monthly\",\"subjects\":3},\"standard\":{\"price\":\"R 250\",\"period\":\"Monthly\",\"subjects\":5},\"premium\":{\"price\":\"R 350\",\"period\":\"Monthly\",\"subjects\":\"Unlimited\"}}",
+      "isActive": true,
+      "createdAt": "2025-09-07T06:24:46.491Z",
+      "updatedAt": "2025-09-07T06:24:46.491Z"
+    }
+  ],
+  "ContactUsContent": [
+    {
+      "id": "d852c90c-8c81-411a-8ca9-3acc3fc2756d",
+      "title": "Contact Us",
+      "description": "Have any questions or feedback? Fill out the form below and we'll get back to you as soon as possible.",
+      "logo": "https://i.imgur.com/mrQ0rDu.png",
+      "formEndpoint": "https://formspree.io/f/xrbeqgqe",
+      "contactInfo": "{\"phone\":\"+27 79 386 7427\",\"email\":\"ExcellenceAcademia2025@gmail.com\",\"address\":\"South Africa\",\"hours\":\"Monday - Friday: 8:00 AM - 6:00 PM\"}",
+      "isActive": true,
+      "createdAt": "2025-09-07T06:24:46.486Z",
+      "updatedAt": "2025-09-07T06:24:46.486Z"
+    }
+  ]
+}

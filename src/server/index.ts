@@ -2050,18 +2050,23 @@ app.post(
           })
 
           const hash = await hashPassword(tempPassword)
-          const db = await getConnection()
-          try {
-            const now = new Date().toISOString()
-            await db.run(
-              `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
-              [studentEmail, user.id, hash, now, now],
-            )
-          } finally {
-            await db.close()
-          }
+          const now = new Date().toISOString()
+          
+          await prisma.userCredential.upsert({
+            where: { email: studentEmail },
+            update: {
+                passwordHash: hash,
+                userId: user.id.toString(),
+                updatedAt: now
+            },
+            create: {
+                email: studentEmail,
+                userId: user.id.toString(),
+                passwordHash: hash,
+                createdAt: now,
+                updatedAt: now
+            }
+          })
         } else {
           studentEmail = user.email
         }
@@ -2147,18 +2152,23 @@ app.post("/api/auth/set-password", async (req: Request, res: Response) => {
       user = await prisma.user.create({ data: { email, name: email.split("@")[0], role } })
     }
 
-    const db = await getConnection()
-    try {
-      const now = new Date().toISOString()
-      await db.run(
-        `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
-        [email, user.id, hash, now, now],
-      )
-    } finally {
-      await db.close()
-    }
+    const now = new Date().toISOString()
+    
+    await prisma.userCredential.upsert({
+      where: { email },
+      update: {
+          passwordHash: hash,
+          userId: user.id.toString(),
+          updatedAt: now
+      },
+      create: {
+          email,
+          userId: user.id.toString(),
+          passwordHash: hash,
+          createdAt: now,
+          updatedAt: now
+      }
+    })
 
     return res.json({ success: true })
   } catch (error) {
@@ -2189,43 +2199,40 @@ app.post(
       }
 
       await ensureCredentialsTable()
-      const db = await getConnection()
 
-      try {
-        const row = await db.get("SELECT * FROM user_credentials WHERE email = ?", [userEmail])
+      const row = await prisma.userCredential.findUnique({ where: { email: userEmail } })
 
-        if (!row || !row.password_hash) {
-          return res.status(401).json({ success: false, error: "Invalid credentials" })
-        }
-
-        const [scheme, salt, stored] = String(row.password_hash).split(":")
-        if (scheme !== "scrypt" || !salt || !stored) {
-          return res.status(500).json({ success: false, error: "Invalid credential record" })
-        }
-
-        const derived = await new Promise<string>((resolve, reject) => {
-          crypto.scrypt(String(currentPassword), salt, 64, (err, dk) =>
-            err ? reject(err) : resolve(dk.toString("hex")),
-          )
-        })
-
-        if (derived !== stored) {
-          return res.status(401).json({ success: false, error: "Current password is incorrect" })
-        }
-
-        const newHash = await hashPassword(String(newPassword))
-        const now = new Date().toISOString()
-
-        await db.run(`UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE email = ?`, [
-          newHash,
-          now,
-          userEmail,
-        ])
-
-        return res.json({ success: true, message: "Password changed successfully" })
-      } finally {
-        await db.close()
+      if (!row || !row.passwordHash) {
+        return res.status(401).json({ success: false, error: "Invalid credentials" })
       }
+
+      const [scheme, salt, stored] = String(row.passwordHash).split(":")
+      if (scheme !== "scrypt" || !salt || !stored) {
+        return res.status(500).json({ success: false, error: "Invalid credential record" })
+      }
+
+      const derived = await new Promise<string>((resolve, reject) => {
+        crypto.scrypt(String(currentPassword), salt, 64, (err, dk) =>
+          err ? reject(err) : resolve(dk.toString("hex")),
+        )
+      })
+
+      if (derived !== stored) {
+        return res.status(401).json({ success: false, error: "Current password is incorrect" })
+      }
+
+      const newHash = await hashPassword(String(newPassword))
+      const now = new Date().toISOString()
+
+      await prisma.userCredential.update({
+          where: { email: userEmail },
+          data: {
+              passwordHash: newHash,
+              updatedAt: now
+          }
+      })
+
+      return res.json({ success: true, message: "Password changed successfully" })
     } catch (error) {
       console.error("Change password error:", error)
       return res.status(500).json({ success: false, error: "Failed to change password" })
@@ -2376,31 +2383,41 @@ app.post("/api/tests", authenticateJWT as RequestHandler, async (req: Authentica
         })
       }
     }
-
-    const db = await getConnection()
-    const result = await db.run(
-      "INSERT INTO tests (title, description, due_date, course_id, questions, total_points, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [
-        title,
-        description,
-        dueDate,
-        courseId,
-        JSON.stringify(questions || []),
-        totalPoints || 0,
-        new Date().toISOString(),
-      ],
-    )
-    await db.close()
-
+    
+    const now = new Date().toISOString()
+    const result = await prisma.test.create({
+        data: {
+            title,
+            description: description || null,
+            dueDate: dueDate || null,
+            totalPoints: totalPoints || 0,
+            courseId: Number(courseId),
+            createdAt: now
+        }
+    })
+    
+    if (questions && Array.isArray(questions)) {
+        for (const q of questions) {
+            await prisma.testQuestion.create({
+                data: {
+                    testId: result.id,
+                    question: q.question || q.prompt || "",
+                    options: JSON.stringify(q.options || []),
+                    answer: q.answer || ""
+                }
+            })
+        }
+    }
+    
     const newTest = {
-      id: result.lastID.toString(),
+      id: result.id,
       title,
       description,
       dueDate,
       courseId,
       questions: questions || [],
       totalPoints: totalPoints || 0,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     }
 
     res.status(201).json({ success: true, data: newTest })
@@ -4299,35 +4316,18 @@ app.post("/api/courses", async (req: Request, res: Response) => {
       })
     }
 
-    const db = await getConnection()
-    const result = await db.run(
-      "INSERT INTO courses (name, description, department, tutor_id, start_date, end_date, category, section, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [
-        courseName,
-        description,
-        department,
-        tutorId,
-        startDate,
-        endDate,
-        category || department,
-        req.body.section || null,
-        new Date().toISOString(),
-      ],
-    )
-    await db.close()
-
-    const newCourse = {
-      id: result.lastID.toString(),
-      name: courseName,
-      description,
-      department,
-      tutorId,
-      startDate,
-      endDate,
-      category: category || department,
-      section: req.body.section || null,
-      createdAt: new Date().toISOString(),
-    }
+    
+    const now = new Date().toISOString()
+    const newCourse = await prisma.course.create({
+        data: {
+            name: courseName,
+            description,
+            department,
+            tutorId: Number(tutorId),
+            category: category || department,
+            createdAt: now
+        }
+    })
 
     res.status(201).json({ success: true, data: newCourse })
   } catch (error) {
@@ -4350,15 +4350,15 @@ app.delete("/api/courses/:id", async (req: Request, res: Response) => {
       })
     }
 
-    const db = await getConnection()
-    const result = await db.run("DELETE FROM courses WHERE id = ?", [id])
-    await db.close()
-
-    if (result.changes === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Course not found",
-      })
+    try {
+        await prisma.course.delete({
+            where: { id: Number(id) }
+        })
+    } catch (e) {
+        return res.status(404).json({
+            success: false,
+            error: "Course not found",
+        })
     }
 
     res.json({ success: true, message: "Course deleted successfully" })
@@ -5162,7 +5162,7 @@ app.post("/api/students/bulk", async (req: Request, res: Response) => {
       })
     }
 
-    const db = await getConnection()
+    
     const ids: string[] = []
 
     for (const email of emails) {
@@ -5172,17 +5172,17 @@ app.post("/api/students/bulk", async (req: Request, res: Response) => {
           .replace(/[.]/g, " ")
           .replace(/\b\w/g, (l: string) => l.toUpperCase())
 
-        const result = await db.run("INSERT INTO users (name, email, role, created_at) VALUES (?, ?, ?, ?)", [
-          name,
-          email,
-          "student",
-          new Date().toISOString(),
-        ])
-        ids.push(result.lastID.toString())
+        const newUser = await prisma.user.create({
+            data: {
+                name,
+                email,
+                role: "student",
+                createdAt: new Date().toISOString()
+            }
+        })
+        ids.push(newUser.id.toString())
       }
     }
-
-    await db.close()
 
     res.status(201).json({ success: true, ids, count: ids.length })
   } catch (error) {
@@ -5826,37 +5826,10 @@ app.get("/api/tutor/stats", async (req: Request, res: Response) => {
 // Database initialization
 async function initializeDatabase(): Promise<void> {
   try {
-    console.log("Initializing database schema...")
-    const db = await getConnection()
-    const schemaFiles = [
-      path.join(baseDir, "database", "schema.sql"),
-      path.join(baseDir, "database", "content-schema.sql"),
-    ]
-
-    for (const file of schemaFiles) {
-      try {
-        const sql = await fs.readFile(file, "utf8")
-        const statements = sql
-          .split(/;\s*\n/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-
-        for (const stmt of statements) {
-          try {
-            await db.exec(stmt + ";")
-          } catch (e: any) {
-            if (!e.message.includes("already exists")) {
-              console.warn(`Statement execution warning:`, e.message)
-            }
-          }
-        }
-        console.log(`✓ Executed ${file}`)
-      } catch (e: any) {
-        console.warn(`⚠️ File ${file} not found:`, e.message)
-      }
-    }
-    await db.close()
-    console.log("✓ Database schema initialization completed")
+    console.log("Initializing database schema (Prisma)...")
+    // Prisma handles schema management via migrations or db push
+    // No manual SQL execution needed here for Postgres
+    console.log("✓ Database schema initialization completed (via Prisma)")
   } catch (e) {
     console.error("❌ Database initialization failed:", e)
     throw e
