@@ -70,11 +70,11 @@ export default function EmailInbox() {
   const loadEmails = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem("auth_token")
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token')
       const response = await fetch(`/api/emails?folder=${activeFolder}`, {
         headers: {
-          Authorization: `Bearer ${token}`,
-        },
+          'Authorization': `Bearer ${token}`
+        }
       })
 
       if (!response.ok) {
@@ -106,12 +106,10 @@ export default function EmailInbox() {
     }
 
     try {
-      const token = localStorage.getItem("auth_token")
       const response = await fetch("/api/emails/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(composeData),
       })
@@ -139,12 +137,10 @@ export default function EmailInbox() {
 
   const handleMarkAsRead = async (emailId: string, read: boolean) => {
     try {
-      const token = localStorage.getItem("auth_token")
       await fetch(`/api/emails/${emailId}/read`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ read }),
       })
@@ -157,12 +153,10 @@ export default function EmailInbox() {
 
   const handleStarEmail = async (emailId: string, starred: boolean) => {
     try {
-      const token = localStorage.getItem("auth_token")
       await fetch(`/api/emails/${emailId}/star`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ starred }),
       })

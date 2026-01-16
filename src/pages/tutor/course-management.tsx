@@ -106,11 +106,7 @@ export default function CourseManagementPage() {
   const loadScheduledSessions = async () => {
     try {
       setLoadingSessions(true)
-      const response = await fetch('/api/tutor/scheduled-sessions', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const response = await fetch('/api/tutor/scheduled-sessions');
 
       if (response.ok) {
         const data = await response.json();
@@ -182,7 +178,7 @@ export default function CourseManagementPage() {
     setIsInviting(true)
     try {
       const emails = inviteEmails.split(/[,\n]/).map(e => e.trim()).filter(Boolean)
-      const token = localStorage.getItem('token')
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token')
       
       const response = await fetch('/api/tutor/students/invite', {
         method: 'POST',
@@ -245,12 +241,10 @@ export default function CourseManagementPage() {
     
     // Send email notifications to students
     try {
-      const token = localStorage.getItem('token');
       await fetch('/api/tutor/live-session/notify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           courseId: course.id,
@@ -307,11 +301,12 @@ export default function CourseManagementPage() {
         return;
       }
 
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
       const response = await fetch('/api/tutor/scheduled-sessions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           courseId: schedulingCourse.id,
@@ -328,11 +323,12 @@ export default function CourseManagementPage() {
 
       // Send email notifications to students
       try {
+        const notifyToken = localStorage.getItem('auth_token') || localStorage.getItem('token');
         await fetch('/api/tutor/live-session/notify', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
+            'Authorization': `Bearer ${notifyToken}`
           },
           body: JSON.stringify({
             courseId: schedulingCourse.id,
@@ -374,10 +370,11 @@ export default function CourseManagementPage() {
     }
 
     try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
       const response = await fetch(`/api/tutor/scheduled-sessions?id=${sessionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       });
 
@@ -574,16 +571,16 @@ export default function CourseManagementPage() {
                         <div className="text-sm text-muted-foreground">Students</div>
                       </div>
                       <div className="text-center p-4 bg-muted/50 rounded-lg">
-                        <div className="text-2xl font-bold">{selectedCourse.totalLessons}</div>
-                        <div className="text-sm text-muted-foreground">Total Lessons</div>
+                        <div className="text-2xl font-bold">{selectedCourse.materials?.length || 0}</div>
+                        <div className="text-sm text-muted-foreground">Materials</div>
                       </div>
                       <div className="text-center p-4 bg-muted/50 rounded-lg">
                         <div className="text-2xl font-bold">{selectedCourse.tests.length}</div>
                         <div className="text-sm text-muted-foreground">Tests</div>
                       </div>
                       <div className="text-center p-4 bg-muted/50 rounded-lg">
-                        <div className="text-2xl font-bold">{selectedCourse.rating}</div>
-                        <div className="text-sm text-muted-foreground">Rating</div>
+                        <div className="text-2xl font-bold">{selectedCourse.progress || 0}%</div>
+                        <div className="text-sm text-muted-foreground">Progress</div>
                       </div>
                     </div>
                   </TabsContent>

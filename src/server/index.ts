@@ -405,6 +405,27 @@ app.post("/api/upload/material", authenticateJWT as RequestHandler, upload.singl
   }
 })
 
+app.post("/api/upload", authenticateJWT as RequestHandler, upload.single("file"), async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const file = req.file
+
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" })
+    }
+
+    const fileUrl = `/uploads/${file.filename}`
+
+    res.json({
+      url: fileUrl,
+      id: file.filename,
+      name: file.originalname,
+    })
+  } catch (error) {
+    console.error("Generic upload error:", error)
+    res.status(500).json({ error: "Failed to upload file" })
+  }
+})
+
 // Cloudinary material upload endpoint - saves Cloudinary URL to database
 app.post("/api/upload/cloudinary-material", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
