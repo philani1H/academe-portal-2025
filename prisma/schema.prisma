@@ -8,64 +8,64 @@ datasource db {
 }
 
 model User {
-  id               Int                @id @default(autoincrement())
-  name             String
-  email            String             @unique
-  studentNumber    String?            @unique @map("student_number") // 11-digit numeric ID (YYYYPPSSSSC)
-  programCode      Int?               @map("program_code") // Program code for students (1-99)
-  personalEmail    String?            @map("personal_email") // For external communications (newsletters, updates)
-  password_hash    String
-  role             String
-  department       String?
-  subjects         String?            // JSON array of subjects/courses taught (for tutors)
-  createdAt        DateTime?          @default(now()) @map("created_at")
-  updatedAt        DateTime?          @default(now()) @updatedAt @map("updated_at")
-  courses            Course[]
-  notifications      Notification[]
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  email              String              @unique
+  studentNumber      String?             @unique @map("student_number")
+  programCode        Int?                @map("program_code")
+  personalEmail      String?             @map("personal_email")
+  password_hash      String
+  role               String
+  department         String?
+  subjects           String?
+  createdAt          DateTime?           @default(now()) @map("created_at")
+  updatedAt          DateTime?           @default(now()) @updatedAt @map("updated_at")
   courseEnrollments  CourseEnrollment[]
+  notifications      Notification[]
   testSubmissions    TestSubmission[]
-  scheduledSessions  ScheduledSession[]
-  payslips           Payslip[]
+  courses            Course[]
   financialRecords   FinancialRecord[]
-  timetableEntries   TimetableEntry[]
+  payslips           Payslip[]
+  scheduledSessions  ScheduledSession[]
   timetableDocuments TimetableDocument[]
+  timetableEntries   TimetableEntry[]
 
   @@map("users")
 }
 
 model ScheduledSession {
-  id          String   @id @default(uuid())
-  courseId    Int      @map("course_id")
-  tutorId     Int      @map("tutor_id")
+  id          String       @id @default(uuid())
   title       String
   description String?
-  scheduledAt DateTime @map("scheduled_at")
-  duration    Int      // minutes
-  status      String   @default("scheduled") // scheduled, active, completed, cancelled
-  sessionId   String?  @map("session_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  course      Course   @relation(fields: [courseId], references: [id])
-  tutor       User     @relation(fields: [tutorId], references: [id])
+  duration    Int
+  status      String       @default("scheduled")
+  courseId    Int          @map("course_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  scheduledAt DateTime     @map("scheduled_at")
+  sessionId   String?      @map("session_id")
+  tutorId     Int          @map("tutor_id")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
   liveSession LiveSession?
+  course      Course       @relation(fields: [courseId], references: [id])
+  tutor       User         @relation(fields: [tutorId], references: [id])
 
   @@map("scheduled_sessions")
 }
 
 model LiveSession {
-  id               String                @id @default(uuid())
-  scheduledId      String?               @unique @map("scheduled_id")
-  sessionId        String                @unique @map("session_id")
-  courseId         Int                   @map("course_id")
-  tutorId          Int                   @map("tutor_id")
-  startTime        DateTime              @default(now()) @map("start_time")
-  endTime          DateTime?             @map("end_time")
-  status           String                @default("active") // active, ended
-  participantCount Int                   @default(0) @map("participant_count")
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt @map("updated_at")
-  scheduledSession ScheduledSession?     @relation(fields: [scheduledId], references: [id])
+  id               String                   @id @default(uuid())
+  scheduledId      String?                  @unique @map("scheduled_id")
+  sessionId        String                   @unique @map("session_id")
+  courseId         Int                      @map("course_id")
+  tutorId          Int                      @map("tutor_id")
+  startTime        DateTime                 @default(now()) @map("start_time")
+  endTime          DateTime?                @map("end_time")
+  status           String                   @default("active")
+  participantCount Int                      @default(0) @map("participant_count")
+  createdAt        DateTime                 @default(now()) @map("created_at")
+  updatedAt        DateTime                 @updatedAt @map("updated_at")
   participants     LiveSessionParticipant[]
+  scheduledSession ScheduledSession?        @relation(fields: [scheduledId], references: [id])
 
   @@index([sessionId])
   @@index([courseId])
@@ -103,19 +103,19 @@ model AdminUser {
 }
 
 model Course {
-  id                Int                @id @default(autoincrement())
+  id                Int                  @id @default(autoincrement())
   name              String
   description       String?
-  category          String?            // This is the subject/course name
-  department        String?            // Auto-assigned based on category
-  tutorId           Int?               @map("tutor_id")
-  createdAt         DateTime?          @default(now()) @map("created_at")
-  updatedAt         DateTime?          @default(now()) @updatedAt @map("updated_at")
-  tutor             User?              @relation(fields: [tutorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  courseEnrollments CourseEnrollment[]
-  tests             Test[]
-  materials         CourseMaterial[]
+  category          String?
+  department        String?
+  tutorId           Int?                 @map("tutor_id")
+  createdAt         DateTime?            @default(now()) @map("created_at")
+  updatedAt         DateTime?            @default(now()) @updatedAt @map("updated_at")
   announcements     CourseAnnouncement[]
+  courseEnrollments CourseEnrollment[]
+  materials         CourseMaterial[]
+  tests             Test[]
+  tutor             User?                @relation(fields: [tutorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   scheduledSessions ScheduledSession[]
   timetableEntries  TimetableEntry[]
 
@@ -126,7 +126,7 @@ model CourseMaterial {
   id          String   @id @default(uuid())
   courseId    Int
   name        String
-  type        String   // pdf, video, document
+  type        String
   url         String
   description String?
   createdAt   DateTime @default(now())
@@ -158,12 +158,12 @@ model CourseEnrollment {
 model Test {
   id          String           @id @default(uuid())
   title       String
-  description String?
-  dueDate     String?
-  totalPoints Int?             @default(0)
   courseId    Int
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
+  description String?
+  dueDate     String?
+  totalPoints Int?             @default(0)
   course      Course           @relation(fields: [courseId], references: [id])
   questions   TestQuestion[]
   submissions TestSubmission[]
@@ -442,28 +442,28 @@ model Email {
 }
 
 model Payslip {
-  id           String   @id @default(uuid())
-  userId       Int      @map("user_id")
-  month        String
-  year         Int
-  basicSalary  Float    @map("basic_salary")
-  allowances   Float    @default(0)
-  deductions   Float    @default(0)
-  netSalary    Float    @map("net_salary")
-  paymentDate  String?  @map("payment_date")
-  status       String   @default("pending")
-  notes        String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-  user         User     @relation(fields: [userId], references: [id])
+  id          String   @id @default(uuid())
+  userId      Int      @map("user_id")
+  month       String
+  year        Int
+  basicSalary Float    @map("basic_salary")
+  allowances  Float    @default(0)
+  deductions  Float    @default(0)
+  netSalary   Float    @map("net_salary")
+  paymentDate String?  @map("payment_date")
+  status      String   @default("pending")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  user        User     @relation(fields: [userId], references: [id])
 
   @@map("payslips")
 }
 
 model FinancialRecord {
   id              String   @id @default(uuid())
-  type            String   // income, expense
-  category        String   // salary, subscription, utilities, etc.
+  type            String
+  category        String
   amount          Float
   description     String?
   date            String
@@ -512,13 +512,13 @@ model Channel {
   id          String           @id @default(uuid())
   name        String
   description String?
-  type        String           @default("team") // team, department, general
+  type        String           @default("team")
   department  String?
   isPrivate   Boolean          @default(false)
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
-  messages    ChannelMessage[]
   members     ChannelMember[]
+  messages    ChannelMessage[]
 
   @@map("channels")
 }
@@ -527,7 +527,7 @@ model ChannelMember {
   id        String   @id @default(uuid())
   channelId String   @map("channel_id")
   userId    Int      @map("user_id")
-  role      String   @default("member") // admin, member
+  role      String   @default("member")
   joinedAt  DateTime @default(now()) @map("joined_at")
   channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
@@ -568,7 +568,7 @@ model Announcement {
   id         String   @id @default(uuid())
   title      String
   content    String
-  type       String   @default("general") // general, department, urgent
+  type       String   @default("general")
   department String?
   authorId   Int      @map("author_id")
   pinned     Boolean  @default(false)

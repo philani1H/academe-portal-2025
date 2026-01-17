@@ -37,8 +37,7 @@ async function getTutorStudents(req: NextApiRequest, res: NextApiResponse) {
         enrollments: {
           some: {
             course: {
-              // Assuming we have a tutorId field in Course model
-              // For now, we'll get all students
+              tutorId: parseInt(tutorId as string)
             }
           }
         }

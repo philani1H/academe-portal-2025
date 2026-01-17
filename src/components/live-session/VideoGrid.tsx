@@ -35,15 +35,28 @@ const VideoPlayer = ({ stream, isLocal = false }: { stream: MediaStream | null |
     );
 };
 
-// Speaking indicator animation
+// Enhanced Speaking indicator animation with sound wave bars
 const SpeakingIndicator = ({ isAudioOn, isSpeaking }: { isAudioOn: boolean; isSpeaking?: boolean }) => {
     if (!isAudioOn || !isSpeaking) return null;
     return (
-        <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-green-500/20 rounded-full px-2 py-1 backdrop-blur-sm">
-            <div className="h-2 w-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-            <div className="h-3 w-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-            <div className="h-2 w-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+        <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-gradient-to-r from-green-500/30 to-emerald-500/30 rounded-full px-2.5 py-1.5 backdrop-blur-md border border-green-400/30 shadow-lg shadow-green-500/20">
+            <div className="h-2 w-1 bg-gradient-to-t from-green-400 to-emerald-300 rounded-full animate-sound-bar-1" />
+            <div className="h-3.5 w-1 bg-gradient-to-t from-green-400 to-emerald-300 rounded-full animate-sound-bar-2" />
+            <div className="h-2.5 w-1 bg-gradient-to-t from-green-400 to-emerald-300 rounded-full animate-sound-bar-3" />
+            <div className="h-4 w-1 bg-gradient-to-t from-green-400 to-emerald-300 rounded-full animate-sound-bar-4" />
+            <div className="h-2 w-1 bg-gradient-to-t from-green-400 to-emerald-300 rounded-full animate-sound-bar-5" />
         </div>
+    );
+};
+
+// Speaking ring glow effect for video container
+const SpeakingRing = ({ isSpeaking }: { isSpeaking?: boolean }) => {
+    if (!isSpeaking) return null;
+    return (
+        <>
+            <div className="absolute inset-0 rounded-xl ring-2 ring-green-400/60 animate-pulse pointer-events-none z-10" />
+            <div className="absolute inset-0 rounded-xl shadow-[0_0_20px_rgba(74,222,128,0.4)] pointer-events-none z-10" />
+        </>
     );
 };
 
@@ -147,6 +160,7 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                          <div className="w-full h-full relative">
                             <VideoPlayer stream={tutorPeer.stream} />
                             <SpeakingIndicator isAudioOn={tutorPeer.isAudioOn} isSpeaking={speakingPeers.has(tutorPeer.peerId)} />
+                            <SpeakingRing isSpeaking={speakingPeers.has(tutorPeer.peerId) && tutorPeer.isAudioOn} />
 
                             {/* Tutor Info Badge */}
                             <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 bg-gradient-to-r from-indigo-600/90 to-purple-600/90 backdrop-blur-md rounded-xl px-4 py-2 sm:px-5 sm:py-3 flex flex-col gap-1 shadow-xl border border-indigo-400/30">
@@ -231,11 +245,12 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
             {studentPeers.length > 0 ? (
                 <div className={`grid ${getGridCols(studentPeers.length)} gap-2 sm:gap-3 auto-rows-fr flex-1 overflow-y-auto content-start pb-2 sm:pb-4`}>
                     {studentPeers.map(p => (
-                        <Card key={p.peerId} className="relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-950 border border-indigo-500/20 hover:border-indigo-400/50 transition-all duration-300 group min-h-[120px] sm:min-h-[150px] md:min-h-[180px] hover:shadow-lg hover:shadow-indigo-500/10 rounded-xl">
+                        <Card key={p.peerId} className={`relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-950 border transition-all duration-300 group min-h-[120px] sm:min-h-[150px] md:min-h-[180px] hover:shadow-lg rounded-xl ${speakingPeers.has(p.peerId) && p.isAudioOn ? 'border-green-400/60 shadow-lg shadow-green-500/20' : 'border-indigo-500/20 hover:border-indigo-400/50 hover:shadow-indigo-500/10'}`}>
                             {p.stream && p.isVideoOn ? (
                                 <div className="w-full h-full relative">
                                     <VideoPlayer stream={p.stream} />
                                     <SpeakingIndicator isAudioOn={p.isAudioOn} isSpeaking={speakingPeers.has(p.peerId)} />
+                                    <SpeakingRing isSpeaking={speakingPeers.has(p.peerId) && p.isAudioOn} />
                                 </div>
                             ) : (
                                 <div className="w-full h-full flex flex-col items-center justify-center gap-2 sm:gap-3 p-4">

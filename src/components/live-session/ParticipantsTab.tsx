@@ -31,7 +31,7 @@ export function ParticipantsTab({
   const otherParticipants = participants.filter(p => !isCurrentUser(p.uid));
 
   return (
-    <div className="flex-1 overflow-auto p-3 space-y-3">
+    <div className="flex-1 overflow-auto p-3 space-y-3 bg-gradient-to-b from-slate-900 to-slate-950">
       {/* Current User - Always show first */}
       {currentUser && (
         <div className="bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-500/50 rounded-lg p-4 backdrop-blur-sm">
@@ -108,34 +108,34 @@ export function ParticipantsTab({
       {/* Divider */}
       {otherParticipants.length > 0 && (
         <div className="flex items-center gap-2 px-2 py-2">
-          <div className="flex-1 h-px bg-gray-700"></div>
-          <span className="text-xs text-gray-400 font-medium">Other Participants ({otherParticipants.length})</span>
-          <div className="flex-1 h-px bg-gray-700"></div>
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent"></div>
+          <span className="text-xs text-indigo-300/60 font-medium">Other Participants ({otherParticipants.length})</span>
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent"></div>
         </div>
       )}
 
       {/* Other Participants */}
       {otherParticipants.map((participant) => (
-        <div key={participant.uid} className="bg-gray-800/60 hover:bg-gray-800/80 rounded-lg p-3 transition-colors border border-gray-700">
+        <div key={participant.uid} className="bg-gradient-to-br from-slate-800/60 to-slate-900/60 hover:from-slate-800/80 hover:to-slate-900/80 rounded-xl p-3 transition-all duration-200 border border-indigo-500/10 hover:border-indigo-500/30">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3 flex-1">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold flex-shrink-0 text-sm">
-                {participant.role === 'tutor' ? '👨‍🏫' : '👤'}
+              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0 text-sm shadow-lg">
+                {participant.name?.charAt(0).toUpperCase() || (participant.role === 'tutor' ? 'T' : 'S')}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-medium truncate">
                   {participant.name || (participant.role === 'tutor' ? 'Tutor' : `Student`)}
                 </p>
-                <p className="text-gray-400 text-xs capitalize">{participant.role}</p>
+                <p className="text-indigo-300/50 text-xs capitalize">{participant.role}</p>
               </div>
             </div>
             <div className="flex gap-2 flex-shrink-0">
               {participant.isHandRaised && (
-                <div className="flex items-center justify-center bg-yellow-500/20 rounded p-1">
+                <div className="flex items-center justify-center bg-yellow-500/20 rounded-lg p-1.5 animate-bounce">
                   <Hand className="h-3.5 w-3.5 text-yellow-400" />
                 </div>
               )}
-              <div className="flex gap-1 bg-gray-900/50 rounded p-1">
+              <div className="flex gap-1.5 bg-slate-900/50 rounded-lg p-1.5">
                 {participant.isAudioOn ? (
                   <Mic className="h-3.5 w-3.5 text-green-400" />
                 ) : (
@@ -152,7 +152,7 @@ export function ParticipantsTab({
 
           {/* Tutor Controls */}
           {userRole === 'tutor' && participant.role === 'student' && (
-            <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-gray-700">
+            <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-indigo-500/10">
               <div className="flex gap-2">
                 {participant.canShare ? (
                   <Button
@@ -215,9 +215,12 @@ export function ParticipantsTab({
 
       {/* Empty State */}
       {participants.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-          <User className="h-8 w-8 mb-2 opacity-50" />
-          <p className="text-sm">No participants yet</p>
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="h-16 w-16 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center mb-3">
+            <User className="h-7 w-7 text-indigo-400/50" />
+          </div>
+          <p className="text-indigo-300/60 text-sm">No participants yet</p>
+          <p className="text-indigo-300/40 text-xs mt-1">Waiting for others to join...</p>
         </div>
       )}
     </div>

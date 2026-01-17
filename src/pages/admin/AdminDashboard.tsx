@@ -537,13 +537,15 @@ export default function AdminDashboard() {
       
       // Add status field and course counts
       const tutorsWithStatus = tutorList.map((t: any) => {
+        const tutorId = String(t.id)
         const tutorCourses = allCourses.filter((c: any) => {
           const courseTutorId = String(c.tutorId ?? c.tutor_id ?? '')
-          return courseTutorId === String(t.id)
+          return courseTutorId === tutorId
         })
         
         return {
           ...t,
+          id: tutorId,
           status: 'active',
           courses: tutorCourses.map((c: any) => String(c.id ?? c.ID)),
           students: 0, // Will be populated if needed
@@ -595,7 +597,13 @@ export default function AdminDashboard() {
     try {
       const data = await apiFetch<any>(`/api/admin/users?role=student`)
       const rows = (data && (data as any).data) ? (data as any).data : data
-      setStudents(Array.isArray(rows) ? rows : [])
+      const list = Array.isArray(rows) ? rows : []
+      const normalized = list.map((s: any) => ({
+        ...s,
+        id: String(s.id),
+        enrolledCourses: (s.enrolledCourses || []).map((id: any) => String(id))
+      }))
+      setStudents(normalized)
     } catch (e) {
       console.error('Failed to fetch students:', e)
       setStudents([])
@@ -1431,7 +1439,7 @@ export default function AdminDashboard() {
     try {
       const rows = filteredTutors.map((tutor) => {
         const tutorCourses = courses
-          .filter((course) => course.tutorId && course.tutorId === tutor.id)
+          .filter((course) => course.tutorId && String(course.tutorId) === String(tutor.id))
           .map((course) => course.name)
         return {
           id: tutor.id,

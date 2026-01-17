@@ -57,15 +57,15 @@ export function Sidebar({
   if (!isOpen) return null
 
   return (
-    <div className="w-full sm:w-80 md:w-96 bg-gradient-to-b from-gray-900 to-gray-800 border-l border-gray-700 flex flex-col h-full sm:h-auto absolute sm:relative inset-0 sm:inset-auto z-40 sm:z-auto">
+    <div className="w-full sm:w-80 md:w-96 bg-gradient-to-b from-slate-900 to-slate-950 border-l border-indigo-500/20 flex flex-col h-full sm:h-auto absolute sm:relative inset-0 sm:inset-auto z-40 sm:z-auto">
       {/* Tabs */}
-      <div className="flex border-b border-gray-700 bg-gray-900/95 backdrop-blur-sm">
+      <div className="flex border-b border-indigo-500/20 bg-slate-900/95 backdrop-blur-sm">
         <button
           onClick={() => setActiveTab('chat')}
           className={`flex-1 py-3 px-2 text-sm font-medium flex items-center justify-center gap-2 transition-all relative ${
-            activeTab === 'chat' 
-              ? 'text-indigo-400 bg-gray-800/50' 
-              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
+            activeTab === 'chat'
+              ? 'text-indigo-400 bg-slate-800/50'
+              : 'text-indigo-300/50 hover:text-indigo-200 hover:bg-slate-800/30'
           }`}
         >
           <MessageSquare className="h-4 w-4" />
@@ -77,9 +77,9 @@ export function Sidebar({
         <button
           onClick={() => setActiveTab('participants')}
           className={`flex-1 py-3 px-2 text-sm font-medium flex items-center justify-center gap-2 transition-all relative ${
-            activeTab === 'participants' 
-              ? 'text-indigo-400 bg-gray-800/50' 
-              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
+            activeTab === 'participants'
+              ? 'text-indigo-400 bg-slate-800/50'
+              : 'text-indigo-300/50 hover:text-indigo-200 hover:bg-slate-800/30'
           }`}
         >
           <Users className="h-4 w-4" />
@@ -91,9 +91,9 @@ export function Sidebar({
         <button
           onClick={() => setActiveTab('files')}
           className={`flex-1 py-3 px-2 text-sm font-medium flex items-center justify-center gap-2 transition-all relative ${
-            activeTab === 'files' 
-              ? 'text-indigo-400 bg-gray-800/50' 
-              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
+            activeTab === 'files'
+              ? 'text-indigo-400 bg-slate-800/50'
+              : 'text-indigo-300/50 hover:text-indigo-200 hover:bg-slate-800/30'
           }`}
         >
           <FileText className="h-4 w-4" />
@@ -105,9 +105,9 @@ export function Sidebar({
         <button
           onClick={() => setActiveTab('notes')}
           className={`flex-1 py-3 px-2 text-sm font-medium flex items-center justify-center gap-2 transition-all relative ${
-            activeTab === 'notes' 
-              ? 'text-indigo-400 bg-gray-800/50' 
-              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
+            activeTab === 'notes'
+              ? 'text-indigo-400 bg-slate-800/50'
+              : 'text-indigo-300/50 hover:text-indigo-200 hover:bg-slate-800/30'
           }`}
         >
           <StickyNote className="h-4 w-4" />
