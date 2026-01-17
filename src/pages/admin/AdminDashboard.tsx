@@ -2063,9 +2063,9 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
+      {/* Sidebar - Desktop Only */}
       <aside
-        className={`bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out ${sidebarOpen ? "left-0 w-64" : "-left-64 w-64 md:left-0 md:w-20"
+        className={`hidden md:flex bg-white border-r border-gray-200 fixed inset-y-0 z-50 transition-all duration-300 ease-in-out ${sidebarOpen ? "left-0 w-64" : "left-0 w-20"
           }`}
       >
         <div className="flex flex-col h-full">
@@ -2087,17 +2087,17 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("dashboard")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
-                <Home className="h-5 w-5 mr-2 flex-shrink-0" />
+                <Home className={`h-5 w-5 flex-shrink-0 ${sidebarOpen ? "mr-2" : ""}`} />
                 {sidebarOpen && <span>Dashboard</span>}
               </button>
 
               <button
                 onClick={() => setActiveTab("tutors")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "tutors" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "tutors" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <User className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2119,7 +2119,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("students")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "students" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "students" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <Users className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2141,7 +2141,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("courses")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "courses" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "courses" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <BookOpen className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2163,7 +2163,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("departments")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "departments" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "departments" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <Building className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2173,7 +2173,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("notifications")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "notifications" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "notifications" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <Bell className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2191,7 +2191,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("timetable")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "timetable" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "timetable" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <Calendar className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2201,7 +2201,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("content")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "content" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "content" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <Layout className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2211,7 +2211,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("finance")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "finance" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "finance" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <DollarSign className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2221,7 +2221,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("it_management")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "it_management" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "it_management" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <Server className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2231,7 +2231,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("settings")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "settings" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "settings" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <Settings className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2241,7 +2241,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setActiveTab("admins")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
-                  } w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "admins" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "admins" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                   }`}
               >
                 <Shield className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -2296,11 +2296,6 @@ export default function AdminDashboard() {
 
       {/* Mobile menu */}
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden absolute top-4 left-4 z-50">
-            <Menu className="h-6 w-6" />
-          </Button>
-        </SheetTrigger>
         <SheetContent side="left" className="w-64 p-0">
           <div className="flex flex-col h-full">
             <div className="p-4 border-b border-gray-200 flex items-center">
@@ -2315,7 +2310,7 @@ export default function AdminDashboard() {
                     setActiveTab("dashboard")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "dashboard" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                     }`}
                 >
                   <Home className="h-5 w-5 mr-2" />
@@ -2327,7 +2322,7 @@ export default function AdminDashboard() {
                     setActiveTab("tutors")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "tutors" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "tutors" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                     }`}
                 >
                   <User className="h-5 w-5 mr-2" />
@@ -2344,7 +2339,7 @@ export default function AdminDashboard() {
                     setActiveTab("students")
                     setMobileMenuOpen(false)
                   }}
-                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-md ${activeTab === "students" ? "bg-indigo-50 text-indigo-600" : "text-gray-700 hover:bg-gray-100"
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "students" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                     }`}
                 >
                   <Users className="h-5 w-5 mr-2" />
@@ -2468,14 +2463,14 @@ export default function AdminDashboard() {
       {/* Main content */}
       <main className={`flex-1 transition-all duration-300 ease-in-out ${sidebarOpen ? "md:ml-64" : "md:ml-20"}`}>
         {/* Header */}
-        <header className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={() => setMobileMenuOpen(true)} className="lg:hidden">
-                <Menu className="h-4 w-4" />
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90 border-b border-gray-200 shadow-sm">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <Button variant="ghost" size="sm" onClick={() => setMobileMenuOpen(true)} className="md:hidden">
+                <Menu className="h-5 w-5" />
               </Button>
               <div>
-                <h2 className="text-lg font-semibold capitalize">{activeTab}</h2>
+                <h2 className="text-lg sm:text-xl font-semibold capitalize text-gray-900">{activeTab.replace('_', ' ')}</h2>
                 <p className="text-sm text-muted-foreground">
                   {activeTab === "dashboard" && "Overview of your teaching activities"}
                   {activeTab === "courses" && "Manage your subjects and content"}
@@ -2491,8 +2486,9 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-end">
-              <Button size="sm" onClick={() => setInviteOpen(true)}>
-                <UserPlus className="h-4 w-4 mr-2" /> Invite
+              <Button size="sm" onClick={() => setInviteOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                <UserPlus className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Invite</span>
               </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
