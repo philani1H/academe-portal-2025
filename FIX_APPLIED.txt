@@ -1,0 +1,56 @@
+🎯 DATABASE TABLE MAPPING FIX APPLIED!
+
+I've fixed the issue! The problem was that Prisma was looking for tables with the wrong names.
+
+Example:
+- Prisma was looking for: "HeroContent"
+- But the database has: "hero_content"
+
+✅ WHAT I FIXED:
+Added @@map() directives to 16 models in prisma/schema.prisma to match your existing database table names.
+
+🚀 WHAT YOU NEED TO DO NOW (3 simple steps):
+
+Step 1: Pull the latest changes
+---------------------------------
+git pull origin claude/fix-admin-seed-error-uaKaR
+
+
+Step 2: Regenerate Prisma Client (IMPORTANT!)
+----------------------------------------------
+npx prisma generate
+
+
+Step 3: Restart your server
+----------------------------
+Stop your current server (Ctrl+C) and run:
+npm run dev
+
+
+✨ EXPECTED RESULT:
+After regenerating Prisma client and restarting, all these errors should be GONE:
+❌ "The table `main.HeroContent` does not exist"
+❌ "The table `main.PricingPlan` does not exist"
+❌ "The table `main.Feature` does not exist"
+❌ "The table `main.Testimonial` does not exist"
+❌ "The table `main.Subject` does not exist"
+❌ "The table `main.SiteSettings` does not exist"
+
+✅ Server will connect to existing database tables
+✅ All content will load properly
+✅ No more "table does not exist" errors!
+
+---
+
+💡 What happened?
+PostgreSQL stores table names in snake_case (hero_content), but Prisma was looking
+for them in PascalCase (HeroContent). The @@map() directive tells Prisma the actual
+table name in the database.
+
+Now Prisma knows:
+- HeroContent model → uses "hero_content" table
+- PricingPlan model → uses "pricing_plans" table
+- Feature model → uses "features" table
+etc.
+
+Ready to test! Just run those 3 commands above. 🚀
