@@ -6,25 +6,41 @@ import { Button } from "./ui/button"
 import { Link, useNavigate } from "react-router-dom"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card"
-import { 
-  CheckCircle, 
-  GraduationCap, 
-  BookOpen, 
-  ArrowRight, 
-  Star, 
-  Calendar, 
-  Users, 
+import {
+  CheckCircle,
+  GraduationCap,
+  BookOpen,
+  ArrowRight,
+  Star,
+  Calendar,
+  Users,
   Award
 } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 
 const Hero = () => {
   const [showGradeDialog, setShowGradeDialog] = useState(false)
   const [animateParticles, setAnimateParticles] = useState(false)
+  const [heroContent, setHeroContent] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
   useEffect(() => {
     setAnimateParticles(true)
+    fetchHeroContent()
   }, [])
+
+  const fetchHeroContent = async () => {
+    try {
+      const data = await apiFetch<any>('/api/admin/content/hero')
+      setHeroContent(data)
+    } catch (error) {
+      console.error('Error fetching hero content:', error)
+      // Keep default content if API fails
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handlePlanClick = (e) => {
     e.preventDefault()
@@ -38,29 +54,52 @@ const Hero = () => {
     if (option === "grade-11") {
       navigate("/exam-rewrite")
     } else if (option === "grade-12") {
-      navigate("/pricing#standard") 
+      navigate("/pricing#standard")
     } else if (option === "exam-rewrite") {
       navigate("/exam-rewrite")
     }
   }
 
-  const features = [
+  // Default fallback features
+  const defaultFeatures = [
     {
       title: "Expert Instruction",
       description: "Learn from South Africa's finest educators with proven teaching methodologies",
-      icon: <Award className="h-10 w-10 text-blue-300 mb-2" />
+      icon: "Award"
     },
     {
       title: "Personalized Learning",
       description: "Adaptive curriculum tailored to your unique learning style and pace",
-      icon: <Users className="h-10 w-10 text-blue-300 mb-2" />
+      icon: "Users"
     },
     {
       title: "Success Guarantee",
       description: "Join thousands of students who improved their grades by 25% or more",
-      icon: <Star className="h-10 w-10 text-blue-300 mb-2" />
+      icon: "Star"
     }
   ]
+
+  // Use API data or fallback to defaults
+  const features = heroContent?.features || defaultFeatures
+  const title = heroContent?.title || "Welcome to Excellence Akademie"
+  const subtitle = heroContent?.subtitle || "25 Years of Academic Excellence"
+  const description = heroContent?.description || "Empowering South African students to reach their full potential through world-class education and personalized guidance"
+  const buttonText = heroContent?.buttonText || "View Our Pricing Plans"
+  const universities = heroContent?.universities || []
+
+  // Icon helper
+  const getIcon = (iconName: string) => {
+    const iconClass = "h-10 w-10 text-blue-300 mb-2"
+    switch(iconName) {
+      case "Award": return <Award className={iconClass} />
+      case "Users": return <Users className={iconClass} />
+      case "Star": return <Star className={iconClass} />
+      case "Calendar": return <Calendar className={iconClass} />
+      case "BookOpen": return <BookOpen className={iconClass} />
+      case "GraduationCap": return <GraduationCap className={iconClass} />
+      default: return <Award className={iconClass} />
+    }
+  }
 
   // Better particle system
   const particles = Array(30).fill().map((_, i) => ({
@@ -125,10 +164,20 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.2 }}
           >
             <h1 className="text-5xl md:text-7xl font-extrabold text-white mb-3 tracking-tight">
-              Welcome to <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-purple-300">Excellence Akademie</span>
+              {title.includes("Excellence Akademie") ? (
+                <>
+                  Welcome to <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-purple-300">Excellence Akademie</span>
+                </>
+              ) : (
+                <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-purple-300">{title}</span>
+              )}
             </h1>
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-6 tracking-tight">
-              <span className="text-blue-300">25</span> Years of Academic Excellence
+              {subtitle.includes("25") ? (
+                <><span className="text-blue-300">25</span> Years of Academic Excellence</>
+              ) : (
+                subtitle
+              )}
             </h2>
           </motion.div>
 
@@ -139,7 +188,7 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="text-xl md:text-2xl text-gray-200 mb-12 max-w-3xl mx-auto"
           >
-            Empowering South African students to reach their full potential through world-class education and personalized guidance
+            {description}
           </motion.p>
 
           {/* Feature Cards */}
@@ -152,14 +201,14 @@ const Hero = () => {
             {features.map((feature, index) => (
               <motion.div
                 key={index}
-                whileHover={{ 
+                whileHover={{
                   scale: 1.05,
                   boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)"
                 }}
                 transition={{ duration: 0.3 }}
                 className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/10 flex flex-col items-center"
               >
-                {feature.icon}
+                {typeof feature.icon === 'string' ? getIcon(feature.icon) : feature.icon}
                 <h3 className="text-2xl font-bold text-blue-200 mb-3">{feature.title}</h3>
                 <p className="text-gray-300">{feature.description}</p>
               </motion.div>
@@ -182,7 +231,7 @@ const Hero = () => {
                 className="bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 transition-all duration-300 ease-in-out shadow-lg font-semibold px-10 py-7 rounded-xl text-lg"
                 onClick={handlePlanClick}
               >
-                Choose a Plan
+                {buttonText}
               </Button>
             </motion.div>
             
