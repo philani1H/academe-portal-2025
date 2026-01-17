@@ -4596,8 +4596,8 @@ app.get("/api/tutors/:id", async (req: Request, res: Response) => {
   }
 })
 
-// Content API
-app.get("/api/admin/content/:type", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+// Content API - Public endpoint (no authentication required for GET)
+app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
   try {
     const contentType = req.params.type
     let content
