@@ -7072,6 +7072,180 @@ const startServer = async (): Promise<void> => {
       }
     })
 
+// ============================================
+// ADMIN LIVE SESSIONS MONITORING
+// ============================================
+
+// Get all active live sessions (admin only)
+app.get("/api/admin/live-sessions", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const sessions: any[] = []
+
+    for (const [courseId, sessionData] of activeSessions.entries()) {
+      const participants: any[] = []
+      const sessionId = sessionData.sessionId
+      if (sessionUsers.has(sessionId)) {
+        const users = sessionUsers.get(sessionId)!
+        for (const [socketId, userData] of users.entries()) {
+          participants.push({
+            id: socketId,
+            name: userData.userName || 'Anonymous',
+            role: userData.userRole,
+            joinedAt: new Date().toISOString(),
+            isMuted: !userData.isAudioOn,
+            isVideoOff: !userData.isVideoOn,
+            isHandRaised: userData.isHandRaised
+          })
+        }
+      }
+
+      const duration = sessionData.startTime ? Math.floor((Date.now() - new Date(sessionData.startTime).getTime()) / 1000) : 0
+
+      sessions.push({
+        sessionId: sessionData.sessionId,
+        courseId,
+        courseName: sessionData.courseName || 'Unknown Course',
+        tutorName: sessionData.tutorName || 'Unknown Tutor',
+        tutorId: sessionData.tutorId || '',
+        category: sessionData.category || 'General',
+        participantCount: participants.length,
+        startTime: sessionData.startTime || new Date().toISOString(),
+        duration,
+        isLive: true,
+        participants,
+        flags: []
+      })
+    }
+
+    return res.json({ success: true, data: sessions })
+  } catch (error) {
+    console.error('Error fetching admin live sessions:', error)
+    return res.status(500).json({ success: false, error: 'Failed to fetch live sessions' })
+  }
+})
+
+// Flag a live session
+app.post("/api/admin/live-sessions/flag", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { sessionId, type, description } = req.body
+
+    if (!sessionId || !type || !description) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' })
+    }
+
+    // Store flag in database (you can create a SessionFlag model)
+    // For now, we'll just log it and notify via socket
+    console.log(`[ADMIN] Session ${sessionId} flagged: ${type} - ${description}`)
+
+    // Notify moderators and admins in the session
+    io.to(sessionId).emit('session-flagged', {
+      type,
+      description,
+      timestamp: new Date().toISOString(),
+      flaggedBy: req.user?.name || 'Admin'
+    })
+
+    return res.json({ success: true, message: 'Session flagged successfully' })
+  } catch (error) {
+    console.error('Error flagging session:', error)
+    return res.status(500).json({ success: false, error: 'Failed to flag session' })
+  }
+})
+
+// End a live session (admin only)
+app.post("/api/admin/live-sessions/:sessionId/end", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { sessionId } = req.params
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: 'Session ID required' })
+    }
+
+    // Notify all participants that session is ending
+    io.to(sessionId).emit('session-ended-by-admin', {
+      message: 'This session has been ended by an administrator',
+      timestamp: new Date().toISOString()
+    })
+
+    // Remove from active sessions
+    for (const [courseId, sessionData] of activeSessions.entries()) {
+      if (sessionData.sessionId === sessionId) {
+        activeSessions.delete(courseId)
+        break
+      }
+    }
+
+    // Clear session users
+    sessionUsers.delete(sessionId)
+
+    // Update database
+    try {
+      await prisma.liveSession.updateMany({
+        where: { sessionId },
+        data: {
+          endedAt: new Date(),
+          status: 'ended'
+        }
+      })
+    } catch (dbError) {
+      console.error('Error updating session in database:', dbError)
+    }
+
+    console.log(`[ADMIN] Session ${sessionId} ended by admin`)
+
+    return res.json({ success: true, message: 'Session ended successfully' })
+  } catch (error) {
+    console.error('Error ending session:', error)
+    return res.status(500).json({ success: false, error: 'Failed to end session' })
+  }
+})
+
+// Kick a participant from a session (admin only)
+app.post("/api/admin/live-sessions/:sessionId/kick/:participantId", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { sessionId, participantId } = req.params
+
+    if (!sessionId || !participantId) {
+      return res.status(400).json({ success: false, error: 'Session ID and Participant ID required' })
+    }
+
+    // Find the socket and disconnect it
+    const sockets = await io.in(sessionId).fetchSockets()
+    const targetSocket = sockets.find(s => s.id === participantId)
+
+    if (targetSocket) {
+      // Notify the participant they're being removed
+      targetSocket.emit('kicked-by-admin', {
+        message: 'You have been removed from this session by an administrator',
+        timestamp: new Date().toISOString()
+      })
+
+      // Remove from session
+      targetSocket.leave(sessionId)
+
+      // Remove from sessionUsers map
+      if (sessionUsers.has(sessionId)) {
+        sessionUsers.get(sessionId)!.delete(participantId)
+      }
+
+      // Notify others
+      io.to(sessionId).emit('user-left', {
+        socketId: participantId,
+        reason: 'removed_by_admin'
+      })
+
+      console.log(`[ADMIN] Participant ${participantId} kicked from session ${sessionId}`)
+
+      return res.json({ success: true, message: 'Participant removed successfully' })
+    } else {
+      return res.status(404).json({ success: false, error: 'Participant not found in session' })
+    }
+  } catch (error) {
+    console.error('Error kicking participant:', error)
+    return res.status(500).json({ success: false, error: 'Failed to kick participant' })
+  }
+})
+
     // Initialize database schema
     await initializeDatabase()
 

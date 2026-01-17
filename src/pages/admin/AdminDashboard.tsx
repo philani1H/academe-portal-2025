@@ -4,9 +4,10 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import * as XLSX from 'xlsx'
-import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckCircle, AlertCircle, MoreHorizontal, Send, ChevronDown, Mail, Check, X, Edit, User, Settings, LogOut, Menu, Home, Shield, BarChart4, UserPlus, Trash2, Building, GraduationCap, UserCheck, Filter, RefreshCw, Eye, Download, Layout, DollarSign, Server, Database, Globe } from 'lucide-react'
+import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckCircle, AlertCircle, MoreHorizontal, Send, ChevronDown, Mail, Check, X, Edit, User, Settings, LogOut, Menu, Home, Shield, BarChart4, UserPlus, Trash2, Building, GraduationCap, UserCheck, Filter, RefreshCw, Eye, Download, Layout, DollarSign, Server, Database, Globe, Video } from 'lucide-react'
 
 import ContentManagement from './ContentManagement'
+import LiveSessionsMonitor from '@/components/admin/LiveSessionsMonitor'
 
 import Timetable from "@/components/Timetable"
 
@@ -2161,6 +2162,16 @@ export default function AdminDashboard() {
               </button>
 
               <button
+                onClick={() => setActiveTab("live-sessions")}
+                className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
+                  } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "live-sessions" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                  }`}
+              >
+                <Video className="h-5 w-5 mr-2 flex-shrink-0" />
+                {sidebarOpen && <span>Live Sessions</span>}
+              </button>
+
+              <button
                 onClick={() => setActiveTab("departments")}
                 className={`flex items-center ${!sidebarOpen ? "justify-center" : "justify-start"
                   } w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "departments" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
@@ -2475,6 +2486,7 @@ export default function AdminDashboard() {
                   {activeTab === "dashboard" && "Overview of your teaching activities"}
                   {activeTab === "courses" && "Manage your subjects and content"}
                   {activeTab === "students" && "Track student progress and enrollment"}
+                  {activeTab === "live-sessions" && "Monitor and moderate live tutoring sessions"}
                   {activeTab === "timetable" && "Manage class schedules and events"}
                   {activeTab === "tests" && "Create and manage assessments"}
                   {activeTab === "notifications" && "Communication and alerts"}
@@ -2669,6 +2681,13 @@ export default function AdminDashboard() {
           {activeTab === "timetable" && (
             <div className="space-y-6">
               <Timetable userRole="admin" />
+            </div>
+          )}
+
+          {/* Live Sessions Monitoring Tab */}
+          {activeTab === "live-sessions" && (
+            <div className="space-y-6">
+              <LiveSessionsMonitor />
             </div>
           )}
 
