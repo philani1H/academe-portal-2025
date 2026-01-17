@@ -215,6 +215,8 @@ model HeroContent {
   isActive            Boolean  @default(true)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+
+  @@map("hero_content")
 }
 
 model Feature {
@@ -227,6 +229,8 @@ model Feature {
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("features")
 }
 
 model PricingPlan {
@@ -243,6 +247,8 @@ model PricingPlan {
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("pricing_plans")
 }
 
 model Testimonial {
@@ -258,6 +264,8 @@ model Testimonial {
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@map("testimonials")
 }
 
 model TeamMember {
@@ -270,6 +278,8 @@ model TeamMember {
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("team_members")
 }
 
 model AboutUsContent {
@@ -280,6 +290,8 @@ model AboutUsContent {
   isActive              Boolean  @default(true)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  @@map("about_us_content")
 }
 
 model ContactInfo {
@@ -292,6 +304,8 @@ model ContactInfo {
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("contact_info")
 }
 
 model SiteSettings {
@@ -303,6 +317,8 @@ model SiteSettings {
   category  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
 }
 
 model Tutor {
@@ -319,6 +335,8 @@ model Tutor {
   order        Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@map("tutors")
 }
 
 model Subject {
@@ -334,6 +352,8 @@ model Subject {
   order         Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@map("subjects")
 }
 
 model FooterContent {
@@ -351,6 +371,8 @@ model FooterContent {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@map("footer_content")
 }
 
 model NavigationItem {
@@ -362,6 +384,8 @@ model NavigationItem {
   order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("navigation_items")
 }
 
 model BecomeTutorContent {
@@ -375,6 +399,8 @@ model BecomeTutorContent {
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@map("become_tutor_content")
 }
 
 model ExamRewriteContent {
@@ -393,6 +419,8 @@ model ExamRewriteContent {
   isActive           Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  @@map("exam_rewrite_content")
 }
 
 model ContactUsContent {
@@ -405,6 +433,8 @@ model ContactUsContent {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@map("contact_us_content")
 }
 
 model UniversityApplicationContent {
@@ -419,6 +449,8 @@ model UniversityApplicationContent {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@map("university_application_content")
 }
 
 model Email {
