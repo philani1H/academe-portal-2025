@@ -31,21 +31,19 @@ This will create all the tables in your Neon PostgreSQL database:
 npx prisma generate
 ```
 
-### 4. (Optional) Create an admin user
-You can create an admin user manually or use the API. Here's a quick SQL you can run in Neon dashboard:
-
-```sql
-INSERT INTO admin_users (username, display_name, email, password_hash, permissions, created_at, updated_at)
-VALUES (
-  'admin',
-  'System Administrator',
-  'admin@academe.com',
-  '$2a$10$rBV2.H7ZJlDQxVJNf1hYxOGxNNqKJ5qYZp5lV8fJQVWX1wKl0p8Iq', -- This is 'admin123' hashed
-  'all',
-  NOW(),
-  NOW()
-);
+### 4. Seed the database with initial data
+```bash
+npm run seed
 ```
+
+This will create:
+- ✅ Admin user (admin / admin123)
+- ✅ Sample tutor (tutor@academe.com / tutor123)
+- ✅ Sample student (student@academe.com / student123)
+- ✅ Sample course
+- ✅ Hero content
+- ✅ Pricing plans
+- ✅ Initial departments
 
 ### 5. Restart your development server
 ```bash
