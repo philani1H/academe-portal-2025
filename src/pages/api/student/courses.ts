@@ -1,7 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -170,36 +168,54 @@ async function enrollInCourse(req: NextApiRequest, res: NextApiResponse) {
       return res.status(400).json({ error: 'Student ID and course ID are required' });
     }
 
-    // Check if already enrolled
-    const existingEnrollment = await prisma.courseEnrollment.findFirst({
-      where: {
-        userId: studentId,
-        courseId: courseId
-      }
-    });
+    // Use transaction to prevent race condition
+    const enrollment = await prisma.$transaction(async (tx) => {
+      // Verify course exists
+      const course = await tx.course.findUnique({
+        where: { id: courseId }
+      });
 
-    if (existingEnrollment) {
-      return res.status(400).json({ error: 'Already enrolled in this course' });
-    }
-
-    // Create enrollment
-    const enrollment = await prisma.courseEnrollment.create({
-      data: {
-        userId: studentId,
-        courseId: courseId,
-        status: 'enrolled'
-      },
-      include: {
-        course: true
+      if (!course) {
+        throw new Error('Course not found');
       }
+
+      // Check if already enrolled
+      const existingEnrollment = await tx.courseEnrollment.findFirst({
+        where: {
+          userId: studentId,
+          courseId: courseId
+        }
+      });
+
+      if (existingEnrollment) {
+        throw new Error('Already enrolled in this course');
+      }
+
+      // Create enrollment
+      return await tx.courseEnrollment.create({
+        data: {
+          userId: studentId,
+          courseId: courseId,
+          status: 'enrolled'
+        },
+        include: {
+          course: true
+        }
+      });
     });
 
     return res.status(201).json({
       message: 'Successfully enrolled in course',
       enrollment
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error enrolling in course:', error);
+    if (error.message === 'Course not found') {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+    if (error.message === 'Already enrolled in this course') {
+      return res.status(400).json({ error: 'Already enrolled in this course' });
+    }
     return res.status(500).json({ error: 'Failed to enroll in course' });
   }
 }
