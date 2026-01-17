@@ -143,150 +143,7 @@ interface Analytics {
   monthlyGrowth: number
 }
 
-// Mock data (used as graceful fallback)
-const mockCourses: Course[] = [
-  {
-    id: "course-1",
-    name: "Advanced Mathematics",
-    description: "Comprehensive course covering calculus, algebra, and statistics",
-    students: 24,
-    nextSession: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-    progress: 75,
-    materials: [
-      {
-        id: "mat-1",
-        name: "Calculus Fundamentals.pdf",
-        type: "pdf",
-        uploadDate: new Date().toISOString(),
-        size: 2048000,
-      },
-      {
-        id: "mat-2",
-        name: "Practice Problems.docx",
-        type: "document",
-        uploadDate: new Date().toISOString(),
-        size: 1024000,
-      },
-    ],
-    tests: [
-      {
-        id: "test-1",
-        title: "Midterm Exam",
-        description: "Comprehensive midterm covering chapters 1-5",
-        courseId: "course-1",
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        status: "published",
-        questions: [
-          {
-            id: "q1",
-            text: "What is the derivative of x²?",
-            type: "multiple-choice",
-            options: ["2x", "x", "2", "x²"],
-            correctAnswer: "2x",
-            points: 10,
-            explanation: "Using the power rule: d/dx(x²) = 2x",
-          },
-        ],
-        totalPoints: 100,
-        submissions: 18,
-        averageScore: 85.5,
-      },
-    ],
-    color: "#be123c",
-    category: "Mathematics",
-    duration: "12 weeks",
-    level: "Advanced",
-    rating: 4.8,
-    totalLessons: 24,
-    completedLessons: 18,
-  },
-  {
-    id: "course-2",
-    name: "Introduction to Physics",
-    description: "Basic physics concepts including mechanics and thermodynamics",
-    students: 18,
-    nextSession: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(),
-    progress: 60,
-    materials: [],
-    tests: [],
-    color: "#ec4899",
-    category: "Science",
-    duration: "10 weeks",
-    level: "Beginner",
-    rating: 4.6,
-    totalLessons: 20,
-    completedLessons: 12,
-  },
-]
-
-const mockStudents: Student[] = [
-  {
-    id: "student-1",
-    name: "Alice Johnson",
-    email: "alice.johnson@email.com",
-    progress: 85,
-    lastActivity: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    status: "active",
-    enrolledCourses: ["course-1", "course-2"],
-    joinDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    totalAssignments: 12,
-    completedAssignments: 10,
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: "student-2",
-    name: "Bob Smith",
-    email: "bob.smith@email.com",
-    progress: 72,
-    lastActivity: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "active",
-    enrolledCourses: ["course-1"],
-    joinDate: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-    totalAssignments: 8,
-    completedAssignments: 6,
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-  {
-    id: "student-3",
-    name: "Carol Davis",
-    email: "carol.davis@email.com",
-    progress: 45,
-    lastActivity: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "pending",
-    enrolledCourses: [],
-    joinDate: new Date().toISOString(),
-    totalAssignments: 0,
-    completedAssignments: 0,
-    avatar: "/placeholder.svg?height=40&width=40",
-  },
-]
-
-const mockNotifications: Notification[] = [
-  {
-    id: "notif-1",
-    message: "New student Alice Johnson has joined Advanced Mathematics",
-    type: "info",
-    read: false,
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    priority: "medium",
-  },
-  {
-    id: "notif-2",
-    message: "Test 'Midterm Exam' has been submitted by 5 students",
-    type: "success",
-    read: false,
-    timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-    priority: "high",
-  },
-  {
-    id: "notif-3",
-    message: "Course material 'Chapter 5 Notes' uploaded successfully",
-    type: "success",
-    read: true,
-    timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    priority: "low",
-  },
-]
+// Mock data removed - all data now comes from real API calls
 
 export default function TutorDashboard() {
   // State
@@ -441,24 +298,18 @@ export default function TutorDashboard() {
     } catch (e: any) {
       console.error('Failed to load tutor dashboard:', e)
       setError(e?.message || 'Failed to load tutor dashboard')
-      const fallbackUser: User = {
-        id: 'tutor-1',
-        name: 'Dr. Sarah Wilson',
-        email: 'dr.wilson@university.edu',
-        role: 'Tutor',
-        avatar: '/placeholder.svg?height=64&width=64',
-        department: 'Mathematics & Science',
-      }
-      setUser(fallbackUser)
-      try {
-        localStorage.setItem('user', JSON.stringify(fallbackUser))
-      } catch (storageError) {
-        console.warn('Failed to sync fallback tutor to localStorage', storageError)
-      }
-      setCourses(mockCourses)
-      setStudents(mockStudents)
-      setNotifications(mockNotifications)
-      setAnalytics({ totalStudents: 74, activeStudents: 68, totalCourses: 8, completionRate: 87.5, averageGrade: 84.2, monthlyGrowth: 12.5 })
+      // Keep empty arrays - no mock data fallback
+      setCourses([])
+      setStudents([])
+      setNotifications([])
+      setAnalytics({
+        totalStudents: 0,
+        activeStudents: 0,
+        totalCourses: 0,
+        completionRate: 0,
+        averageGrade: 0,
+        monthlyGrowth: 0
+      })
     } finally {
       setLoading(false)
     }
