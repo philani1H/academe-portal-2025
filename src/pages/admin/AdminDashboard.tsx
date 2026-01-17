@@ -2494,14 +2494,6 @@ export default function AdminDashboard() {
               <Button size="sm" onClick={() => setInviteOpen(true)}>
                 <UserPlus className="h-4 w-4 mr-2" /> Invite
               </Button>
-              <Button variant="ghost" size="sm" className="relative">
-                <Bell className="h-4 w-4" />
-                {unreadCount > 0 && (
-                  <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
-                    {unreadCount}
-                  </Badge>
-                )}
-              </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="sm" className="relative">
@@ -2557,7 +2549,7 @@ export default function AdminDashboard() {
               </DialogDescription>
             </DialogHeader>
                 <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Button variant={inviteTarget === 'students' ? 'default' : 'outline'} onClick={() => setInviteTarget('students')}>Students</Button>
                 <Button variant={inviteTarget === 'tutors' ? 'default' : 'outline'} onClick={() => setInviteTarget('tutors')}>Tutors</Button>
               </div>
@@ -2950,7 +2942,7 @@ export default function AdminDashboard() {
                               onChange={(e) => setNewTutor({ ...newTutor, email: e.target.value })}
                             />
                           </div>
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label htmlFor="tutor-department">Department</Label>
                               <Select
@@ -3003,7 +2995,7 @@ export default function AdminDashboard() {
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label htmlFor="course-name">Subject Name</Label>
                               <Input
@@ -3033,7 +3025,7 @@ export default function AdminDashboard() {
                               onChange={(e) => setNewCourse({ ...newCourse, description: e.target.value })}
                             />
                           </div>
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label htmlFor="course-department">Department</Label>
                               <Select
@@ -3080,7 +3072,7 @@ export default function AdminDashboard() {
                               </Select>
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label htmlFor="course-start">Start Date</Label>
                               <Input
@@ -3357,7 +3349,7 @@ export default function AdminDashboard() {
                             onChange={(e) => setNewTutor({ ...newTutor, email: e.target.value })}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label htmlFor="tutor-department">Department</Label>
                             <Select
@@ -3450,16 +3442,17 @@ export default function AdminDashboard() {
                   <CardDescription>View and manage all tutors across departments</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Department</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Courses</TableHead>
-                        <TableHead>Students</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className="min-w-[150px]">Name</TableHead>
+                        <TableHead className="min-w-[200px]">Email</TableHead>
+                        <TableHead className="min-w-[150px]">Department</TableHead>
+                        <TableHead className="min-w-[100px]">Status</TableHead>
+                        <TableHead className="min-w-[80px]">Courses</TableHead>
+                        <TableHead className="min-w-[80px]">Students</TableHead>
+                        <TableHead className="text-right min-w-[120px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -3558,6 +3551,7 @@ export default function AdminDashboard() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
 
                   {filteredTutors.length === 0 && (
                     <div className="text-center py-12">
@@ -3621,6 +3615,7 @@ export default function AdminDashboard() {
                   <CardDescription>View and manage all students</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -3745,6 +3740,7 @@ export default function AdminDashboard() {
                       ))}
                     </TableBody>
                   </Table>
+                  </div>
 
                   {filteredStudents.length === 0 && (
                     <div className="text-center py-12">
@@ -3898,7 +3894,7 @@ export default function AdminDashboard() {
                             onChange={(e) => setNewCourse({ ...newCourse, description: e.target.value })}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label htmlFor="course-department">Department</Label>
                             <Select
@@ -4012,16 +4008,17 @@ export default function AdminDashboard() {
                   <CardDescription>View and manage all courses</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Course Name</TableHead>
-                        <TableHead>Department</TableHead>
-                        <TableHead>Tutor</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Students</TableHead>
-                        <TableHead>Duration</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className="min-w-[200px]">Course Name</TableHead>
+                        <TableHead className="min-w-[150px]">Department</TableHead>
+                        <TableHead className="min-w-[150px]">Tutor</TableHead>
+                        <TableHead className="min-w-[100px]">Status</TableHead>
+                        <TableHead className="min-w-[80px]">Students</TableHead>
+                        <TableHead className="min-w-[120px]">Duration</TableHead>
+                        <TableHead className="text-right min-w-[120px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -4122,6 +4119,7 @@ export default function AdminDashboard() {
                       })}
                     </TableBody>
                   </Table>
+                  </div>
 
                   {filteredCourses.length === 0 && (
                     <div className="text-center py-12">
@@ -5132,7 +5130,7 @@ export default function AdminDashboard() {
 
                   <div className="space-y-4">
                     <h3 className="font-medium">System Email</h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="email-from">From Email</Label>
                         <Input id="email-from" defaultValue="noreply@university.edu" />
@@ -5294,7 +5292,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="space-y-2">
                       <h3 className="font-medium">Stats</h3>
-                      <div className="grid grid-cols-2 gap-4 text-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                         <Card>
                           <CardContent className="pt-6">
                             <div className="text-2xl font-bold">{selectedTutor.courses?.length ?? 0}</div>
@@ -5501,7 +5499,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="space-y-2">
                       <h3 className="font-medium">Stats</h3>
-                      <div className="grid grid-cols-2 gap-4 text-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                         <Card>
                           <CardContent className="pt-6">
                             <div className="text-2xl font-bold">{selectedStudent.enrolledCourses?.length ?? 0}</div>
