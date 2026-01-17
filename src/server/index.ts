@@ -693,7 +693,7 @@ io.on("connection", (socket) => {
   
   socket.on(
     "join-session",
-    ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
+    async ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
       // Prevent duplicate joins for the same session
       const sessionKey = `${socket.id}-${sessionId}`;
       if (socketSessions.has(sessionKey)) {
@@ -704,8 +704,8 @@ io.on("connection", (socket) => {
 
       socket.join(sessionId)
       console.log(`[Session] ${userName || userId || 'Unknown'} (${userRole}) joined session ${sessionId}`);
-      
-      // Track this user in the session
+
+      // Track this user in the session (in-memory)
       if (!sessionUsers.has(sessionId)) {
         sessionUsers.set(sessionId, new Map());
       }
@@ -717,35 +717,69 @@ io.on("connection", (socket) => {
         isAudioOn: isAudioOn ?? true,
         isHandRaised: false
       });
-      
+
       // Notify others that this user joined
       socket
         .to(sessionId)
         .emit("user-joined", { userId, userRole, socketId: socket.id, userName, isVideoOn, isAudioOn })
 
-      // Find active session to send start time
-      let sessionData: SessionData | undefined;
-      // Try to find by courseId first
-      if (courseId) {
-        sessionData = activeSessions.get(String(courseId));
-      }
-      
-      // If not found or mismatch, search by sessionId
-      if (!sessionData || sessionData.sessionId !== sessionId) {
-        for (const session of activeSessions.values()) {
-          if (session.sessionId === sessionId) {
-            sessionData = session;
-            break;
+      // Find or create database session to send start time and persist participant
+      try {
+        let dbSession = await prisma.liveSession.findUnique({
+          where: { sessionId },
+          include: { participants: true }
+        });
+
+        if (dbSession) {
+          // Session exists in database - persist this participant
+          await prisma.liveSessionParticipant.create({
+            data: {
+              liveSessionId: dbSession.id,
+              userId: userId ? parseInt(String(userId)) : null,
+              socketId: socket.id,
+              userName,
+              userRole
+            }
+          });
+
+          // Update participant count
+          await prisma.liveSession.update({
+            where: { id: dbSession.id },
+            data: { participantCount: { increment: 1 } }
+          });
+
+          // Send session info with database start time
+          socket.emit("session-info", {
+            startTime: dbSession.startTime.getTime(),
+            tutorName: activeSessions.get(String(courseId))?.tutorName,
+            courseName: courseName
+          });
+        } else {
+          // Check in-memory sessions
+          let sessionData: SessionData | undefined;
+          if (courseId) {
+            sessionData = activeSessions.get(String(courseId));
+          }
+
+          if (!sessionData || sessionData.sessionId !== sessionId) {
+            for (const session of activeSessions.values()) {
+              if (session.sessionId === sessionId) {
+                sessionData = session;
+                break;
+              }
+            }
+          }
+
+          if (sessionData) {
+            socket.emit("session-info", {
+              startTime: sessionData.startTime,
+              tutorName: sessionData.tutorName,
+              courseName: sessionData.courseName
+            });
           }
         }
-      }
-
-      if (sessionData) {
-        socket.emit("session-info", {
-          startTime: sessionData.startTime,
-          tutorName: sessionData.tutorName,
-          courseName: sessionData.courseName
-        });
+      } catch (err) {
+        console.error('[Session] Error persisting participant:', err);
       }
     },
   )
@@ -795,6 +829,9 @@ io.on("connection", (socket) => {
 
       const courseName = course?.name || (course as any)?.title || "Course"
       const department = (course as any)?.category
+      const tutorId = course?.tutorId
+
+      const startTime = Date.now();
 
       activeSessions.set(String(cId), {
         sessionId,
@@ -803,8 +840,24 @@ io.on("connection", (socket) => {
         courseName,
         department,
         message: `${tutorName} started a live session for ${courseName}!`,
-        startTime: Date.now(),
+        startTime,
       })
+
+      // Persist session to database
+      try {
+        const dbSession = await prisma.liveSession.create({
+          data: {
+            sessionId,
+            courseId: cId,
+            tutorId: tutorId || 0, // Fallback to 0 if no tutor ID
+            startTime: new Date(startTime),
+            status: 'active'
+          }
+        });
+        console.log(`[Session] Created database session record:`, dbSession.id);
+      } catch (dbErr) {
+        console.error(`[Session] Failed to persist session to database:`, dbErr);
+      }
 
       io.to(`course:${cId}`).emit("session-live", {
         sessionId,
@@ -813,16 +866,16 @@ io.on("connection", (socket) => {
         courseName,
         department,
         message: `${tutorName} started a live session for ${courseName}!`,
-        startTime: Date.now(),
+        startTime,
       })
 
       // Also notify users already in the session room
       io.to(sessionId).emit("session-info", {
-        startTime: Date.now(),
+        startTime,
         tutorName,
         courseName
       })
-      
+
       console.log(`Broadcasted live session`, { courseId: cId, courseName, sessionId })
 
       if (course && course.courseEnrollments.length > 0) {
@@ -878,12 +931,26 @@ io.on("connection", (socket) => {
     }
   })
 
-  socket.on("end-session", ({ courseId, sessionId }) => {
+  socket.on("end-session", async ({ courseId, sessionId }) => {
     console.log(`Session ended for course ${courseId}`)
     if (courseId) {
       activeSessions.delete(String(courseId))
     }
     io.to(`course:${courseId}`).emit("session-ended", { courseId, sessionId })
+
+    // Update database session as ended
+    try {
+      await prisma.liveSession.updateMany({
+        where: { sessionId, status: 'active' },
+        data: {
+          status: 'ended',
+          endTime: new Date()
+        }
+      });
+      console.log(`[Session] Marked session ${sessionId} as ended in database`);
+    } catch (dbErr) {
+      console.error(`[Session] Failed to mark session as ended:`, dbErr);
+    }
   })
 
   socket.on("signal", ({ to, signal, from, userRole, userName, isVideoOn, isAudioOn }) => {
@@ -929,16 +996,32 @@ io.on("connection", (socket) => {
     io.to(targetId).emit("admin-command", { action, sessionId })
   })
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id)
-    
+
     // Clean up from all sessions
-    sessionUsers.forEach((users, sessionId) => {
+    sessionUsers.forEach(async (users, sessionId) => {
       if (users.has(socket.id)) {
         users.delete(socket.id);
         // Notify others in the session
         socket.to(sessionId).emit("user-left", { socketId: socket.id });
         console.log(`[Session] User ${socket.id} left session ${sessionId}`);
+
+        // Mark participant as left in database
+        try {
+          await prisma.liveSessionParticipant.updateMany({
+            where: {
+              socketId: socket.id,
+              leftAt: null
+            },
+            data: {
+              leftAt: new Date()
+            }
+          });
+          console.log(`[Session] Marked participant ${socket.id} as left in database`);
+        } catch (dbErr) {
+          console.error(`[Session] Failed to mark participant as left:`, dbErr);
+        }
 
         // Remove session from memory if empty
         if (users.size === 0) {
@@ -947,7 +1030,7 @@ io.on("connection", (socket) => {
         }
       }
     });
-    
+
     // Clean up session keys
     socketSessions.forEach(key => {
       if (key.startsWith(socket.id)) {
