@@ -26,10 +26,13 @@ import multer from "multer"
 import { createRequire } from "module"
 
 // Configure Cloudinary
+if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+  console.warn('⚠ Cloudinary credentials not configured. File uploads to Cloudinary will fail.');
+}
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dszurpfhf',
-  api_key: process.env.CLOUDINARY_API_KEY || '649648851431394',
-  api_secret: process.env.CLOUDINARY_API_SECRET || 'lVtK5OH5DI1fk3YMluxdXqjVGnY',
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '',
+  api_key: process.env.CLOUDINARY_API_KEY || '',
+  api_secret: process.env.CLOUDINARY_API_SECRET || '',
   secure: true
 });
 
@@ -976,7 +979,10 @@ app.use("/uploads", (req: Request, res: Response, next: NextFunction) => {
 })
 
 // JWT auth helpers
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
+if (!process.env.JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is required for security. Server cannot start without it.');
+}
+const JWT_SECRET = process.env.JWT_SECRET
 
 function parseCookies(req: Request): Record<string, string> {
   const header = req.headers?.cookie || ""
@@ -1154,7 +1160,7 @@ async function ensureTutorRatingsTable(): Promise<void> {
 }
 
 // University Application content
-app.get("/api/admin/content/university-application", async (req: Request, res: Response) => {
+app.get("/api/admin/content/university-application", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const record = await (prisma.universityApplicationContent as any)
       ?.findFirst({ where: { isActive: true } })
@@ -1212,7 +1218,7 @@ app.post(
 )
 
 // Auto-place selected students into a specific course
-app.post("/api/admin/students/auto-place", async (req: Request, res: Response) => {
+app.post("/api/admin/students/auto-place", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { studentIds, courseId } = req.body || {}
     if (!Array.isArray(studentIds) || studentIds.length === 0) {
@@ -1485,7 +1491,7 @@ app.get("/api/users", authenticateJWT as RequestHandler, async (req: Authenticat
 })
 
 // List students for a specific tutor
-app.get("/api/tutor/:tutorId/students", async (req: Request, res: Response) => {
+app.get("/api/tutor/:tutorId/students", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const tutorId = Number.parseInt(req.params.tutorId)
     if (isNaN(tutorId)) {
@@ -1530,7 +1536,7 @@ app.get("/api/tutor/:tutorId/students", async (req: Request, res: Response) => {
 })
 
 // Admin stats for analytics
-app.get("/api/admin/stats", async (req: Request, res: Response) => {
+app.get("/api/admin/stats", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const safeCount = async (fn: () => Promise<number>): Promise<number> => {
       try {
@@ -1597,7 +1603,7 @@ app.get("/api/admin/stats", async (req: Request, res: Response) => {
   }
 })
 
-app.get("/api/admin/users", async (req: Request, res: Response) => {
+app.get("/api/admin/users", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const roleParam = (req.query.role ?? "").toString().trim()
     const where = roleParam ? { role: roleParam } : {}
@@ -1622,7 +1628,7 @@ app.get("/api/admin/users", async (req: Request, res: Response) => {
   }
 })
 
-app.get("/api/admin/admin-users", async (req: Request, res: Response) => {
+app.get("/api/admin/admin-users", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await ensureAdminUsersTable()
     const admins = await prisma.adminUser.findMany({
@@ -1644,7 +1650,7 @@ app.get("/api/admin/admin-users", async (req: Request, res: Response) => {
   }
 })
 
-app.post("/api/admin/admin-users/bulk-upload", async (req: Request, res: Response) => {
+app.post("/api/admin/admin-users/bulk-upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await ensureAdminUsersTable()
     const { fileContent, fileType } = req.body || {}
@@ -1727,7 +1733,8 @@ app.post("/api/admin/admin-users/bulk-upload", async (req: Request, res: Respons
         })
         updated++
       } else {
-        const rawPassword = `${normalizedUsername || "admin"}@EA25!`
+        // Generate a secure random password (16 chars: alphanumeric + special)
+        const rawPassword = crypto.randomBytes(12).toString('base64').slice(0, 16) + '!Aa1'
         const passwordHash = await bcrypt.hash(rawPassword, 10)
         await prisma.adminUser.create({
           data: {
@@ -1871,7 +1878,7 @@ app.post(
   },
 )
 
-app.get("/api/admin/departments", async (req: Request, res: Response) => {
+app.get("/api/admin/departments", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     // Get course counts by department
     const courseGroups = await prisma.course.groupBy({
@@ -3294,20 +3301,28 @@ app.post(
       const db = await getConnection()
       try {
         const sendList: string[] = []
-        const deptClause = department ? ` AND department = ?` : ""
-        const params: any[] = department ? [department] : []
         if (recipients?.tutors) {
-          const tutors = await db.all(
-            `SELECT email FROM users WHERE role = 'tutor' AND email IS NOT NULL AND TRIM(email) <> ''${deptClause}`,
-            params,
-          )
+          // Use Prisma instead of raw SQL for safety
+          const where: any = { role: 'tutor', email: { not: null } };
+          if (department) {
+            where.department = department;
+          }
+          const tutors = await prisma.user.findMany({
+            where,
+            select: { email: true }
+          });
           sendList.push(...tutors.map((r: any) => String(r.email)))
         }
         if (recipients?.students) {
-          const students = await db.all(
-            `SELECT email FROM users WHERE role = 'student' AND email IS NOT NULL AND TRIM(email) <> ''${deptClause}`,
-            params,
-          )
+          // Use Prisma instead of raw SQL for safety
+          const where: any = { role: 'student', email: { not: null } };
+          if (department) {
+            where.department = department;
+          }
+          const students = await prisma.user.findMany({
+            where,
+            select: { email: true }
+          });
           sendList.push(...students.map((r: any) => String(r.email)))
         }
         const toSpecific = Array.isArray(recipients?.specific)
@@ -4498,7 +4513,7 @@ app.get("/api/tutors/:id", async (req: Request, res: Response) => {
 })
 
 // Content API
-app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
+app.get("/api/admin/content/:type", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const contentType = req.params.type
     let content
@@ -4636,7 +4651,14 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
         prisma.siteSettings.findMany({
           orderBy: [{ category: "asc" }, { key: "asc" }],
         }),
-      events: () => prisma.$queryRawUnsafe("SELECT * FROM events ORDER BY date ASC"),
+      events: async () => {
+        // Events table might not exist in Prisma schema, return empty array
+        try {
+          return await prisma.$queryRaw`SELECT * FROM events ORDER BY date ASC`;
+        } catch (e) {
+          return [];
+        }
+      },
       footer: () =>
         prisma.footerContent.findFirst({
           where: { isActive: true },
@@ -4780,7 +4802,10 @@ function parseJsonFields(entity: any, fields: string[]): any {
   for (const f of fields) {
     try {
       out[f] = entity[f] ? JSON.parse(entity[f]) : Array.isArray(out[f]) ? out[f] : (out[f] ?? null)
-    } catch {}
+    } catch (e) {
+      console.error(`Failed to parse JSON field ${f}:`, e);
+      out[f] = entity[f]; // Keep original value if JSON parse fails
+    }
   }
   return out
 }
@@ -4947,38 +4972,6 @@ app.delete(
     } catch (error: any) {
       console.error(`Content delete error for ${req.params.type}:`, error)
       return res.status(500).json({ success: false, error: "Failed to delete content", details: error.message })
-    }
-  },
-)
-
-      if (type === "tutors") {
-        const domain = (process.env.TUTOR_EMAIL_DOMAIN || "excellenceakademie.co.za").toString().toLowerCase()
-        const baseName = String(data.contactName || data.name || "")
-          .toLowerCase()
-          .trim()
-        const localPart =
-          baseName
-            .replace(/[^a-z0-9\s.-]/g, "")
-            .replace(/\s+/g, ".")
-            .replace(/\.+/g, ".")
-            .replace(/^\./, "")
-            .replace(/\.$/, "") || "tutor"
-        if (!data.contactEmail || !String(data.contactEmail).includes("@")) {
-          data.contactEmail = `${localPart}@${domain}`
-        }
-      }
-
-      const updated = await model.update({ where: { id }, data })
-      const parsed = parseJsonFields(updated, cfg.jsonFields)
-
-      // Emit real-time update
-      io.emit('content-updated', { type, action: 'update', data: parsed })
-
-      return res.status(200).json({ success: true, data: parsed })
-    } catch (error: any) {
-      console.error(`Content update error for ${req.params.type}:`, error)
-      const message = error instanceof Error ? error.message : "Unknown database error"
-      return res.status(500).json({ success: false, error: "Failed to update content", details: message })
     }
   },
 )
@@ -5329,7 +5322,7 @@ app.get("/api/students", authenticateJWT as RequestHandler, async (req: Authenti
 })
 
 // Student Live Sessions
-app.get("/api/student/live-sessions", async (req: Request, res: Response) => {
+app.get("/api/student/live-sessions", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const studentId = Number.parseInt((req.query.studentId as string) || (req as any).user?.id, 10)
     if (isNaN(studentId)) {
@@ -5364,7 +5357,7 @@ app.get("/api/student/live-sessions", async (req: Request, res: Response) => {
 })
 
 // Student Dashboard
-app.get("/api/student/dashboard", async (req: Request, res: Response) => {
+app.get("/api/student/dashboard", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const rawStudentId = (req.query.studentId as string) || (req as any).user?.id
     if (!rawStudentId) return res.status(400).json({ success: false, error: "Student ID is required" })
@@ -5641,7 +5634,7 @@ app.get("/api/student/dashboard", async (req: Request, res: Response) => {
 })
 
 // Tutor Dashboard
-app.get("/api/tutor/dashboard", async (req: Request, res: Response) => {
+app.get("/api/tutor/dashboard", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const tutorIdParam = (req.query.tutorId as string) || (req as any).user?.id
     if (!tutorIdParam) return res.status(400).json({ success: false, error: "Tutor ID is required" })
@@ -5800,7 +5793,7 @@ app.get("/api/tutor/dashboard", async (req: Request, res: Response) => {
 })
 
 // Tutor-specific stats for analytics (only shows data for the tutor's courses/students)
-app.get("/api/tutor/stats", async (req: Request, res: Response) => {
+app.get("/api/tutor/stats", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const tutorIdParam = (req.query.tutorId as string) || (req as any).user?.id
     if (!tutorIdParam) return res.status(400).json({ success: false, error: "Tutor ID is required" })
@@ -6014,7 +6007,7 @@ const startServer = async (): Promise<void> => {
     console.log("🚀 Starting Excellence Akademie API Server...")
 
     // Bulk Upload Routes
-    app.post("/api/admin/content/pricing/bulk-upload", async (req: Request, res: Response) => {
+    app.post("/api/admin/content/pricing/bulk-upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { fileContent, fileType } = req.body
         if (!fileContent) return res.status(400).json({ error: "No file content provided" })
@@ -6095,7 +6088,7 @@ const startServer = async (): Promise<void> => {
       }
     })
 
-    app.post("/api/admin/content/announcements/bulk-upload", async (req: Request, res: Response) => {
+    app.post("/api/admin/content/announcements/bulk-upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { fileContent, fileType } = req.body
         if (!fileContent) return res.status(400).json({ error: "No file content provided" })
@@ -6194,7 +6187,7 @@ const startServer = async (): Promise<void> => {
       }
     })
 
-    app.post("/api/admin/content/tutors/bulk-upload", async (req: Request, res: Response) => {
+    app.post("/api/admin/content/tutors/bulk-upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { fileContent, fileType } = req.body
         if (!fileContent) return res.status(400).json({ error: "No file content provided" })
@@ -6308,7 +6301,7 @@ const startServer = async (): Promise<void> => {
       }
     })
 
-    app.post("/api/admin/content/tutors/bulk-upload", async (req: Request, res: Response) => {
+    app.post("/api/admin/content/tutors/bulk-upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { fileContent, fileType } = req.body
         if (!fileContent) return res.status(400).json({ error: "No file content provided" })
@@ -6422,7 +6415,7 @@ const startServer = async (): Promise<void> => {
       }
     })
 
-    app.post("/api/admin/content/tutor-placement/bulk-upload", async (req: Request, res: Response) => {
+    app.post("/api/admin/content/tutor-placement/bulk-upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { fileContent, fileType } = req.body
         if (!fileContent) return res.status(400).json({ error: "No file content provided" })
@@ -6688,7 +6681,7 @@ const startServer = async (): Promise<void> => {
       }
     })
 
-    app.post("/api/admin/content/student-placement/bulk-upload", async (req: Request, res: Response) => {
+    app.post("/api/admin/content/student-placement/bulk-upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { fileContent, fileType } = req.body
         if (!fileContent) return res.status(400).json({ error: "No file content provided" })
@@ -6861,7 +6854,7 @@ const startServer = async (): Promise<void> => {
       }
     })
 
-    app.post("/api/admin/content/team/bulk-upload", async (req: Request, res: Response) => {
+    app.post("/api/admin/content/team/bulk-upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
       try {
         const { fileContent, fileType } = req.body
         if (!fileContent) return res.status(400).json({ error: "No file content provided" })
