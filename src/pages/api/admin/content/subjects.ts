@@ -1,7 +1,19 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
+import { verifyAdminToken } from '@/lib/adminAuth';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Verify admin authentication for all methods except GET (public access for display)
+  if (req.method !== 'GET') {
+    const user = verifyAdminToken(req);
+    if (!user || user.role !== 'admin') {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Admin authentication required'
+      });
+    }
+  }
+
   if (req.method === 'GET') {
     try {
       const subjects = await prisma.subject.findMany({
