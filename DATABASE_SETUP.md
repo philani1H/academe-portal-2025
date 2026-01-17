@@ -1,82 +1,149 @@
-# Database Setup Instructions
+# Database Setup Guide - Neon PostgreSQL
 
-## The Issue
-Your PostgreSQL database is configured but the tables haven't been created yet. That's why you're seeing errors like:
-```
-The table 'main.users' does not exist in the current database.
-```
+This guide will help you set up your Neon PostgreSQL database for the Excellence Akademie application.
 
-## Solution - Run These Commands Locally
+## 🎯 Overview
 
-Open your terminal on your **Windows machine** where the project is running and execute:
+Your application is configured to use **Neon PostgreSQL** (a serverless PostgreSQL database) instead of local SQLite databases.
 
-### 1. Stop your development server
-Press `Ctrl+C` to stop the running server
+**Database URL:** `ep-dawn-band-ah9ov9c8-pooler.c-3.us-east-1.aws.neon.tech`
 
-### 2. Push the schema to PostgreSQL
+## ✅ Prerequisites
+
+1. Node.js installed (v18 or higher)
+2. npm or yarn package manager
+3. Active internet connection to reach Neon database
+
+## 🚀 Quick Setup (Run on Your Local Machine)
+
+### Step 1: Install Dependencies
+
 ```bash
-npx prisma db push
+npm install
 ```
 
-This will create all the tables in your Neon PostgreSQL database:
-- users
-- scheduled_sessions
-- courses
-- notifications
-- admin_users
-- And all other tables from your schema
+### Step 2: Generate Prisma Client
 
-### 3. Regenerate Prisma Client
 ```bash
 npx prisma generate
 ```
 
-### 4. Seed the database with initial data
+### Step 3: Check Database Connection
+
 ```bash
-npm run seed
+npm run db:check
 ```
 
-This will create:
-- ✅ Admin user (admin / admin123)
-- ✅ Sample tutor (tutor@academe.com / tutor123)
-- ✅ Sample student (student@academe.com / student123)
-- ✅ Sample course
-- ✅ Hero content
-- ✅ Pricing plans
-- ✅ Initial departments
+This will:
+- ✅ Test connection to Neon PostgreSQL
+- 📊 List all existing tables
+- 📈 Count records in key tables
+- 💡 Provide recommendations if data is missing
 
-### 5. Restart your development server
+### Step 4: Run Migrations (Create Tables)
+
+If tables are missing, run:
+
 ```bash
-npm run dev
+npx prisma migrate deploy
 ```
 
-## Verification
+Or use the all-in-one setup command:
 
-After running these commands, you should see:
-- ✅ No more "table does not exist" errors
-- ✅ APIs working properly
-- ✅ Admin dashboard loading data from PostgreSQL
-- ✅ Tutor and student dashboards connecting to database
+```bash
+npm run db:setup
+```
 
-## Troubleshooting
+This will:
+1. Run all migrations (create tables)
+2. Seed the database with initial content
 
-### If `npx prisma db push` fails with connection error:
+### Step 5: Verify Setup
+
+```bash
+npm run db:check
+```
+
+You should see all tables created with data counts.
+
+## 📝 Available Database Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run db:check` | Check database connection and list tables/data |
+| `npm run db:deploy` | Run Prisma migrations (create/update tables) |
+| `npm run db:setup` | Complete setup (migrate + seed) |
+| `npm run seed` | Create test users and courses |
+| `npm run seed:all` | Seed all content (hero, features, pricing, etc.) |
+| `npx prisma studio` | Open Prisma Studio (visual database browser) |
+
+## 🔧 Troubleshooting
+
+### ❌ "Can't reach database server"
+
+**Cause:** Cannot connect to Neon PostgreSQL
+
+**Solutions:**
 1. Check your internet connection
-2. Verify the DATABASE_URL in .env is correct
-3. Make sure Neon database is active (free tier databases sleep after inactivity)
-4. Try visiting your Neon dashboard to wake up the database
+2. Verify `.env` file has correct `DATABASE_URL`
+3. Ensure Neon project is active (not paused/suspended)
+4. Check if your IP is whitelisted in Neon dashboard
 
-### If you get "already exists" errors:
-The tables are already there! Just run:
+### ❌ "Table does not exist" (P2021 error)
+
+**Cause:** Database tables haven't been created yet
+
+**Solution:**
 ```bash
-npx prisma generate
-npm run dev
+npx prisma migrate deploy
 ```
 
-## Next Steps
+### ❌ "No admin users found"
 
-Once the tables are created, you can:
-1. Access admin dashboard at http://localhost:5173/admin/login
-2. Login with: admin / admin123
-3. Start creating courses, tutors, and students
-4. All data will be stored in PostgreSQL
+**Cause:** Admin user hasn't been seeded
+
+**Solution:**
+The server will automatically create an admin user on startup using these environment variables:
+- `ADMIN_USERNAME` (default: "admin")
+- `ADMIN_PASSWORD` (default: "admin123")
+- `ADMIN_EMAIL`
+
+### ❌ "No content data found"
+
+**Cause:** Hero content, features, pricing not seeded
+
+**Solution:**
+```bash
+npm run seed:all
+```
+
+## 🔐 Environment Variables
+
+Make sure your `.env` file contains:
+
+```env
+# Database Configuration - Neon PostgreSQL
+DATABASE_URL="postgresql://neondb_owner:npg_7M3BqCyjxNiE@ep-dawn-band-ah9ov9c8-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require"
+
+# Admin Authentication
+ADMIN_USERNAME="admin"
+ADMIN_PASSWORD="admin123"
+ADMIN_EMAIL=""
+
+# JWT Configuration
+JWT_SECRET="your-secret-key-change-in-production"
+
+# Server Configuration
+PORT=3000
+NODE_ENV="development"
+```
+
+## 📚 Additional Resources
+
+- [Neon Documentation](https://neon.tech/docs)
+- [Prisma Documentation](https://www.prisma.io/docs)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+
+---
+
+**Need Help?** Check the server logs or run `npm run db:check` for diagnostic information.

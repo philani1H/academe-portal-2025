@@ -80,12 +80,44 @@ const Hero = () => {
   ]
 
   // Use API data or fallback to defaults
-  const features = heroContent?.features || defaultFeatures
+  // Ensure features is always an array
+  let features = defaultFeatures
+  if (heroContent?.features) {
+    if (Array.isArray(heroContent.features)) {
+      features = heroContent.features
+    } else if (typeof heroContent.features === 'string') {
+      try {
+        const parsed = JSON.parse(heroContent.features)
+        if (Array.isArray(parsed)) {
+          features = parsed
+        }
+      } catch (e) {
+        console.warn('Failed to parse features from heroContent, using defaults')
+      }
+    }
+  }
+
   const title = heroContent?.title || "Welcome to Excellence Akademie"
   const subtitle = heroContent?.subtitle || "25 Years of Academic Excellence"
   const description = heroContent?.description || "Empowering South African students to reach their full potential through world-class education and personalized guidance"
   const buttonText = heroContent?.buttonText || "View Our Pricing Plans"
-  const universities = heroContent?.universities || []
+
+  // Ensure universities is always an array
+  let universities = []
+  if (heroContent?.universities) {
+    if (Array.isArray(heroContent.universities)) {
+      universities = heroContent.universities
+    } else if (typeof heroContent.universities === 'string') {
+      try {
+        const parsed = JSON.parse(heroContent.universities)
+        if (Array.isArray(parsed)) {
+          universities = parsed
+        }
+      } catch (e) {
+        console.warn('Failed to parse universities from heroContent, using empty array')
+      }
+    }
+  }
 
   // Icon helper
   const getIcon = (iconName: string) => {

@@ -16,6 +16,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
+    "db:check": "tsx scripts/check-database.ts",
+    "db:setup": "prisma migrate deploy && npm run seed:all",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
     "seed:content": "tsx src/scripts/migrate-content.ts",

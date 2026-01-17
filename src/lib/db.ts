@@ -67,23 +67,27 @@ class LegacyQueryAdapter {
         if (match) {
             const tableName = match[1].toLowerCase();
             // List of tables managed by Prisma (based on schema)
+            // Also includes legacy tables that should NOT be created via raw SQL
             const managedTables = [
-                'users', 
-                'courses', 
-                'admin_users', 
-                'notifications', 
-                'scheduled_sessions', 
-                'course_enrollments', 
-                'course_materials', 
-                'test_submissions', 
-                'tests', 
+                'users',
+                'courses',
+                'admin_users',
+                'notifications',
+                'scheduled_sessions',
+                'course_enrollments',
+                'course_materials',
+                'test_submissions',
+                'tests',
                 'test_questions',
                 'timetable_entries',
                 'channels',
                 'channel_members',
                 'channel_messages',
                 'direct_messages',
-                'announcements_board'
+                'announcements_board',
+                // Legacy tables (not in Prisma schema, should not be created)
+                'user_credentials',
+                'tutor_ratings'
             ];
             
             if (managedTables.includes(tableName)) {
