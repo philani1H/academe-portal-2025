@@ -195,8 +195,13 @@ const startScheduledSessionChecker = (): void => {
 
         console.log(`Scheduled session ${session.title} started successfully`)
       }
-    } catch (error) {
-      console.error("Error checking scheduled sessions:", error)
+    } catch (error: any) {
+      // Check if it's a table not found error (P2021)
+      if (error.code === 'P2021') {
+        console.warn("⚠ Scheduled sessions table does not exist yet. Please run Prisma migrations: npx prisma migrate deploy")
+      } else {
+        console.error("Error checking scheduled sessions:", error)
+      }
     }
   }, 60000)
 }
@@ -1207,6 +1212,7 @@ async function seedAdminFromEnv(): Promise<void> {
             passwordHash,
           },
         })
+        console.log("✓ Admin user created successfully")
       } else {
         await anyPrisma.adminUser.update({
           where: { id: existing.id },
@@ -1219,10 +1225,16 @@ async function seedAdminFromEnv(): Promise<void> {
             permissions: existing.permissions || "superadmin",
           },
         })
+        console.log("✓ Admin user updated successfully")
       }
     }
-  } catch (e) {
-    console.error("Admin seed error:", e)
+  } catch (e: any) {
+    // Check if it's a table not found error (P2021)
+    if (e.code === 'P2021') {
+      console.warn("⚠ Admin users table does not exist yet. Please run Prisma migrations: npx prisma migrate deploy")
+    } else {
+      console.error("Admin seed error:", e)
+    }
   }
 }
 
