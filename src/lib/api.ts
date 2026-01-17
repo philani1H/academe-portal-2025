@@ -120,7 +120,7 @@ export async function apiFetch<T = any>(
   }
 
   const controller = new AbortController();
-  const timeoutMs = init?.timeoutMs ?? 10000; // Reduced from 60s to 10s
+  const timeoutMs = init?.timeoutMs ?? 60000; // Increased to 60s for Render cold starts
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   const fetchPromise = (async () => {
@@ -162,6 +162,12 @@ export async function apiFetch<T = any>(
 
       return result;
     } catch (error: any) {
+      if (error.name === 'AbortError') {
+        // Suppress abort errors (clean cancellation)
+        // console.log(`Fetch aborted: ${path}`);
+        return (method === 'GET' ? [] : null) as T;
+      }
+
       console.error(`API fetch error for ${path}:`, error);
       
       // Return cached data as fallback even if expired

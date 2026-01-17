@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start": "prisma migrate deploy && tsx src/server/index.ts",
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "dev:client": "vite",
     "dev:server": "tsx watch src/server/index.ts",
@@ -14,6 +15,7 @@
     "preview": "vite preview",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "seed:content": "tsx src/scripts/migrate-content.ts",
     "seed:all": "tsx src/scripts/migrate-all-content.ts"
@@ -109,7 +111,8 @@
     "vaul": "^0.9.3",
     "wrap-ansi": "^9.0.2",
     "xlsx": "^0.18.5",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "prisma": "^5.22.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
@@ -133,7 +136,6 @@
     "globals": "^15.9.0",
     "lovable-tagger": "^1.0.19",
     "postcss": "^8.4.47",
-    "prisma": "^5.22.0",
     "tailwindcss": "^3.4.11",
     "ts-node": "^10.9.2",
     "tslib": "^2.8.1",

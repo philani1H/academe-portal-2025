@@ -21,7 +21,6 @@ model User {
   createdAt        DateTime?          @default(now()) @map("created_at")
   updatedAt        DateTime?          @default(now()) @updatedAt @map("updated_at")
   courses            Course[]
-  enrollments        enrollments[]
   notifications      Notification[]
   courseEnrollments  CourseEnrollment[]
   testSubmissions    TestSubmission[]
@@ -32,6 +31,24 @@ model User {
   timetableDocuments TimetableDocument[]
 
   @@map("users")
+}
+
+model ScheduledSession {
+  id          String   @id @default(uuid())
+  courseId    Int      @map("course_id")
+  tutorId     Int      @map("tutor_id")
+  title       String
+  description String?
+  scheduledAt DateTime @map("scheduled_at")
+  duration    Int      // minutes
+  status      String   @default("scheduled") // scheduled, active, completed, cancelled
+  sessionId   String?  @map("session_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  course      Course   @relation(fields: [courseId], references: [id])
+  tutor       User     @relation(fields: [tutorId], references: [id])
+
+  @@map("scheduled_sessions")
 }
 
 model AdminUser {
@@ -58,7 +75,6 @@ model Course {
   createdAt         DateTime?          @default(now()) @map("created_at")
   updatedAt         DateTime?          @default(now()) @updatedAt @map("updated_at")
   tutor             User?              @relation(fields: [tutorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  enrollments       enrollments[]
   courseEnrollments CourseEnrollment[]
   tests             Test[]
   materials         CourseMaterial[]

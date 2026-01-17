@@ -62,6 +62,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { BulkUploadDialog } from "@/components/BulkUploadDialog"
 import { uploadToCloudinary } from "@/lib/cloudinary"
+import { io } from "socket.io-client"
+import { API_BASE } from "@/lib/api"
 
 // Types
 interface HeroContent {
@@ -568,6 +570,45 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       console.error("Error fetching university application content:", error)
     }
   }
+
+  // Real-time updates listener
+  useEffect(() => {
+    const socket = io(API_BASE.replace('/api', ''), {
+      path: "/socket.io",
+      transports: ["websocket"],
+    })
+
+    socket.on("connect", () => {
+      console.log("Connected to content updates socket")
+    })
+
+    socket.on("content-updated", (event: { type: string, action: string, data: any }) => {
+      console.log("Content update received:", event)
+      // Refresh the specific content type
+      switch (event.type) {
+        case "hero": fetchHeroContent(); break;
+        case "features": fetchFeatures(); break;
+        case "announcements": fetchAnnouncements(); break;
+        case "pricing": fetchPricingPlans(); break;
+        case "site-settings": fetchSiteSettings(); break;
+        case "testimonials": fetchTestimonials(); break;
+        case "team-members": fetchTeamMembers(); break;
+        case "about-us": fetchAboutUsContent(); break;
+        case "tutors": fetchTutors(); break;
+        case "subjects": fetchSubjects(); break;
+        case "footer": fetchFooterContent(); break;
+        case "navigation": fetchNavigationItems(); break;
+        case "contact-us": fetchContactUsContent(); break;
+        case "become-tutor": fetchBecomeTutorContent(); break;
+        case "exam-rewrite": fetchExamRewriteContent(); break;
+        case "university-application": fetchUniversityApplicationContent(); break;
+      }
+    })
+
+    return () => {
+      socket.disconnect()
+    }
+  }, [])
 
   const fetchAllContent = useCallback(async () => {
     setLoading(true)

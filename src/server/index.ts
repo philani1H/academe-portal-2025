@@ -4854,10 +4854,20 @@ app.post(
       }
 
       const parsed = parseJsonFields(created, cfg.jsonFields)
+
+      // Emit real-time update
+      io.emit('content-updated', { type, action: 'create', data: parsed })
+
       return res.status(201).json({ success: true, data: parsed })
-    } catch (error) {
-      console.error("Content create error:", error)
-      return res.status(500).json({ success: false, error: "Failed to create content" })
+    } catch (error: any) {
+      console.error(`Content create error for ${req.params.type}:`, error)
+      const message = error instanceof Error ? error.message : "Unknown database error"
+      return res.status(500).json({ 
+        success: false, 
+        error: "Failed to create content", 
+        details: message,
+        type: req.params.type
+      })
     }
   },
 )
@@ -4888,6 +4898,59 @@ app.put(
         delete data.isActive
       }
 
+      const updated = await model.update({ where: { id }, data })
+      const parsed = parseJsonFields(updated, cfg.jsonFields)
+
+      // Emit real-time update
+      io.emit('content-updated', { type, action: 'update', data: parsed })
+
+      return res.json({ success: true, data: parsed })
+    } catch (error: any) {
+      console.error(`Content update error for ${req.params.type}:`, error)
+      const message = error instanceof Error ? error.message : "Unknown database error"
+      return res.status(500).json({ 
+        success: false, 
+        error: "Failed to update content",
+        details: message 
+      })
+    }
+  },
+)
+
+// Delete content
+app.delete(
+  "/api/admin/content/:type",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { type } = req.params
+      const id = req.query.id as string
+      if (!id) return res.status(400).json({ success: false, error: "ID is required" })
+      
+      const cfg = contentConfig[type]
+      if (!cfg) return res.status(404).json({ success: false, error: "Content type not found" })
+      const model = cfg.model()
+
+      if (cfg.hasIsActive !== false) {
+        // Soft delete
+        await model.update({ where: { id }, data: { isActive: false } })
+      } else {
+        // Hard delete
+        await model.delete({ where: { id } })
+      }
+
+      // Emit real-time update
+      io.emit('content-updated', { type, action: 'delete', id })
+
+      return res.json({ success: true })
+    } catch (error: any) {
+      console.error(`Content delete error for ${req.params.type}:`, error)
+      return res.status(500).json({ success: false, error: "Failed to delete content", details: error.message })
+    }
+  },
+)
+
       if (type === "tutors") {
         const domain = (process.env.TUTOR_EMAIL_DOMAIN || "excellenceakademie.co.za").toString().toLowerCase()
         const baseName = String(data.contactName || data.name || "")
@@ -4907,10 +4970,15 @@ app.put(
 
       const updated = await model.update({ where: { id }, data })
       const parsed = parseJsonFields(updated, cfg.jsonFields)
+
+      // Emit real-time update
+      io.emit('content-updated', { type, action: 'update', data: parsed })
+
       return res.status(200).json({ success: true, data: parsed })
-    } catch (error) {
-      console.error("Content update error:", error)
-      return res.status(500).json({ success: false, error: "Failed to update content" })
+    } catch (error: any) {
+      console.error(`Content update error for ${req.params.type}:`, error)
+      const message = error instanceof Error ? error.message : "Unknown database error"
+      return res.status(500).json({ success: false, error: "Failed to update content", details: message })
     }
   },
 )
@@ -4928,15 +4996,21 @@ app.delete(
       const model = cfg.model()
       const id = (req.query.id as string) || (req.body && req.body.id)
       if (!id) return res.status(400).json({ success: false, error: "ID is required" })
+      
       if (cfg.hasIsActive !== false) {
         await model.update({ where: { id }, data: { isActive: false } })
       } else {
         await model.delete({ where: { id } })
       }
+
+      // Emit real-time update
+      io.emit('content-updated', { type, action: 'delete', id })
+
       return res.status(200).json({ success: true, message: "Deleted" })
-    } catch (error) {
-      console.error("Content delete error:", error)
-      return res.status(500).json({ success: false, error: "Failed to delete content" })
+    } catch (error: any) {
+      console.error(`Content delete error for ${req.params.type}:`, error)
+      const message = error instanceof Error ? error.message : "Unknown database error"
+      return res.status(500).json({ success: false, error: "Failed to delete content", details: message })
     }
   },
 )
@@ -6925,6 +6999,26 @@ const startServer = async (): Promise<void> => {
     await initializeDatabase()
 
     await seedAdminFromEnv()
+
+    // Serve static frontend files (Production/Render support)
+    const distDir = path.resolve(baseDir, "..", "dist")
+    if (process.env.NODE_ENV === "production" || process.env.SERVE_STATIC === "true") {
+      console.log(`✓ Serving static files from: ${distDir}`)
+      app.use(express.static(distDir))
+      
+      // SPA Catch-all route
+      app.get("*", (req, res, next) => {
+        if (req.path.startsWith("/api")) {
+          return next()
+        }
+        res.sendFile(path.join(distDir, "index.html"), (err) => {
+          if (err) {
+            console.error("Error serving index.html:", err)
+            res.status(500).send("Error loading application")
+          }
+        })
+      })
+    }
 
     // Start scheduled session checker
     startScheduledSessionChecker()
