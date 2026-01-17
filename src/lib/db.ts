@@ -1,9 +1,9 @@
 
 import prisma from './prisma.js';
 
-// Adapter to mimic sqlite.Database using Prisma
-// This allows legacy code using SQLite-style queries to work with PostgreSQL via Prisma
-class PrismaSQLiteAdapter {
+// Adapter to provide legacy query interface using Prisma (PostgreSQL)
+// This allows older code patterns to work with the Neon PostgreSQL database
+class LegacyQueryAdapter {
   async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     const pgSql = convertToPgSql(sql, params);
     try {
@@ -93,14 +93,6 @@ class PrismaSQLiteAdapter {
         }
     }
     
-    // Convert SQLite AUTOINCREMENT to Postgres SERIAL (approximate)
-    // Actually, we just remove AUTOINCREMENT because SERIAL or INT PRIMARY KEY handles it differently.
-    // But since we only run this for unmanaged tables (user_credentials, tutor_ratings), 
-    // and they don't use AUTOINCREMENT in the code we saw, we might be fine.
-    // user_credentials: TEXT PRIMARY KEY
-    // tutor_ratings: TEXT PRIMARY KEY
-    // So we just run it.
-    
     try {
         await prisma.$executeRawUnsafe(sql);
     } catch (e: any) {
@@ -127,12 +119,12 @@ function convertToPgSql(sql: string, params: any[] = []): { sql: string, params:
 
 // Deprecated: Use Prisma directly
 async function getConnection() {
-  return new PrismaSQLiteAdapter();
+  return new LegacyQueryAdapter();
 }
 
 // Helper function to execute queries
 async function executeQuery<T = any>(query: string, params: any[] = []): Promise<T[]> {
-  const db = new PrismaSQLiteAdapter();
+  const db = new LegacyQueryAdapter();
   return db.all<T>(query, params);
 }
 
