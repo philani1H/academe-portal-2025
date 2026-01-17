@@ -260,8 +260,9 @@ export const useWebRTC = ({
         return;
       }
 
-      // ID Comparison Strategy:
-      // The peer with the LARGER socket ID initiates the connection.
+      // CRITICAL FIX: Use consistent ID comparison to prevent duplicate connections
+      // Only the peer with the LARGER socket ID initiates the connection
+      // This prevents both peers from trying to initiate simultaneously
       if (socket.id! > data.socketId) {
         console.log('[WebRTC] My ID is larger, initiating connection to:', data.socketId);
 
@@ -290,6 +291,21 @@ export const useWebRTC = ({
         });
       } else {
         console.log('[WebRTC] My ID is smaller, waiting for connection from:', data.socketId);
+        // Add peer metadata even if not initiating, so we track them
+        safeSetState(setPeers, prev => {
+          if (prev.some(p => p.peerId === data.socketId)) return prev;
+          return [...prev, {
+            peerId: data.socketId,
+            peer: null as any, // Will be set when signal is received
+            userRole: data.userRole as 'tutor' | 'student',
+            isVideoOn: data.isVideoOn,
+            isAudioOn: data.isAudioOn,
+            isHandRaised: data.isHandRaised,
+            isScreenSharing: data.isScreenSharing,
+            isRecording: data.isRecording,
+            name: data.userName
+          }];
+        });
       }
     });
 
@@ -324,49 +340,33 @@ export const useWebRTC = ({
         if (user.socketId === socket.id) return;
         if (peersRef.current.has(user.socketId)) return;
 
-        // Force connection for existing users:
-        // When joining, we MUST initiate connections to existing users (like the Tutor)
-        // regardless of ID comparison, because they are already there waiting.
-        // However, to avoid double-initiation if they also try to connect to us (user-joined),
-        // we stick to the ID strategy BUT we make sure we handle the "smaller ID" case correctly by NOT returning.
-        
-        // ID Comparison Strategy:
-        if (socket.id! > user.socketId) {
-          console.log('[WebRTC] My ID is larger, initiating connection to existing user:', user.socketId);
+        // CRITICAL FIX: Always initiate connections to existing users when joining
+        // This ensures students can see tutors and vice versa
+        // The existing ID comparison was causing connection failures
+        console.log('[WebRTC] Initiating connection to existing user:', user.socketId, user.userRole);
 
-          if (!currentStream) {
-            console.warn('[WebRTC] No local stream for existing peer');
-            return;
-          }
-
-          const peer = createPeer(user.socketId, socket.id!, currentStream);
-          peersRef.current.set(user.socketId, peer);
-
-          safeSetState(setPeers, prev => {
-            if (prev.some(p => p.peerId === user.socketId)) return prev;
-            return [...prev, {
-              peerId: user.socketId,
-              peer,
-              userRole: user.userRole as 'tutor' | 'student',
-              isVideoOn: user.isVideoOn,
-              isAudioOn: user.isAudioOn,
-              isHandRaised: user.isHandRaised,
-              isScreenSharing: user.isScreenSharing,
-              isRecording: user.isRecording,
-              name: user.userName
-            }];
-          });
-        } else {
-          console.log('[WebRTC] My ID is smaller, waiting for connection from existing user:', user.socketId);
-          // CRITICAL FIX: Even if we are smaller, we need to be ready to accept the connection.
-          // The 'signal' listener is already set up, so we just wait.
-          // BUT, if the other peer (Tutor) thinks THEY are smaller (which shouldn't happen if IDs are unique strings),
-          // then no one connects.
-          
-          // Fallback: If we are the Student joining, and the other is a Tutor, 
-          // we should probably try to connect if nothing happens after a timeout?
-          // For now, let's rely on the signal event.
+        if (!currentStream) {
+          console.warn('[WebRTC] No local stream for existing peer');
+          return;
         }
+
+        const peer = createPeer(user.socketId, socket.id!, currentStream);
+        peersRef.current.set(user.socketId, peer);
+
+        safeSetState(setPeers, prev => {
+          if (prev.some(p => p.peerId === user.socketId)) return prev;
+          return [...prev, {
+            peerId: user.socketId,
+            peer,
+            userRole: user.userRole as 'tutor' | 'student',
+            isVideoOn: user.isVideoOn,
+            isAudioOn: user.isAudioOn,
+            isHandRaised: user.isHandRaised,
+            isScreenSharing: user.isScreenSharing,
+            isRecording: user.isRecording,
+            name: user.userName
+          }];
+        });
       });
     });
 
@@ -419,19 +419,36 @@ export const useWebRTC = ({
         const peer = addPeer(data.signal, data.from, currentStream);
         peersRef.current.set(data.from, peer);
 
+        // Update or add peer in state
         safeSetState(setPeers, prev => {
-          if (prev.some(p => p.peerId === data.from)) return prev;
-          return [...prev, {
-            peerId: data.from,
-            peer,
-            userRole: data.userRole as 'tutor' | 'student',
-            isVideoOn: data.isVideoOn,
-            isAudioOn: data.isAudioOn,
-            isHandRaised: data.isHandRaised,
-            isScreenSharing: data.isScreenSharing,
-            isRecording: data.isRecording,
-            name: data.userName
-          }];
+          const existingIndex = prev.findIndex(p => p.peerId === data.from);
+          if (existingIndex >= 0) {
+            // Update existing peer entry with actual peer instance
+            const updated = [...prev];
+            updated[existingIndex] = {
+              ...updated[existingIndex],
+              peer,
+              isVideoOn: data.isVideoOn,
+              isAudioOn: data.isAudioOn,
+              isScreenSharing: data.isScreenSharing,
+              isRecording: data.isRecording,
+              name: data.userName || updated[existingIndex].name
+            };
+            return updated;
+          } else {
+            // Add new peer
+            return [...prev, {
+              peerId: data.from,
+              peer,
+              userRole: data.userRole as 'tutor' | 'student',
+              isVideoOn: data.isVideoOn,
+              isAudioOn: data.isAudioOn,
+              isHandRaised: data.isHandRaised,
+              isScreenSharing: data.isScreenSharing,
+              isRecording: data.isRecording,
+              name: data.userName
+            }];
+          }
         });
       }
     });
