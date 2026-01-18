@@ -8,27 +8,28 @@ datasource db {
 }
 
 model User {
-  id                 Int                 @id @default(autoincrement())
-  name               String
-  email              String              @unique
-  studentNumber      String?             @unique @map("student_number")
-  programCode        Int?                @map("program_code")
-  personalEmail      String?             @map("personal_email")
-  password_hash      String
-  role               String
-  department         String?
-  subjects           String?
-  createdAt          DateTime?           @default(now()) @map("created_at")
-  updatedAt          DateTime?           @default(now()) @updatedAt @map("updated_at")
-  courseEnrollments  CourseEnrollment[]
-  notifications      Notification[]
-  testSubmissions    TestSubmission[]
-  courses            Course[]
-  financialRecords   FinancialRecord[]
-  payslips           Payslip[]
-  scheduledSessions  ScheduledSession[]
-  timetableDocuments TimetableDocument[]
-  timetableEntries   TimetableEntry[]
+  id                    Int                      @id @default(autoincrement())
+  name                  String
+  email                 String                   @unique
+  studentNumber         String?                  @unique @map("student_number")
+  programCode           Int?                     @map("program_code")
+  personalEmail         String?                  @map("personal_email")
+  password_hash         String
+  role                  String
+  department            String?
+  subjects              String?
+  createdAt             DateTime?                @default(now()) @map("created_at")
+  updatedAt             DateTime?                @default(now()) @updatedAt @map("updated_at")
+  courseEnrollments     CourseEnrollment[]
+  notifications         Notification[]
+  testSubmissions       TestSubmission[]
+  assignmentSubmissions AssignmentSubmission[]
+  courses               Course[]
+  financialRecords      FinancialRecord[]
+  payslips              Payslip[]
+  scheduledSessions     ScheduledSession[]
+  timetableDocuments    TimetableDocument[]
+  timetableEntries      TimetableEntry[]
 
   @@map("users")
 }
@@ -115,6 +116,7 @@ model Course {
   courseEnrollments CourseEnrollment[]
   materials         CourseMaterial[]
   tests             Test[]
+  assignments       Assignment[]
   tutor             User?                @relation(fields: [tutorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   scheduledSessions ScheduledSession[]
   timetableEntries  TimetableEntry[]
@@ -124,58 +126,68 @@ model Course {
 
 model CourseMaterial {
   id          String   @id @default(uuid())
-  courseId    Int
+  courseId    Int      @map("course_id")
   name        String
   type        String
   url         String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
   course      Course   @relation(fields: [courseId], references: [id])
+
+  @@map("course_materials")
 }
 
 model CourseAnnouncement {
   id        String   @id @default(uuid())
-  courseId  Int
+  courseId  Int      @map("course_id")
   title     String
   content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   course    Course   @relation(fields: [courseId], references: [id])
+
+  @@map("course_announcements")
 }
 
 model CourseEnrollment {
   id        String   @id @default(uuid())
-  userId    Int
-  courseId  Int
+  userId    Int      @map("user_id")
+  courseId  Int      @map("course_id")
   status    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   course    Course   @relation(fields: [courseId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
+
+  @@map("course_enrollments")
 }
 
 model Test {
   id          String           @id @default(uuid())
   title       String
-  courseId    Int
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  courseId    Int              @map("course_id")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
   description String?
-  dueDate     String?
-  totalPoints Int?             @default(0)
+  dueDate     String?          @map("due_date")
+  totalPoints Int?             @default(0) @map("total_points")
   course      Course           @relation(fields: [courseId], references: [id])
   questions   TestQuestion[]
   submissions TestSubmission[]
+
+  @@map("tests")
 }
 
 model TestQuestion {
   id       String @id @default(uuid())
-  testId   String
+  testId   String @map("test_id")
   question String
   options  String
   answer   String
   test     Test   @relation(fields: [testId], references: [id])
+
+  @@map("test_questions")
 }
 
 model TestSubmission {
@@ -187,18 +199,55 @@ model TestSubmission {
   createdAt DateTime @default(now())
   test      Test     @relation(fields: [testId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
+
+  @@map("test_submissions")
+}
+
+model Assignment {
+  id          String                 @id @default(uuid())
+  courseId    Int
+  title       String
+  description String
+  dueDate     DateTime               @map("due_date")
+  maxPoints   Int                    @default(100) @map("max_points")
+  attachments String?
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  course      Course                 @relation(fields: [courseId], references: [id])
+  submissions AssignmentSubmission[]
+
+  @@map("assignments")
+}
+
+model AssignmentSubmission {
+  id           String     @id @default(uuid())
+  userId       Int        @map("user_id")
+  assignmentId String     @map("assignment_id")
+  content      String
+  attachments  String?
+  status       String     @default("submitted")
+  score        Float?
+  feedback     String?
+  submittedAt  DateTime   @default(now()) @map("submitted_at")
+  gradedAt     DateTime?  @map("graded_at")
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  user         User       @relation(fields: [userId], references: [id])
+
+  @@map("assignment_submissions")
 }
 
 model Notification {
   id        String   @id @default(uuid())
-  userId    Int
+  userId    Int      @map("user_id")
   title     String?
   message   String
   type      String?
   read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
   user      User     @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
 }
 
 model HeroContent {
