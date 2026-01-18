@@ -6788,7 +6788,8 @@ const startServer = async (): Promise<void> => {
 
             if (!userTutor) {
               try {
-                const passwordHash = await bcrypt.hash("Welcome123!", 10)
+                const tempPassword = generatePasswordFromName(tutorName)
+                const passwordHash = await bcrypt.hash(tempPassword, 10)
                 if (!email || !email.includes("@")) {
                   email = `${tutorName.replace(/[^a-zA-Z0-9]/g, ".").toLowerCase()}@excellenceakademie.co.za`
                 }
