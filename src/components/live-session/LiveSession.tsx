@@ -281,12 +281,28 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
           socket.on('chat-message', (msg: Message) => {
               console.log('[LiveSession] Received chat message:', msg);
               setMessages(prev => [...prev, msg]);
+
+              // Show notification if not viewing chat and message is from someone else
+              if (activeTab !== 'chat' && msg.userId !== user?.id) {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBDGH0fPTgjMGHm7A7+OZURE');
+                audio.volume = 0.2;
+                audio.play().catch(() => {});
+
+                toast.info(`${msg.userName}: ${msg.text.substring(0, 50)}${msg.text.length > 50 ? '...' : ''}`, {
+                  duration: 4000,
+                  icon: '💬',
+                  action: {
+                    label: 'View',
+                    onClick: () => setActiveTab('chat')
+                  }
+                });
+              }
           });
       }
       return () => {
           socket?.off('chat-message');
       }
-  }, [socket]);
+  }, [socket, activeTab, user]);
 
   const handleSendMessage = (e: React.FormEvent) => {
       e.preventDefault();

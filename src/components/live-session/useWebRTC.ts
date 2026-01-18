@@ -1,8 +1,22 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import io, { Socket } from 'socket.io-client';
 import SimplePeer, { Instance as PeerInstance } from 'simple-peer';
+import { toast } from 'sonner';
 
 const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+// Sound effects
+const playJoinSound = () => {
+  const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBDGH0fPTgjMGHm7A7+OZURE');
+  audio.volume = 0.3;
+  audio.play().catch(() => {});
+};
+
+const playLeaveSound = () => {
+  const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBDGH0fPTgjMGHm7A7+OZURE');
+  audio.volume = 0.2;
+  audio.play().catch(() => {});
+};
 
 interface UseWebRTCProps {
   sessionId: string;
@@ -254,6 +268,13 @@ export const useWebRTC = ({
       if (!isMountedRef.current) return;
       console.log('[WebRTC] User joined:', data);
 
+      // Play sound and show notification
+      playJoinSound();
+      toast.success(`${data.userName || 'Someone'} joined the session`, {
+        duration: 3000,
+        icon: '👋'
+      });
+
       // Avoid duplicate connections
       if (peersRef.current.has(data.socketId)) {
         console.log('[WebRTC] Peer already exists:', data.socketId);
@@ -494,12 +515,25 @@ export const useWebRTC = ({
     socket.on('user-left', (data: { socketId: string }) => {
       if (!isMountedRef.current) return;
       console.log('[WebRTC] User left:', data.socketId);
+
+      // Get user name before removing
+      safeSetState(setPeers, prev => {
+        const leavingPeer = prev.find(p => p.peerId === data.socketId);
+        if (leavingPeer) {
+          playLeaveSound();
+          toast.info(`${leavingPeer.name || 'Someone'} left the session`, {
+            duration: 3000,
+            icon: '👋'
+          });
+        }
+        return prev.filter(p => p.peerId !== data.socketId);
+      });
+
       const peer = peersRef.current.get(data.socketId);
       if (peer) {
         peer.destroy();
         peersRef.current.delete(data.socketId);
       }
-      safeSetState(setPeers, prev => prev.filter(p => p.peerId !== data.socketId));
     });
   }, [createPeer, addPeer, safeSetState]);
 
@@ -617,11 +651,27 @@ export const useWebRTC = ({
         localStreamRef.current = stream;
         cameraStreamRef.current = stream;
 
-        // Enable tracks by default
-        stream.getVideoTracks().forEach(track => { track.enabled = true; });
-        stream.getAudioTracks().forEach(track => { track.enabled = true; });
-        safeSetState(setIsVideoOn, true);
-        safeSetState(setIsAudioOn, true);
+        // Load saved media preferences or use defaults
+        const savedPrefs = localStorage.getItem('liveSessionMediaPrefs');
+        let videoEnabled = true;
+        let audioEnabled = true;
+
+        if (savedPrefs) {
+          try {
+            const prefs = JSON.parse(savedPrefs);
+            videoEnabled = prefs.videoEnabled ?? true;
+            audioEnabled = prefs.audioEnabled ?? true;
+            console.log('[WebRTC] Loaded saved media preferences:', prefs);
+          } catch (e) {
+            console.warn('[WebRTC] Failed to parse saved preferences');
+          }
+        }
+
+        // Apply user's saved preferences
+        stream.getVideoTracks().forEach(track => { track.enabled = videoEnabled; });
+        stream.getAudioTracks().forEach(track => { track.enabled = audioEnabled; });
+        safeSetState(setIsVideoOn, videoEnabled);
+        safeSetState(setIsAudioOn, audioEnabled);
 
       } catch (err) {
         console.error('[WebRTC] Media error:', err);
@@ -729,6 +779,17 @@ export const useWebRTC = ({
     const newState = audioTrack.enabled;
     safeSetState(setIsAudioOn, newState);
 
+    // Save preference
+    try {
+      const currentPrefs = JSON.parse(localStorage.getItem('liveSessionMediaPrefs') || '{}');
+      localStorage.setItem('liveSessionMediaPrefs', JSON.stringify({
+        ...currentPrefs,
+        audioEnabled: newState
+      }));
+    } catch (e) {
+      console.warn('[WebRTC] Failed to save audio preference');
+    }
+
     console.log('[WebRTC] Audio toggled:', newState);
     socketRef.current?.emit('stream-state-change', {
       sessionId,
@@ -754,6 +815,17 @@ export const useWebRTC = ({
     videoTrack.enabled = !videoTrack.enabled;
     const newState = videoTrack.enabled;
     safeSetState(setIsVideoOn, newState);
+
+    // Save preference
+    try {
+      const currentPrefs = JSON.parse(localStorage.getItem('liveSessionMediaPrefs') || '{}');
+      localStorage.setItem('liveSessionMediaPrefs', JSON.stringify({
+        ...currentPrefs,
+        videoEnabled: newState
+      }));
+    } catch (e) {
+      console.warn('[WebRTC] Failed to save video preference');
+    }
 
     console.log('[WebRTC] Video toggled:', newState);
     socketRef.current?.emit('stream-state-change', {

@@ -672,7 +672,7 @@ io.on("connection", (socket) => {
   
   socket.on(
     "join-session",
-    async ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
+    async ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn, isHandRaised, isScreenSharing, isRecording }) => {
       // Prevent duplicate joins for the same session
       const sessionKey = `${socket.id}-${sessionId}`;
       if (socketSessions.has(sessionKey)) {
@@ -694,13 +694,25 @@ io.on("connection", (socket) => {
         userName,
         isVideoOn: isVideoOn ?? true,
         isAudioOn: isAudioOn ?? true,
-        isHandRaised: false
+        isHandRaised: isHandRaised ?? false,
+        isScreenSharing: isScreenSharing ?? false,
+        isRecording: isRecording ?? false
       });
 
       // Notify others that this user joined
       socket
         .to(sessionId)
-        .emit("user-joined", { userId, userRole, socketId: socket.id, userName, isVideoOn, isAudioOn })
+        .emit("user-joined", {
+          userId,
+          userRole,
+          socketId: socket.id,
+          userName,
+          isVideoOn,
+          isAudioOn,
+          isHandRaised: isHandRaised ?? false,
+          isScreenSharing: isScreenSharing ?? false,
+          isRecording: isRecording ?? false
+        })
 
       // Find or create database session to send start time and persist participant
       try {
@@ -779,11 +791,34 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("stream-state-change", ({ sessionId, isVideoOn, isAudioOn }) => {
-    socket.to(sessionId).emit("stream-state-changed", { socketId: socket.id, isVideoOn, isAudioOn })
+  socket.on("stream-state-change", ({ sessionId, isVideoOn, isAudioOn, isScreenSharing, isRecording }) => {
+    // Update stored user state
+    const usersInSession = sessionUsers.get(sessionId);
+    if (usersInSession && usersInSession.has(socket.id)) {
+      const userData = usersInSession.get(socket.id)!;
+      userData.isVideoOn = isVideoOn;
+      userData.isAudioOn = isAudioOn;
+      userData.isScreenSharing = isScreenSharing ?? false;
+      // Note: isRecording is not stored in sessionUsers, only broadcast
+    }
+
+    // Broadcast state change to all other users in session
+    socket.to(sessionId).emit("stream-state-changed", {
+      socketId: socket.id,
+      isVideoOn,
+      isAudioOn,
+      isScreenSharing: isScreenSharing ?? false,
+      isRecording: isRecording ?? false
+    })
   })
 
   socket.on("hand-raised-change", ({ sessionId, isHandRaised }) => {
+    // Update stored user state
+    const usersInSession = sessionUsers.get(sessionId);
+    if (usersInSession && usersInSession.has(socket.id)) {
+      usersInSession.get(socket.id)!.isHandRaised = isHandRaised;
+    }
+
     socket.to(sessionId).emit("hand-raised-changed", { socketId: socket.id, isHandRaised })
   })
 
@@ -4614,117 +4649,122 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
 
     const contentQueries: Record<string, () => Promise<any>> = {
       tutors: async () => {
-        const tutors = await prisma.tutor.findMany({
-          where: { isActive: true },
-          orderBy: [{ order: "asc" }, { createdAt: "desc" }],
-        })
-        
-        // Also fetch system users with role="tutor"
-        const systemTutors = await prisma.user.findMany({
-          where: { role: "tutor" },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            department: true,
-            subjects: true,
-            createdAt: true,
-          },
-        })
-        
-        const allSubjects = await prisma.subject.findMany({
-          where: { isActive: true },
-          select: { name: true, category: true },
-        })
-        const subjMap = new Map(allSubjects.map((s) => [s.name, s.category]))
+        try {
+          const tutors = await prisma.tutor.findMany({
+            where: { isActive: true },
+            orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+          })
 
-        const processedTutors = tutors.map((tutor) => {
-          let ratings: any[] = []
-          let subjects: string[] = []
-          try {
-            ratings = typeof tutor.ratings === "string" ? JSON.parse(tutor.ratings) : tutor.ratings || []
-          } catch {
-            console.warn("Ratings parse error:", tutor.id)
-          }
+          // Also fetch system users with role="tutor"
+          const systemTutors = await prisma.user.findMany({
+            where: { role: "tutor" },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              department: true,
+              subjects: true,
+              createdAt: true,
+            },
+          })
 
-          if (typeof tutor.subjects === "string") {
-            const raw = tutor.subjects
-            let parsed: unknown = null
+          const allSubjects = await prisma.subject.findMany({
+            where: { isActive: true },
+            select: { name: true, category: true },
+          })
+          const subjMap = new Map(allSubjects.map((s) => [s.name, s.category]))
+
+          const processedTutors = tutors.map((tutor) => {
+            let ratings: any[] = []
+            let subjects: string[] = []
             try {
-              parsed = JSON.parse(raw)
+              ratings = typeof tutor.ratings === "string" ? JSON.parse(tutor.ratings) : tutor.ratings || []
             } catch {
-              parsed = null
+              console.warn("Ratings parse error:", tutor.id)
             }
 
-            if (Array.isArray(parsed)) {
-              subjects = parsed
-                .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-                .map((s) => s.trim())
-            } else if (
-              parsed &&
-              typeof parsed === "object" &&
-              Array.isArray((parsed as { subjects?: unknown[] }).subjects)
-            ) {
-              const arr = (parsed as { subjects?: unknown[] }).subjects || []
-              subjects = arr
+            if (typeof tutor.subjects === "string") {
+              const raw = tutor.subjects
+              let parsed: unknown = null
+              try {
+                parsed = JSON.parse(raw)
+              } catch {
+                parsed = null
+              }
+
+              if (Array.isArray(parsed)) {
+                subjects = parsed
+                  .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+                  .map((s) => s.trim())
+              } else if (
+                parsed &&
+                typeof parsed === "object" &&
+                Array.isArray((parsed as { subjects?: unknown[] }).subjects)
+              ) {
+                const arr = (parsed as { subjects?: unknown[] }).subjects || []
+                subjects = arr
+                  .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+                  .map((s) => s.trim())
+              } else {
+                const parts = raw.split(/[|;,]/).map((s) => s.trim()).filter((s) => s.length > 0)
+                if (parts.length > 0) {
+                  subjects = parts
+                } else if (raw.trim().length > 0) {
+                  subjects = [raw.trim()]
+                }
+              }
+            } else if (Array.isArray(tutor.subjects)) {
+              subjects = tutor.subjects
                 .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
                 .map((s) => s.trim())
             } else {
-              const parts = raw.split(/[|;,]/).map((s) => s.trim()).filter((s) => s.length > 0)
-              if (parts.length > 0) {
-                subjects = parts
-              } else if (raw.trim().length > 0) {
-                subjects = [raw.trim()]
-              }
+              subjects = []
             }
-          } else if (Array.isArray(tutor.subjects)) {
-            subjects = tutor.subjects
-              .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-              .map((s) => s.trim())
-          } else {
-            subjects = []
-          }
 
-          const departments = Array.from(new Set(subjects.map((n: string) => subjMap.get(n)).filter(Boolean)))
+            const departments = Array.from(new Set(subjects.map((n: string) => subjMap.get(n)).filter(Boolean)))
 
-          const avgRating =
-            ratings.length > 0
-              ? Math.round((ratings.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / ratings.length) * 10) /
-                10
-              : 0
+            const avgRating =
+              ratings.length > 0
+                ? Math.round((ratings.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / ratings.length) * 10) /
+                  10
+                : 0
 
-          return {
-            ...tutor,
-            subjects,
-            departments,
-            averageRating: avgRating,
-            totalReviews: ratings.length,
-            systemUserId: systemTutors.find(st => st.email === tutor.contactEmail || st.name === tutor.name)?.id || null,
-            hasSystemAccount: systemTutors.some(st => st.email === tutor.contactEmail || st.name === tutor.name),
-          }
-        })
-        
-        return processedTutors
+            return {
+              ...tutor,
+              subjects,
+              departments,
+              averageRating: avgRating,
+              totalReviews: ratings.length,
+              systemUserId: systemTutors.find(st => st.email === tutor.contactEmail || st.name === tutor.name)?.id || null,
+              hasSystemAccount: systemTutors.some(st => st.email === tutor.contactEmail || st.name === tutor.name),
+            }
+          })
+
+          return processedTutors
+        } catch (e) {
+          console.error('[Content API] Error fetching tutors:', e)
+          return []
+        }
       },
       "team-members": () =>
         prisma.teamMember.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "desc" }],
-        }),
+        }).catch(() => []),
       "about-us": () =>
         prisma.aboutUsContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }),
+        }).catch(() => null),
       hero: () =>
         prisma.heroContent.findFirst({
           orderBy: { updatedAt: "desc" },
-        }),
+        }).catch(() => null),
       features: () =>
         prisma.feature.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        }),
+        }).catch(() => []),
       announcements: () =>
         prisma.announcement
           .findMany({
@@ -4735,16 +4775,16 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
         prisma.testimonial.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "desc" }],
-        }),
+        }).catch(() => []),
       pricing: () =>
         prisma.pricingPlan.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        }),
+        }).catch(() => []),
       "site-settings": () =>
         prisma.siteSettings.findMany({
           orderBy: [{ category: "asc" }, { key: "asc" }],
-        }),
+        }).catch(() => []),
       events: async () => {
         // Events table might not exist in Prisma schema, return empty array
         try {
@@ -4757,38 +4797,38 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
         prisma.footerContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }),
+        }).catch(() => null),
       subjects: () =>
         prisma.subject.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        }),
+        }).catch(() => []),
       navigation: () =>
         prisma.navigationItem.findMany({
           where: { isActive: true },
           select: { path: true, label: true, type: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        }),
+        }).catch(() => []),
       "exam-rewrite": () =>
         prisma.examRewriteContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }),
+        }).catch(() => null),
       "university-application": () =>
         prisma.universityApplicationContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }),
+        }).catch(() => null),
       "contact-us": () =>
         prisma.contactUsContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }),
+        }).catch(() => null),
       "become-tutor": () =>
         prisma.becomeTutorContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }),
+        }).catch(() => null),
     }
 
     const queryFn = contentQueries[contentType]
@@ -4814,6 +4854,7 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
         "announcements",
         "events",
         "navigation",
+        "site-settings",
       ]
 
       res.set("Cache-Control", "no-store, no-cache, must-revalidate")

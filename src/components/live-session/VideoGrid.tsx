@@ -17,12 +17,45 @@ interface VideoGridProps {
 
 const VideoPlayer = ({ stream, isLocal = false }: { stream: MediaStream | null | undefined, isLocal?: boolean }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const [trackId, setTrackId] = useState<string>('');
 
     useEffect(() => {
         if (videoRef.current && stream) {
             videoRef.current.srcObject = stream;
+
+            // Track the video track ID to detect when it changes (e.g., screen share)
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack) {
+                setTrackId(videoTrack.id);
+            }
+
+            // Listen for track changes on the stream
+            const handleTrackChange = () => {
+                console.log('[VideoPlayer] Track changed, updating video element');
+                if (videoRef.current) {
+                    // Force video element to refresh by re-setting srcObject
+                    videoRef.current.srcObject = null;
+                    setTimeout(() => {
+                        if (videoRef.current && stream) {
+                            videoRef.current.srcObject = stream;
+                        }
+                    }, 0);
+                }
+                const videoTrack = stream.getVideoTracks()[0];
+                if (videoTrack) {
+                    setTrackId(videoTrack.id);
+                }
+            };
+
+            stream.addEventListener('addtrack', handleTrackChange);
+            stream.addEventListener('removetrack', handleTrackChange);
+
+            return () => {
+                stream.removeEventListener('addtrack', handleTrackChange);
+                stream.removeEventListener('removetrack', handleTrackChange);
+            };
         }
-    }, [stream]);
+    }, [stream, trackId]);
 
     return (
         <video
@@ -162,14 +195,24 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                             <SpeakingIndicator isAudioOn={tutorPeer.isAudioOn} isSpeaking={speakingPeers.has(tutorPeer.peerId)} />
                             <SpeakingRing isSpeaking={speakingPeers.has(tutorPeer.peerId) && tutorPeer.isAudioOn} />
 
+                            {/* Screen Share Indicator - Top Banner */}
+                            {tutorPeer.isScreenSharing && (
+                                <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-blue-600/90 to-cyan-600/90 backdrop-blur-md py-2 px-4 flex items-center justify-center gap-2 shadow-lg border-b border-blue-400/30 animate-pulse">
+                                    <MonitorUp className="h-4 w-4 text-white" />
+                                    <p className="text-white font-semibold text-sm">
+                                        {tutorPeer.name || 'Instructor'} is sharing their screen
+                                    </p>
+                                </div>
+                            )}
+
                             {/* Tutor Info Badge */}
                             <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 bg-gradient-to-r from-indigo-600/90 to-purple-600/90 backdrop-blur-md rounded-xl px-4 py-2 sm:px-5 sm:py-3 flex flex-col gap-1 shadow-xl border border-indigo-400/30">
                                 <p className="text-white font-bold text-sm sm:text-base">
                                     {tutorPeer.name || 'Instructor'}
                                 </p>
-                                {!tutorPeer.isVideoOn && (
-                                    <p className="text-indigo-200 text-[10px] sm:text-xs flex items-center gap-1.5">
-                                        <MonitorUp className="h-3 w-3" /> Sharing Screen
+                                {tutorPeer.isScreenSharing && (
+                                    <p className="text-blue-200 text-[10px] sm:text-xs flex items-center gap-1.5">
+                                        <MonitorUp className="h-3 w-3" /> Screen Share Active
                                     </p>
                                 )}
                             </div>
