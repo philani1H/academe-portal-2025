@@ -7,6 +7,8 @@ export const API_BASE: string = __env?.DEV
   ? '/api'
   : (__env?.VITE_API_URL || '/api');
 
+console.log('🔌 API Base URL:', API_BASE);
+
 export function withBase(path: string): string {
   if (!path) return API_BASE || '';
   if (/^https?:\/\//i.test(path)) return path;

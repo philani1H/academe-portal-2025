@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 let prisma: PrismaClient;
 
 // Hardcoded Neon database URL as fallback
-const NEON_DATABASE_URL = 'postgresql://neondb_owner:npg_7M3BqCyjxNiE@ep-dawn-band-ah9ov9c8-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require';
+const NEON_DATABASE_URL = 'postgresql://neondb_owner:npg_7M3BqCyjxNiE@ep-dawn-band-ah9ov9c8-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
 
 const getClient = () => {
   try {

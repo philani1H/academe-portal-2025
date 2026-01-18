@@ -769,8 +769,35 @@ io.on("connection", (socket) => {
             });
           }
         }
-      } catch (err) {
-        console.error('[Session] Error persisting participant:', err);
+      } catch (err: any) {
+        if (err.code === 'P1001') {
+           console.error('[Session] Database connection failed while persisting participant. Proceeding in-memory only.');
+        } else {
+           console.error('[Session] Error persisting participant:', err);
+        }
+        
+        // Fallback: Check in-memory sessions even if DB fails
+        let sessionData: SessionData | undefined;
+        if (courseId) {
+          sessionData = activeSessions.get(String(courseId));
+        }
+
+        if (!sessionData || sessionData.sessionId !== sessionId) {
+          for (const session of activeSessions.values()) {
+            if (session.sessionId === sessionId) {
+              sessionData = session;
+              break;
+            }
+          }
+        }
+
+        if (sessionData) {
+          socket.emit("session-info", {
+            startTime: sessionData.startTime,
+            tutorName: sessionData.tutorName,
+            courseName: sessionData.courseName
+          });
+        }
       }
     },
   )
@@ -857,10 +884,16 @@ io.on("connection", (socket) => {
         startTime,
       })
 
-      // Persist session to database
+      // Persist session to database (Upsert to handle potential race conditions or re-connections)
       try {
-        const dbSession = await prisma.liveSession.create({
-          data: {
+        const dbSession = await prisma.liveSession.upsert({
+          where: { sessionId },
+          update: {
+             status: 'active',
+             startTime: new Date(startTime), // Ensure start time is consistent
+             // Don't update tutorId/courseId as they shouldn't change
+          },
+          create: {
             sessionId,
             courseId: cId,
             tutorId: tutorId || 0, // Fallback to 0 if no tutor ID
@@ -868,9 +901,13 @@ io.on("connection", (socket) => {
             status: 'active'
           }
         });
-        console.log(`[Session] Created database session record:`, dbSession.id);
-      } catch (dbErr) {
-        console.error(`[Session] Failed to persist session to database:`, dbErr);
+        console.log(`[Session] Created/Updated database session record:`, dbSession.id);
+      } catch (dbErr: any) {
+        if (dbErr.code === 'P1001') {
+           console.error(`[Session] Database connection failed while creating session. Proceeding in-memory only.`);
+        } else {
+           console.error(`[Session] Failed to persist session to database:`, dbErr);
+        }
       }
 
       io.to(`course:${cId}`).emit("session-live", {
@@ -1236,6 +1273,8 @@ async function seedAdminFromEnv(): Promise<void> {
     // Check if it's a table not found error (P2021)
     if (e.code === 'P2021') {
       console.warn("⚠ Admin users table does not exist yet. Please run Prisma migrations: npx prisma migrate deploy")
+    } else if (e.code === 'P1001') {
+        console.error("⚠ Database connection failed. Skipping admin seed.", e.message);
     } else {
       console.error("Admin seed error:", e)
     }
