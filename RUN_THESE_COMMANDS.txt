@@ -1,0 +1,12 @@
+# Run these commands in order (in a NEW terminal, keep server running)
+
+# 1. Create all database tables
+npx prisma migrate deploy
+
+# 2. Seed the database with initial content (hero, features, pricing, etc.)
+npm run seed:all
+
+# 3. Check that everything is created
+npm run db:check
+
+# That's it! Refresh your browser and the errors should be gone.
