@@ -20,8 +20,9 @@ RUN apk add --no-cache \
 COPY package*.json ./
 COPY bun.lockb ./
 
-# Set npm configuration
-RUN npm config set python python3
+# Set environment variables for native module compilation
+ENV PYTHON=/usr/bin/python3
+ENV npm_config_python=/usr/bin/python3
 
 # Install all dependencies (including dev dependencies for build)
 RUN npm ci --legacy-peer-deps
@@ -51,8 +52,9 @@ RUN apk add --no-cache \
 COPY package*.json ./
 COPY bun.lockb ./
 
-# Set npm configuration
-RUN npm config set python python3
+# Set environment variables for native module compilation
+ENV PYTHON=/usr/bin/python3
+ENV npm_config_python=/usr/bin/python3
 
 # Install production dependencies only
 RUN npm ci --omit=dev --legacy-peer-deps && npm cache clean --force

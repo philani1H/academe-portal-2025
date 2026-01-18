@@ -1,30 +1,24 @@
-# Use Node.js 20 with full build tools
+# Use Node.js 20 LTS
 FROM node:20-bullseye-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-dev \
-    build-essential \
     sqlite3 \
-    libsqlite3-dev \
-    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package files
 COPY package*.json ./
 COPY bun.lockb ./
 
-# Set environment variables for native module compilation
-ENV PYTHON=/usr/bin/python3
-ENV npm_config_python=/usr/bin/python3
+# Try to use prebuilt binaries first, fallback to compilation if needed
+ENV npm_config_build_from_source=false
+ENV npm_config_cache=/tmp/.npm
 
-# Install dependencies with legacy peer deps to handle version conflicts
-RUN npm ci --omit=dev --legacy-peer-deps
+# Install dependencies
+RUN npm ci --omit=dev --legacy-peer-deps --prefer-offline
 
 # Copy source code
 COPY . .

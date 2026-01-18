@@ -14,37 +14,60 @@ This guide helps resolve common issues during Railway deployment.
 
 ### ✅ Solutions Provided
 
-#### Solution 1: Updated Main Dockerfile
+#### Solution 1: Fixed Main Dockerfile (Recommended)
+- **Fixed npm config syntax** using environment variables
 - **Upgraded to Node.js 20** (bullseye-slim base)
 - **Added proper build tools** (python3, build-essential)
-- **Fixed package installation** with `--legacy-peer-deps`
-- **Uses Debian base** instead of Alpine for better compatibility
+- **Uses environment variables** instead of npm config commands
 
-#### Solution 2: Multi-stage Alternative Dockerfile
-- **File:** `Dockerfile.alternative`
+#### Solution 2: Simple Dockerfile (Dockerfile.simple)
+- **Minimal dependencies** approach
+- **Prefers prebuilt binaries** over compilation
+- **Faster build times** with fewer dependencies
+
+#### Solution 3: PostgreSQL-only Dockerfile (Dockerfile.postgres)
+- **Avoids SQLite entirely** - uses only PostgreSQL
+- **No native compilation** needed
+- **Smallest image size** and fastest builds
+
+#### Solution 4: Multi-stage Alternative (Dockerfile.alternative)
 - **Multi-stage build** for optimization
 - **Separate build and runtime stages**
 - **Better security** with non-root user
 
-#### Solution 3: Package.json Updates
-- **Added engine specification** requiring Node.js 20+
-- **Updated npm scripts** for Railway compatibility
-
 ## 🔧 How to Apply the Fix
 
-### Option 1: Use Updated Main Dockerfile (Recommended)
+### Option 1: Use Fixed Main Dockerfile (Recommended)
 ```bash
-# The main Dockerfile has been updated
+# The main Dockerfile has been updated with proper environment variables
 # Railway will automatically use it on next deployment
-git add Dockerfile package.json
-git commit -m "fix: Update Dockerfile for Node.js 20 and better build compatibility"
+git add Dockerfile
+git commit -m "fix: Fix npm config syntax in Dockerfile"
 git push origin master
 ```
 
-### Option 2: Use Alternative Multi-stage Dockerfile
+### Option 2: Use Simple Dockerfile (Fastest Build)
 ```bash
-# Rename the alternative dockerfile
-mv Dockerfile.alternative Dockerfile
+# Use the simple version that avoids compilation
+cp Dockerfile.simple Dockerfile
+git add Dockerfile
+git commit -m "fix: Use simple Dockerfile with prebuilt binaries"
+git push origin master
+```
+
+### Option 3: Use PostgreSQL-only Dockerfile (Most Reliable)
+```bash
+# Use PostgreSQL-only version (no SQLite)
+cp Dockerfile.postgres Dockerfile
+git add Dockerfile
+git commit -m "fix: Use PostgreSQL-only Dockerfile"
+git push origin master
+```
+
+### Option 4: Use Multi-stage Alternative
+```bash
+# Use the multi-stage build
+cp Dockerfile.alternative Dockerfile
 # Or update railway.json to use it
 cp railway.alternative.json railway.json
 ```
