@@ -1523,7 +1523,7 @@ export default function AdminDashboard() {
             `<td>${row.email}</td>` +
             `<td>${row.department || ""}</td>` +
             `<td>${row.courses || ""}</td>` +
-            `<td>Welcome2025!</td>` +
+            `<td>${normalizeUsernameForPassword(row.name)}@EA25!</td>` +
             `<td>${loginUrl}</td>` +
             `</tr>`,
         )
