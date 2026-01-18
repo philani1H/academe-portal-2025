@@ -218,38 +218,10 @@ const app = express()
 const httpServer = createServer(app)
 const port = process.env.PORT || 3000
 
-// Enhanced CORS configuration
+// Enhanced CORS configuration - Allow all origins for now
 const isProd = process.env.NODE_ENV === "production"
 const corsOptions = {
-  origin: isProd
-    ? (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-        if (!origin) return callback(null, true)
-
-        const allowedOrigins = [
-          "https://excellence-akademie.com",
-          "https://www.excellence-akademie.com",
-          "https://excellence-akademie.co.za",
-          "https://www.excellence-akademie.co.za",
-          "https://excellenceakademie.co.za",
-          "https://www.excellenceakademie.co.za",
-          "https://excellenceacademia.co.za",
-          "https://www.excellenceacademia.co.za",
-          "https://academe-2025.onrender.com",
-          "https://academe-portal-2025.onrender.com",
-          process.env.FRONTEND_URL,
-        ].filter(Boolean) as string[]
-
-        try {
-          const originUrl = new URL(origin)
-          const originHost = originUrl.host
-          const allowedHosts = allowedOrigins.map((u: string) => new URL(u).host)
-          const isAllowed = allowedHosts.some((h: string) => originHost === h)
-          if (isAllowed) return callback(null, true)
-        } catch {}
-
-        callback(new Error("Not allowed by CORS"))
-      }
-    : true,
+  origin: true, // Allow all origins
   credentials: true,
   optionsSuccessStatus: 200,
   allowedHeaders: ["Content-Type", "Authorization"],
@@ -1047,20 +1019,16 @@ io.on("connection", (socket) => {
   })
 })
 
-// Preflight handler
+// Preflight handler - Allow all origins
 app.options(
   "*",
   cors({
-    origin: isProd ? undefined : true,
+    origin: true, // Allow all origins
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   }),
 )
-
-// Security and performance middleware
-app.use(express.json({ limit: "5mb" }))
-app.use(express.urlencoded({ extended: true, limit: "5mb" }))
 
 // Serve static uploads
 app.use("/uploads", (req: Request, res: Response, next: NextFunction) => {
