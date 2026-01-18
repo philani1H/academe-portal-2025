@@ -2,32 +2,42 @@ import { PrismaClient } from '@prisma/client';
 
 let prisma: PrismaClient;
 
+// Hardcoded Neon database URL as fallback
+const NEON_DATABASE_URL = 'postgresql://neondb_owner:npg_7M3BqCyjxNiE@ep-dawn-band-ah9ov9c8-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require';
+
 const getClient = () => {
   try {
-    if (process.env.DATABASE_URL) {
-      const url = new URL(process.env.DATABASE_URL);
-      // Increase connection limit to handle concurrent dashboard requests
-      if (!url.searchParams.has('connection_limit')) {
-        url.searchParams.set('connection_limit', '20');
-      }
-      // Increase timeout to handle serverless cold starts
-      if (!url.searchParams.has('pool_timeout')) {
-        url.searchParams.set('pool_timeout', '30');
-      }
-      
-      return new PrismaClient({
-        datasources: {
-          db: {
-            url: url.toString(),
-          },
-        },
-      });
+    const databaseUrl = process.env.DATABASE_URL || NEON_DATABASE_URL;
+    const url = new URL(databaseUrl);
+
+    // Increase connection limit to handle concurrent dashboard requests
+    if (!url.searchParams.has('connection_limit')) {
+      url.searchParams.set('connection_limit', '20');
     }
+    // Increase timeout to handle serverless cold starts
+    if (!url.searchParams.has('pool_timeout')) {
+      url.searchParams.set('pool_timeout', '30');
+    }
+
+    console.log(`🔌 Connecting to database: ${url.host}`);
+
+    return new PrismaClient({
+      datasources: {
+        db: {
+          url: url.toString(),
+        },
+      },
+    });
   } catch (e) {
-    console.warn('Failed to parse DATABASE_URL, using default Prisma configuration', e);
+    console.error('Failed to parse DATABASE_URL, using hardcoded Neon URL', e);
+    return new PrismaClient({
+      datasources: {
+        db: {
+          url: NEON_DATABASE_URL,
+        },
+      },
+    });
   }
-  
-  return new PrismaClient();
 };
 
 if (process.env.NODE_ENV === 'production') {
