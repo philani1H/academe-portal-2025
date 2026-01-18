@@ -1,0 +1,4 @@
+title,content,type,pinned,isActive,mediaUrl,mediaType
+Important Update,"School will be closed on Friday","warning",true,true,,
+Welcome,"Welcome to Excellence Akademie!","success",false,true,,
+Article Title,"<p>Rich HTML content allowed</p>","info",false,true,https://example.com/banner.jpg,image

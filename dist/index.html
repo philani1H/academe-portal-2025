@@ -2,9 +2,19 @@
 <html lang="en">
   <head>
     <script>
-      // Polyfill for simple-peer/global
+      // Polyfill for simple-peer (global, process, Buffer)
       if (typeof global === 'undefined') {
         window.global = window;
+      }
+      if (typeof process === 'undefined') {
+        window.process = { env: { NODE_DEBUG: undefined } };
+      }
+      if (typeof Buffer === 'undefined') {
+        window.Buffer = {
+          isBuffer: function() { return false; },
+          from: function(data) { return data; },
+          alloc: function(size) { return new Uint8Array(size); }
+        };
       }
     </script>
     <script id="aclib" type="text/javascript" src="//acscdn.com/script/aclib.js"></script>
@@ -23,8 +33,9 @@
     <meta name="description" content="Connect with experienced tutors and achieve academic excellence" />
     <meta name="author" content="DR chade" />
     <meta property="og:image" content="/og-image.png" />
-    <script type="module" crossorigin src="/assets/index-QZqo5_Hb.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CUhMi6is.css">
+    <meta name="a90cb94a7070d6e79ee9ce0e30f2088168c5cfe2" content="a90cb94a7070d6e79ee9ce0e30f2088168c5cfe2" />
+    <script type="module" crossorigin src="/assets/index-BYLRT-7o.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BR6PXcE2.css">
   </head>
 
   <body>
