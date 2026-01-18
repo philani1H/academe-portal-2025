@@ -4779,7 +4779,7 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
       "site-settings": () =>
         prisma.siteSettings.findMany({
           orderBy: [{ category: "asc" }, { key: "asc" }],
-        }),
+        }).catch(() => []),
       events: async () => {
         // Events table might not exist in Prisma schema, return empty array
         try {
@@ -4849,6 +4849,7 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
         "announcements",
         "events",
         "navigation",
+        "site-settings",
       ]
 
       res.set("Cache-Control", "no-store, no-cache, must-revalidate")
