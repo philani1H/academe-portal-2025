@@ -44,7 +44,7 @@ const AdminLogin = () => {
 
       if (response.ok && data.success) {
         try {
-          const uname = String(data?.user?.username || identifier)
+          const uname = String(data?.user?.displayName || data?.user?.username || identifier)
           const stored = {
             name: uname,
             email: identifier.includes("@") ? identifier : uname,

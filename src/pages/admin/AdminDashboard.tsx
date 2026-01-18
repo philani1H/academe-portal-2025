@@ -524,6 +524,17 @@ export default function AdminDashboard() {
     setUnreadCount(notifications.filter((n) => !n.read).length)
   }, [notifications])
 
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/api/admin/auth/logout", { method: "POST" })
+    } catch (e) {
+      console.error("Logout failed", e)
+    } finally {
+      localStorage.removeItem("user")
+      navigate("/admin-login")
+    }
+  }
+
   // Fetch data from API via centralized helper (respects VITE_API_URL)
   const fetchTutors = async () => {
     try {
@@ -1473,7 +1484,7 @@ export default function AdminDashboard() {
         Email: row.email,
         Department: row.department || "",
         Courses: row.courses || "",
-        TemporaryPassword: "Welcome123!",
+        TemporaryPassword: `${normalizeUsernameForPassword(row.name)}@EA25!`,
         LoginUrl: `${window.location.origin}/tutor/login`,
       }))
       const ws = XLSX.utils.json_to_sheet(loginRows)
@@ -1512,7 +1523,7 @@ export default function AdminDashboard() {
             `<td>${row.email}</td>` +
             `<td>${row.department || ""}</td>` +
             `<td>${row.courses || ""}</td>` +
-            `<td>Welcome123!</td>` +
+            `<td>Welcome2025!</td>` +
             `<td>${loginUrl}</td>` +
             `</tr>`,
         )
@@ -1658,7 +1669,7 @@ export default function AdminDashboard() {
             `<td>${row.department || ""}</td>` +
             `<td>${row.grade || ""}</td>` +
             `<td>${row.courses || ""}</td>` +
-            `<td>${buildStudentPasswordForEmail(row.email)}</td>` +
+            `<td>${normalizeUsernameForPassword(row.name)}@EA25!</td>` +
             `<td>${loginUrl}</td>` +
             `</tr>`,
         )
@@ -2288,7 +2299,7 @@ export default function AdminDashboard() {
                         <span>Settings</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleLogout}>
                         <LogOut className="mr-2 h-4 w-4" />
                         <span>Logout</span>
                       </DropdownMenuItem>
@@ -2538,7 +2549,7 @@ export default function AdminDashboard() {
                     <span>Settings</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Logout</span>
                   </DropdownMenuItem>

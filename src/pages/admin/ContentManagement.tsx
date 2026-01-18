@@ -837,6 +837,41 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
     }
   }
 
+  const createTutorLogin = async (tutor: Tutor) => {
+    try {
+      const response = await apiFetch<any>("/api/admin/tutors/create-login", {
+        method: "POST",
+        body: JSON.stringify({
+          email: tutor.contactEmail,
+          name: tutor.name
+        })
+      })
+      
+      if (response.success) {
+        if (response.isNew) {
+           // Show persistent toast with credentials
+           toast({ 
+             title: "Login Created", 
+             description: (
+               <div className="mt-2 p-2 bg-slate-100 rounded text-xs font-mono">
+                 <p>Email: {response.email}</p>
+                 <p>Password: {response.password}</p>
+                 <p className="text-muted-foreground mt-1">(Please copy this password)</p>
+               </div>
+             ),
+             duration: 10000,
+           })
+           // Update local state to reflect system account
+           setTutors(tutors.map(t => t.id === tutor.id ? { ...t, hasSystemAccount: true } as any : t))
+        } else {
+           toast({ title: "Login Exists", description: "This tutor already has a login account." })
+        }
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to create login", variant: "destructive" })
+    }
+  }
+
   const saveSubject = async (subject: Subject) => {
     try {
       const method = subject.id ? "PUT" : "POST"
@@ -1575,6 +1610,17 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      {!(tutor as any).hasSystemAccount && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-blue-600"
+                          onClick={() => createTutorLogin(tutor)}
+                          title="Create Login"
+                        >
+                          <UserPlus className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingTutor(tutor)}>
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -3545,6 +3591,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       description: tutor.description,
       order: tutor.order,
       isActive: tutor.isActive,
+      hasLogin: (tutor as any).hasSystemAccount ? "Yes" : "No",
     }))
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
     const url = URL.createObjectURL(blob)

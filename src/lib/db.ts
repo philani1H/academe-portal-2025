@@ -86,7 +86,6 @@ class LegacyQueryAdapter {
                 'direct_messages',
                 'announcements_board',
                 // Legacy tables (not in Prisma schema, should not be created)
-                'user_credentials',
                 'tutor_ratings'
             ];
             

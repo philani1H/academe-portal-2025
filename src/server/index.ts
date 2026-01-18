@@ -21,6 +21,7 @@ import {
   renderStudentApprovedEmail,
   renderStudentRejectedEmail,
 } from "../lib/email.js"
+import { generatePasswordFromName } from "../lib/utils.js"
 import { v2 as cloudinary } from "cloudinary"
 import crypto from "crypto"
 import multer from "multer"
@@ -1419,11 +1420,11 @@ app.post(
           try {
             const now = new Date().toISOString()
             await db.run(
-              `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
+            `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at`,
-              [clean, user.id, hash, now, now],
-            )
+             ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at RETURNING email`,
+            [clean, user.id, hash, now, now],
+          )
           } finally {
             await db.close()
           }
@@ -1462,70 +1463,61 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body || {}
     if (!email || !password) return res.status(400).json({ success: false, error: "Email and password are required" })
-    await ensureCredentialsTable()
-    const db = await getConnection()
-    try {
-      const userEmail = String(email).toLowerCase()
-      let row = await db.get("SELECT * FROM user_credentials WHERE email = ?", [userEmail])
+    
+    const userEmail = String(email).toLowerCase()
+    
+    // 1. Check Prisma User table (bcrypt) - Primary for seeded/new users
+    let user = await prisma.user.findUnique({ where: { email: userEmail } })
+    let isAuthenticated = false
 
-      if (!row) {
-        console.log(`[Auth] Auto-registering new user: ${userEmail}`)
-        const role = req.body.role || "student"
-
-        const hash = await hashPassword(String(password))
-        const now = new Date().toISOString()
-
-        let user = await prisma.user.findUnique({ where: { email: userEmail } })
-        if (!user) {
-          user = await prisma.user.create({
-            data: {
-              email: userEmail,
-              name: userEmail.split("@")[0],
-              role,
-              password_hash: hash,
-            },
-          })
-        }
-
-        await db.run(
-          "INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-          [userEmail, user.id, hash, now, now],
-        )
-
-        row = {
-          email: userEmail,
-          user_id: user.id,
-          password_hash: hash,
-          created_at: now,
-          updated_at: now,
-        }
+    if (user && user.password_hash) {
+      // Check if it's a bcrypt hash (starts with $2)
+      if (user.password_hash.startsWith('$2')) {
+        isAuthenticated = await bcrypt.compare(String(password), user.password_hash)
       }
-
-      if (!row || !row.password_hash) return res.status(401).json({ success: false, error: "Invalid credentials" })
-      const [scheme, salt, stored] = String(row.password_hash).split(":")
-      if (scheme !== "scrypt" || !salt || !stored)
-        return res.status(500).json({ success: false, error: "Invalid credential record" })
-      const derived = await new Promise<string>((resolve, reject) => {
-        crypto.scrypt(String(password), salt, 64, (err, dk) => (err ? reject(err) : resolve(dk.toString("hex"))))
-      })
-      if (derived !== stored) return res.status(401).json({ success: false, error: "Invalid credentials" })
-
-      let user = await prisma.user.findUnique({ where: { email: userEmail } })
-      const role = req.body.role || "student"
-
-      if (!user) user = await prisma.user.create({ data: { email: userEmail, name: userEmail.split("@")[0], role } })
-      const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" })
-      const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
-      res.setHeader(
-        "Set-Cookie",
-        `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax;${secure}`,
-      )
-      return res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, name: user.name } })
-    } finally {
-      await db.close()
     }
+
+    // 2. Fallback: Check user_credentials table (scrypt) - For legacy/specific tool users
+    if (!isAuthenticated) {
+      await ensureCredentialsTable()
+      const db = await getConnection()
+      try {
+        const row = await db.get("SELECT * FROM user_credentials WHERE email = ?", [userEmail])
+        
+        if (row && row.password_hash) {
+          const [scheme, salt, stored] = String(row.password_hash).split(":")
+          if (scheme === "scrypt" && salt && stored) {
+            const derived = await new Promise<string>((resolve, reject) => {
+              crypto.scrypt(String(password), salt, 64, (err, dk) => (err ? reject(err) : resolve(dk.toString("hex"))))
+            })
+            if (derived === stored) {
+              isAuthenticated = true
+              // If user wasn't found in Prisma but exists in credentials, we might need to handle that
+              // But usually they should exist in Prisma too if they are in credentials
+              if (!user) {
+                 user = await prisma.user.findUnique({ where: { email: userEmail } })
+              }
+            }
+          }
+        }
+      } finally {
+        await db.close()
+      }
+    }
+
+    if (!isAuthenticated || !user) {
+      return res.status(401).json({ success: false, error: "Invalid credentials" })
+    }
+
+    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" })
+    const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+    res.setHeader(
+      "Set-Cookie",
+      `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax;${secure}`,
+    )
+    return res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, name: user.name } })
   } catch (error) {
-    console.error("Student login error:", error)
+    console.error("Login error:", error)
     return res.status(500).json({ success: false, error: "Login failed" })
   }
 })
@@ -1635,13 +1627,23 @@ app.get("/api/tutor/:tutorId/students", authenticateJWT as RequestHandler, autho
 app.get("/api/admin/stats", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const safeCount = async (fn: () => Promise<number>): Promise<number> => {
-      try {
-        return await fn()
-      } catch (e) {
-        console.error("Admin stats count error:", e)
-        return 0
+  let retries = 3
+  while (retries > 0) {
+    try {
+      return await fn()
+    } catch (e: any) {
+      if (e?.code === 'P1001' || e?.code === 'P2024') {
+        console.warn(`Database connection retry (${retries} left)...`)
+        retries--
+        await new Promise(r => setTimeout(r, 1000))
+        continue
       }
+      console.error("Admin stats count error:", e)
+      return 0
     }
+  }
+  return 0
+}
 
     const [
       tutorsCount,
@@ -1727,9 +1729,9 @@ app.get("/api/admin/users", authenticateJWT as RequestHandler, authorizeRoles("a
 app.get("/api/admin/admin-users", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await ensureAdminUsersTable()
-    const admins = await prisma.adminUser.findMany({
+    const admins = await safeQuery(() => prisma.adminUser.findMany({
       orderBy: { createdAt: "desc" },
-    })
+    }))
     const data = admins.map((a) => ({
       id: a.id,
       username: a.username,
@@ -1976,11 +1978,29 @@ app.post(
 
 app.get("/api/admin/departments", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
+      let retries = 3
+      while (retries > 0) {
+        try {
+          return await fn()
+        } catch (e: any) {
+          if (e?.code === 'P1001' || e?.code === 'P2024') {
+            console.warn(`Database query retry (${retries} left)...`)
+            retries--
+            await new Promise(r => setTimeout(r, 1000))
+            continue
+          }
+          throw e
+        }
+      }
+      throw new Error("Database connection failed after retries")
+    }
+
     // Get course counts by department
-    const courseGroups = await prisma.course.groupBy({
+    const courseGroups = await safeQuery(() => prisma.course.groupBy({
       by: ["department"],
       _count: { _all: true },
-    })
+    })) || []
 
     // Get all departments from courses
     const departments = courseGroups.map(g => g.department || "General")
@@ -2303,39 +2323,41 @@ app.post(
 
       await ensureCredentialsTable()
 
-      const row = await prisma.userCredential.findUnique({ where: { email: userEmail } })
+      const db = await getConnection()
+      try {
+        const row = await db.get("SELECT * FROM user_credentials WHERE email = ?", [userEmail])
 
-      if (!row || !row.passwordHash) {
-        return res.status(401).json({ success: false, error: "Invalid credentials" })
-      }
+        if (!row || !row.password_hash) {
+          return res.status(401).json({ success: false, error: "Invalid credentials" })
+        }
 
-      const [scheme, salt, stored] = String(row.passwordHash).split(":")
-      if (scheme !== "scrypt" || !salt || !stored) {
-        return res.status(500).json({ success: false, error: "Invalid credential record" })
-      }
+        const [scheme, salt, stored] = String(row.password_hash).split(":")
+        if (scheme !== "scrypt" || !salt || !stored) {
+          return res.status(500).json({ success: false, error: "Invalid credential record" })
+        }
 
-      const derived = await new Promise<string>((resolve, reject) => {
-        crypto.scrypt(String(currentPassword), salt, 64, (err, dk) =>
-          err ? reject(err) : resolve(dk.toString("hex")),
+        const derived = await new Promise<string>((resolve, reject) => {
+          crypto.scrypt(String(currentPassword), salt, 64, (err, dk) =>
+            err ? reject(err) : resolve(dk.toString("hex")),
+          )
+        })
+
+        if (derived !== stored) {
+          return res.status(401).json({ success: false, error: "Current password is incorrect" })
+        }
+
+        const newHash = await hashPassword(String(newPassword))
+        const now = new Date().toISOString()
+
+        await db.run(
+            "UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE email = ?",
+            [newHash, now, userEmail]
         )
-      })
 
-      if (derived !== stored) {
-        return res.status(401).json({ success: false, error: "Current password is incorrect" })
+        return res.json({ success: true, message: "Password changed successfully" })
+      } finally {
+        await db.close()
       }
-
-      const newHash = await hashPassword(String(newPassword))
-      const now = new Date().toISOString()
-
-      await prisma.userCredential.update({
-          where: { email: userEmail },
-          data: {
-              passwordHash: newHash,
-              updatedAt: now
-          }
-      })
-
-      return res.json({ success: true, message: "Password changed successfully" })
     } catch (error) {
       console.error("Change password error:", error)
       return res.status(500).json({ success: false, error: "Failed to change password" })
@@ -3234,7 +3256,15 @@ app.post("/api/admin/auth/login", async (req: Request, res: Response) => {
     )
     return res
       .status(200)
-      .json({ success: true, message: "Login successful", user: { username: canonicalId, role: "admin" } })
+      .json({
+        success: true,
+        message: "Login successful",
+        user: {
+          username: canonicalId,
+          displayName: adminFromDb?.displayName || process.env.ADMIN_DISPLAY_NAME || canonicalId,
+          role: "admin"
+        }
+      })
   } catch (error) {
     console.error("Error processing admin login:", error)
     return res.status(500).json({ success: false, message: "Failed to process login" })
@@ -4701,8 +4731,8 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
             departments,
             averageRating: avgRating,
             totalReviews: ratings.length,
-            systemUserId: systemTutors.find(st => st.name === tutor.name)?.id || null,
-            hasSystemAccount: systemTutors.some(st => st.name === tutor.name),
+            systemUserId: systemTutors.find(st => st.email === tutor.contactEmail || st.name === tutor.name)?.id || null,
+            hasSystemAccount: systemTutors.some(st => st.email === tutor.contactEmail || st.name === tutor.name),
           }
         })
         
@@ -5102,6 +5132,86 @@ app.delete(
       return res.status(500).json({ success: false, error: "Failed to delete content", details: message })
     }
   },
+)
+
+// Create login for tutor
+app.post(
+  "/api/admin/tutors/create-login",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { email, name } = req.body
+      if (!email) return res.status(400).json({ success: false, error: "Email is required" })
+
+      await ensureCredentialsTable()
+      const db = await getConnection()
+      
+      try {
+        const userEmail = String(email).toLowerCase()
+        const defaultPassword = "Welcome2025!" // Default password for manual creation
+        
+        // Check if user exists in Prisma
+        let user = await prisma.user.findUnique({ where: { email: userEmail } })
+        let isNew = false
+
+        if (!user) {
+          // Create user
+          const hash = await hashPassword(defaultPassword)
+          user = await prisma.user.create({
+            data: {
+              email: userEmail,
+              name: name || userEmail.split("@")[0],
+              role: "tutor",
+              password_hash: hash,
+            }
+          })
+          isNew = true
+          
+          // Add to user_credentials
+          const now = new Date().toISOString()
+          await db.run(
+            "INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            [userEmail, user.id, hash, now, now]
+          )
+        } else {
+          // Update user role to tutor if not already
+          if (user.role !== "tutor" && user.role !== "admin") {
+             await prisma.user.update({ where: { id: user.id }, data: { role: "tutor" } })
+          }
+          
+          // Ensure credentials exist
+          const row = await db.get("SELECT * FROM user_credentials WHERE email = ?", [userEmail])
+          if (!row) {
+             const hash = await hashPassword(defaultPassword)
+             const now = new Date().toISOString()
+             await db.run(
+               "INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+               [userEmail, user.id, hash, now, now]
+             )
+             isNew = true // Treat as new login created (password reset to default)
+          } else {
+             // Login exists, do nothing (we don't reset password unless requested)
+             return res.json({ success: true, message: "Login already exists", email: userEmail, exists: true })
+          }
+        }
+
+        return res.json({ 
+          success: true, 
+          message: "Login created successfully", 
+          email: userEmail, 
+          password: defaultPassword,
+          isNew: true 
+        })
+      } finally {
+        await db.close()
+      }
+
+    } catch (error) {
+      console.error("Create tutor login error:", error)
+      return res.status(500).json({ success: false, error: "Failed to create login" })
+    }
+  }
 )
 
 // Normalize tutor emails
@@ -6601,7 +6711,6 @@ const startServer = async (): Promise<void> => {
             if (!userTutor) {
               try {
                 const passwordHash = await bcrypt.hash("Welcome123!", 10)
-                let email = contentTutor.contactEmail
                 if (!email || !email.includes("@")) {
                   email = `${tutorName.replace(/[^a-zA-Z0-9]/g, ".").toLowerCase()}@excellenceakademie.co.za`
                 }
@@ -6843,7 +6952,8 @@ const startServer = async (): Promise<void> => {
 
             if (!student) {
               try {
-                const passwordHash = await bcrypt.hash("Welcome123!", 10)
+                const newPassword = generatePasswordFromName(studentName)
+                const passwordHash = await bcrypt.hash(newPassword, 10)
                 student = await prisma.user.create({
                   data: {
                     name: studentName,
