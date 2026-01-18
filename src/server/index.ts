@@ -5986,6 +5986,1318 @@ app.get("/api/tutor/stats", authenticateJWT as RequestHandler, authorizeRoles("t
   }
 })
 
+// ==========================================
+// STUDENT API ENDPOINTS
+// ==========================================
+
+// Student Assignments - GET
+app.get("/api/student/assignments", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const studentIdParam = (req.query.studentId as string) || req.user?.id
+    if (!studentIdParam) return res.status(400).json({ success: false, error: "Student ID is required" })
+
+    const studentId = Number.parseInt(String(studentIdParam), 10)
+    if (isNaN(studentId)) return res.status(400).json({ success: false, error: "Invalid student ID" })
+
+    const courseId = req.query.courseId ? Number.parseInt(req.query.courseId as string) : undefined
+
+    // Get student's enrolled courses
+    const enrollments = await prisma.courseEnrollment.findMany({
+      where: { userId: studentId },
+      include: { course: true },
+    })
+
+    const courseIds = enrollments.map((e) => e.courseId)
+
+    // Build where clause
+    const where: any = { courseId: { in: courseIds } }
+    if (courseId) where.courseId = courseId
+
+    // Get assignments with submissions
+    const assignments = await prisma.assignment.findMany({
+      where,
+      include: {
+        submissions: { where: { userId: studentId } },
+        course: true,
+      },
+      orderBy: { dueDate: "asc" },
+    })
+
+    // Format response
+    const formatted = assignments.map((assignment) => {
+      const submission = assignment.submissions?.[0] || null
+      return {
+        id: assignment.id,
+        title: assignment.title,
+        description: assignment.description,
+        courseId: assignment.courseId,
+        courseName: assignment.course.name,
+        dueDate: assignment.dueDate.toISOString(),
+        maxPoints: assignment.maxPoints,
+        attachments: assignment.attachments ? JSON.parse(assignment.attachments) : [],
+        status: submission
+          ? submission.status
+          : new Date(assignment.dueDate) < new Date()
+          ? "overdue"
+          : "pending",
+        submission: submission
+          ? {
+              id: submission.id,
+              content: submission.content,
+              attachments: submission.attachments ? JSON.parse(submission.attachments) : [],
+              score: submission.score,
+              feedback: submission.feedback,
+              status: submission.status,
+              submittedAt: submission.submittedAt.toISOString(),
+              gradedAt: submission.gradedAt?.toISOString() || null,
+            }
+          : null,
+      }
+    })
+
+    return res.status(200).json({ success: true, data: formatted })
+  } catch (error) {
+    console.error("Error fetching student assignments:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch assignments" })
+  }
+})
+
+// Student Assignments - POST (Submit)
+app.post("/api/student/assignments", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, assignmentId, content, attachments } = req.body
+    const userId = studentId || req.user?.id
+
+    if (!userId || !assignmentId || !content) {
+      return res.status(400).json({ success: false, error: "Student ID, assignment ID, and content are required" })
+    }
+
+    // Get assignment
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: assignmentId },
+    })
+
+    if (!assignment) {
+      return res.status(404).json({ success: false, error: "Assignment not found" })
+    }
+
+    // Check if already submitted
+    const existing = await prisma.assignmentSubmission.findFirst({
+      where: {
+        userId: Number.parseInt(String(userId)),
+        assignmentId: assignmentId,
+      },
+    })
+
+    if (existing) {
+      return res.status(400).json({ success: false, error: "Assignment already submitted" })
+    }
+
+    // Determine if late
+    const isLate = new Date() > new Date(assignment.dueDate)
+    const status = isLate ? "late" : "submitted"
+
+    // Create submission
+    const submission = await prisma.assignmentSubmission.create({
+      data: {
+        userId: Number.parseInt(String(userId)),
+        assignmentId: assignmentId,
+        content: content,
+        attachments: attachments ? JSON.stringify(attachments) : null,
+        status: status,
+      },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Assignment submitted successfully",
+      data: {
+        id: submission.id,
+        status: submission.status,
+        submittedAt: submission.submittedAt.toISOString(),
+        isLate,
+      },
+    })
+  } catch (error) {
+    console.error("Error submitting assignment:", error)
+    return res.status(500).json({ success: false, error: "Failed to submit assignment" })
+  }
+})
+
+// Student Tests - GET
+app.get("/api/student/tests", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const studentIdParam = (req.query.studentId as string) || req.user?.id
+    if (!studentIdParam) return res.status(400).json({ success: false, error: "Student ID is required" })
+
+    const studentId = Number.parseInt(String(studentIdParam), 10)
+    if (isNaN(studentId)) return res.status(400).json({ success: false, error: "Invalid student ID" })
+
+    const courseId = req.query.courseId ? Number.parseInt(req.query.courseId as string) : undefined
+
+    // Get enrolled courses
+    const enrollments = await prisma.courseEnrollment.findMany({
+      where: { userId: studentId },
+    })
+
+    const courseIds = enrollments.map((e) => e.courseId)
+
+    // Build where clause
+    const where: any = { courseId: { in: courseIds } }
+    if (courseId) where.courseId = courseId
+
+    // Get tests
+    const tests = await prisma.test.findMany({
+      where,
+      include: {
+        questions: true,
+        submissions: { where: { userId: studentId } },
+        course: true,
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    // Format response
+    const formatted = tests.map((test) => {
+      const submission = test.submissions?.[0] || null
+      return {
+        id: test.id,
+        title: test.title,
+        description: test.description,
+        courseId: test.courseId,
+        courseName: test.course.name,
+        dueDate: test.dueDate,
+        totalPoints: test.totalPoints,
+        questions: test.questions.map((q) => ({
+          id: q.id,
+          question: q.question,
+          options: JSON.parse(q.options),
+          // Don't send correct answer to students
+        })),
+        submission: submission
+          ? {
+              id: submission.id,
+              score: submission.score,
+              answers: JSON.parse(submission.answers),
+              submittedAt: submission.createdAt.toISOString(),
+            }
+          : null,
+        status: submission ? "submitted" : "pending",
+      }
+    })
+
+    return res.status(200).json({ success: true, data: formatted })
+  } catch (error) {
+    console.error("Error fetching student tests:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch tests" })
+  }
+})
+
+// Student Tests - POST (Submit)
+app.post("/api/student/tests", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, testId, answers } = req.body
+    const userId = studentId || req.user?.id
+
+    if (!userId || !testId || !answers) {
+      return res.status(400).json({ success: false, error: "Student ID, test ID, and answers are required" })
+    }
+
+    // Get test with questions
+    const test = await prisma.test.findUnique({
+      where: { id: testId },
+      include: { questions: true },
+    })
+
+    if (!test) {
+      return res.status(404).json({ success: false, error: "Test not found" })
+    }
+
+    // Check if already submitted
+    const existing = await prisma.testSubmission.findFirst({
+      where: {
+        userId: Number.parseInt(String(userId)),
+        testId: testId,
+      },
+    })
+
+    if (existing) {
+      return res.status(400).json({ success: false, error: "Test already submitted" })
+    }
+
+    // Calculate score
+    let correctCount = 0
+    test.questions.forEach((question) => {
+      const studentAnswer = answers[question.id]
+      if (studentAnswer === question.answer) {
+        correctCount++
+      }
+    })
+
+    const score = test.questions.length > 0 ? (correctCount / test.questions.length) * 100 : 0
+
+    // Create submission
+    const submission = await prisma.testSubmission.create({
+      data: {
+        userId: Number.parseInt(String(userId)),
+        testId: testId,
+        answers: JSON.stringify(answers),
+        score: score,
+      },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Test submitted successfully",
+      data: {
+        id: submission.id,
+        score: score,
+        correctCount: correctCount,
+        totalQuestions: test.questions.length,
+        submittedAt: submission.createdAt.toISOString(),
+      },
+    })
+  } catch (error) {
+    console.error("Error submitting test:", error)
+    return res.status(500).json({ success: false, error: "Failed to submit test" })
+  }
+})
+
+// Student Courses - GET
+app.get("/api/student/courses", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const studentIdParam = (req.query.studentId as string) || req.user?.id
+    if (!studentIdParam) return res.status(400).json({ success: false, error: "Student ID is required" })
+
+    const studentId = Number.parseInt(String(studentIdParam), 10)
+    if (isNaN(studentId)) return res.status(400).json({ success: false, error: "Invalid student ID" })
+
+    // Get enrolled courses
+    const enrollments = await prisma.courseEnrollment.findMany({
+      where: { userId: studentId },
+      include: {
+        course: {
+          include: {
+            materials: true,
+            tests: true,
+            tutor: true,
+          },
+        },
+      },
+    })
+
+    const enrolledCourses = enrollments.map((enrollment) => ({
+      ...enrollment.course,
+      enrollmentId: enrollment.id,
+      enrollmentStatus: enrollment.status,
+      enrolledAt: enrollment.createdAt.toISOString(),
+    }))
+
+    // Get available courses (not enrolled)
+    const enrolledCourseIds = enrollments.map((e) => e.courseId)
+    const availableCourses = await prisma.course.findMany({
+      where: {
+        id: { notIn: enrolledCourseIds },
+      },
+      include: {
+        tutor: true,
+      },
+    })
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        enrolledCourses,
+        availableCourses,
+      },
+    })
+  } catch (error) {
+    console.error("Error fetching student courses:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch courses" })
+  }
+})
+
+// Student Courses - POST (Enroll)
+app.post("/api/student/courses", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, courseId } = req.body
+    const userId = studentId || req.user?.id
+
+    if (!userId || !courseId) {
+      return res.status(400).json({ success: false, error: "Student ID and course ID are required" })
+    }
+
+    // Check if course exists
+    const course = await prisma.course.findUnique({
+      where: { id: Number.parseInt(String(courseId)) },
+    })
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found" })
+    }
+
+    // Check if already enrolled
+    const existing = await prisma.courseEnrollment.findFirst({
+      where: {
+        userId: Number.parseInt(String(userId)),
+        courseId: Number.parseInt(String(courseId)),
+      },
+    })
+
+    if (existing) {
+      return res.status(400).json({ success: false, error: "Already enrolled in this course" })
+    }
+
+    // Create enrollment
+    const enrollment = await prisma.courseEnrollment.create({
+      data: {
+        userId: Number.parseInt(String(userId)),
+        courseId: Number.parseInt(String(courseId)),
+        status: "active",
+      },
+      include: {
+        course: true,
+      },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Successfully enrolled in course",
+      data: enrollment,
+    })
+  } catch (error) {
+    console.error("Error enrolling in course:", error)
+    return res.status(500).json({ success: false, error: "Failed to enroll in course" })
+  }
+})
+
+// Student Courses - DELETE (Unenroll)
+app.delete("/api/student/courses", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const studentIdParam = (req.query.studentId as string) || req.user?.id
+    const courseIdParam = req.query.courseId as string
+
+    if (!studentIdParam || !courseIdParam) {
+      return res.status(400).json({ success: false, error: "Student ID and course ID are required" })
+    }
+
+    const studentId = Number.parseInt(String(studentIdParam), 10)
+    const courseId = Number.parseInt(courseIdParam, 10)
+
+    if (isNaN(studentId) || isNaN(courseId)) {
+      return res.status(400).json({ success: false, error: "Invalid student ID or course ID" })
+    }
+
+    // Find enrollment
+    const enrollment = await prisma.courseEnrollment.findFirst({
+      where: {
+        userId: studentId,
+        courseId: courseId,
+      },
+    })
+
+    if (!enrollment) {
+      return res.status(404).json({ success: false, error: "Enrollment not found" })
+    }
+
+    // Delete enrollment
+    await prisma.courseEnrollment.delete({
+      where: { id: enrollment.id },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Successfully unenrolled from course",
+    })
+  } catch (error) {
+    console.error("Error unenrolling from course:", error)
+    return res.status(500).json({ success: false, error: "Failed to unenroll from course" })
+  }
+})
+
+// Student Scheduled Sessions - GET
+app.get("/api/student/scheduled-sessions", authenticateJWT as RequestHandler, authorizeRoles("student", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const studentIdParam = (req.query.studentId as string) || req.user?.id
+    if (!studentIdParam) return res.status(400).json({ success: false, error: "Student ID is required" })
+
+    const studentId = Number.parseInt(String(studentIdParam), 10)
+    if (isNaN(studentId)) return res.status(400).json({ success: false, error: "Invalid student ID" })
+
+    // Get student's enrolled courses
+    const enrollments = await prisma.courseEnrollment.findMany({
+      where: { userId: studentId },
+    })
+
+    const courseIds = enrollments.map((e) => e.courseId)
+
+    // Get scheduled sessions for enrolled courses
+    const sessions = await prisma.scheduledSession.findMany({
+      where: {
+        courseId: { in: courseIds },
+        scheduledAt: { gte: new Date() }, // Only future sessions
+      },
+      include: {
+        course: true,
+        tutor: true,
+      },
+      orderBy: { scheduledAt: "asc" },
+    })
+
+    return res.status(200).json({ success: true, data: sessions })
+  } catch (error) {
+    console.error("Error fetching scheduled sessions:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch scheduled sessions" })
+  }
+})
+
+// ==========================================
+// TUTOR API ENDPOINTS
+// ==========================================
+
+// Tutor Materials - GET
+app.get("/api/tutor/materials", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tutorIdParam = (req.query.tutorId as string) || req.user?.id
+    if (!tutorIdParam) return res.status(400).json({ success: false, error: "Tutor ID is required" })
+
+    const tutorId = Number.parseInt(String(tutorIdParam), 10)
+    const courseId = req.query.courseId ? Number.parseInt(req.query.courseId as string) : undefined
+
+    // Get tutor's courses
+    const where: any = { tutorId }
+    if (courseId) where.id = courseId
+
+    const courses = await prisma.course.findMany({
+      where,
+      include: { materials: true },
+    })
+
+    const materials = courses.flatMap((course) => course.materials)
+
+    return res.status(200).json({ success: true, data: materials })
+  } catch (error) {
+    console.error("Error fetching materials:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch materials" })
+  }
+})
+
+// Tutor Materials - POST
+app.post("/api/tutor/materials", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId, name, type, url, description } = req.body
+
+    if (!courseId || !name || !type || !url) {
+      return res.status(400).json({ success: false, error: "Course ID, name, type, and URL are required" })
+    }
+
+    // Verify tutor owns the course
+    const tutorId = req.user?.id
+    const course = await prisma.course.findFirst({
+      where: {
+        id: Number.parseInt(String(courseId)),
+        tutorId: Number.parseInt(String(tutorId)),
+      },
+    })
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found or unauthorized" })
+    }
+
+    // Create material
+    const material = await prisma.courseMaterial.create({
+      data: {
+        courseId: Number.parseInt(String(courseId)),
+        name,
+        type,
+        url,
+        description: description || null,
+      },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Material uploaded successfully",
+      data: material,
+    })
+  } catch (error) {
+    console.error("Error uploading material:", error)
+    return res.status(500).json({ success: false, error: "Failed to upload material" })
+  }
+})
+
+// Tutor Materials - DELETE
+app.delete("/api/tutor/materials", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const materialId = req.query.materialId as string
+
+    if (!materialId) {
+      return res.status(400).json({ success: false, error: "Material ID is required" })
+    }
+
+    // Get material with course to verify ownership
+    const material = await prisma.courseMaterial.findUnique({
+      where: { id: materialId },
+      include: { course: true },
+    })
+
+    if (!material) {
+      return res.status(404).json({ success: false, error: "Material not found" })
+    }
+
+    // Verify tutor owns the course
+    const tutorId = req.user?.id
+    if (material.course.tutorId !== Number.parseInt(String(tutorId))) {
+      return res.status(403).json({ success: false, error: "Unauthorized" })
+    }
+
+    // Delete material
+    await prisma.courseMaterial.delete({
+      where: { id: materialId },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Material deleted successfully",
+    })
+  } catch (error) {
+    console.error("Error deleting material:", error)
+    return res.status(500).json({ success: false, error: "Failed to delete material" })
+  }
+})
+
+// Tutor Courses - GET
+app.get("/api/tutor/courses", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tutorIdParam = (req.query.tutorId as string) || req.user?.id
+    if (!tutorIdParam) return res.status(400).json({ success: false, error: "Tutor ID is required" })
+
+    const tutorId = Number.parseInt(String(tutorIdParam), 10)
+
+    const courses = await prisma.course.findMany({
+      where: { tutorId },
+      include: {
+        materials: true,
+        tests: true,
+        courseEnrollments: { include: { user: true } },
+      },
+    })
+
+    return res.status(200).json({ success: true, data: courses })
+  } catch (error) {
+    console.error("Error fetching tutor courses:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch courses" })
+  }
+})
+
+// Tutor Courses - POST
+app.post("/api/tutor/courses", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { name, description, category, department } = req.body
+    const tutorId = req.user?.id
+
+    if (!name) {
+      return res.status(400).json({ success: false, error: "Course name is required" })
+    }
+
+    const course = await prisma.course.create({
+      data: {
+        name,
+        description: description || null,
+        category: category || null,
+        department: department || null,
+        tutorId: Number.parseInt(String(tutorId)),
+      },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Course created successfully",
+      data: course,
+    })
+  } catch (error) {
+    console.error("Error creating course:", error)
+    return res.status(500).json({ success: false, error: "Failed to create course" })
+  }
+})
+
+// Tutor Courses - PUT
+app.put("/api/tutor/courses", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId, name, description, category, department } = req.body
+    const tutorId = req.user?.id
+
+    if (!courseId) {
+      return res.status(400).json({ success: false, error: "Course ID is required" })
+    }
+
+    // Verify ownership
+    const course = await prisma.course.findFirst({
+      where: {
+        id: Number.parseInt(String(courseId)),
+        tutorId: Number.parseInt(String(tutorId)),
+      },
+    })
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found or unauthorized" })
+    }
+
+    // Update course
+    const updated = await prisma.course.update({
+      where: { id: Number.parseInt(String(courseId)) },
+      data: {
+        name: name || course.name,
+        description: description !== undefined ? description : course.description,
+        category: category !== undefined ? category : course.category,
+        department: department !== undefined ? department : course.department,
+      },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Course updated successfully",
+      data: updated,
+    })
+  } catch (error) {
+    console.error("Error updating course:", error)
+    return res.status(500).json({ success: false, error: "Failed to update course" })
+  }
+})
+
+// Tutor Students - POST (Enroll student)
+app.post("/api/tutor/students", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { tutorId, studentEmail, courseId } = req.body
+    const reqTutorId = tutorId || req.user?.id
+
+    if (!studentEmail || !courseId) {
+      return res.status(400).json({ success: false, error: "Student email and course ID are required" })
+    }
+
+    // Verify tutor owns the course
+    const course = await prisma.course.findFirst({
+      where: {
+        id: Number.parseInt(String(courseId)),
+        tutorId: Number.parseInt(String(reqTutorId)),
+      },
+    })
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found or unauthorized" })
+    }
+
+    // Find student by email
+    const student = await prisma.user.findUnique({
+      where: { email: studentEmail.toLowerCase() },
+    })
+
+    if (!student) {
+      return res.status(404).json({ success: false, error: "Student not found" })
+    }
+
+    if (student.role !== "student") {
+      return res.status(400).json({ success: false, error: "User is not a student" })
+    }
+
+    // Check if already enrolled
+    const existing = await prisma.courseEnrollment.findFirst({
+      where: {
+        userId: student.id,
+        courseId: Number.parseInt(String(courseId)),
+      },
+    })
+
+    if (existing) {
+      return res.status(400).json({ success: false, error: "Student already enrolled" })
+    }
+
+    // Create enrollment
+    const enrollment = await prisma.courseEnrollment.create({
+      data: {
+        userId: student.id,
+        courseId: Number.parseInt(String(courseId)),
+        status: "active",
+      },
+      include: { user: true, course: true },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Student enrolled successfully",
+      data: enrollment,
+    })
+  } catch (error) {
+    console.error("Error enrolling student:", error)
+    return res.status(500).json({ success: false, error: "Failed to enroll student" })
+  }
+})
+
+// Tutor Students - PUT (Update student)
+app.put("/api/tutor/students", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { studentId, updates } = req.body
+
+    if (!studentId || !updates) {
+      return res.status(400).json({ success: false, error: "Student ID and updates are required" })
+    }
+
+    // Update student
+    const student = await prisma.user.update({
+      where: { id: Number.parseInt(String(studentId)) },
+      data: updates,
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Student updated successfully",
+      data: student,
+    })
+  } catch (error) {
+    console.error("Error updating student:", error)
+    return res.status(500).json({ success: false, error: "Failed to update student" })
+  }
+})
+
+// Tutor Students - DELETE (Remove from course)
+app.delete("/api/tutor/students", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const studentId = req.query.studentId as string
+    const courseId = req.query.courseId as string
+    const tutorId = req.user?.id
+
+    if (!studentId || !courseId) {
+      return res.status(400).json({ success: false, error: "Student ID and course ID are required" })
+    }
+
+    // Verify tutor owns the course
+    const course = await prisma.course.findFirst({
+      where: {
+        id: Number.parseInt(courseId),
+        tutorId: Number.parseInt(String(tutorId)),
+      },
+    })
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found or unauthorized" })
+    }
+
+    // Find and delete enrollment
+    const enrollment = await prisma.courseEnrollment.findFirst({
+      where: {
+        userId: Number.parseInt(studentId),
+        courseId: Number.parseInt(courseId),
+      },
+    })
+
+    if (!enrollment) {
+      return res.status(404).json({ success: false, error: "Enrollment not found" })
+    }
+
+    await prisma.courseEnrollment.delete({
+      where: { id: enrollment.id },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Student removed from course",
+    })
+  } catch (error) {
+    console.error("Error removing student:", error)
+    return res.status(500).json({ success: false, error: "Failed to remove student" })
+  }
+})
+
+// Tutor Tests - GET
+app.get("/api/tutor/tests", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tutorIdParam = (req.query.tutorId as string) || req.user?.id
+    const courseId = req.query.courseId ? Number.parseInt(req.query.courseId as string) : undefined
+
+    const tutorId = Number.parseInt(String(tutorIdParam), 10)
+
+    // Get tutor's courses
+    const where: any = { tutorId }
+    if (courseId) where.id = courseId
+
+    const courses = await prisma.course.findMany({
+      where,
+      include: {
+        tests: {
+          include: {
+            questions: true,
+            submissions: true,
+          },
+        },
+      },
+    })
+
+    const tests = courses.flatMap((course) => course.tests)
+
+    return res.status(200).json({ success: true, data: tests })
+  } catch (error) {
+    console.error("Error fetching tests:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch tests" })
+  }
+})
+
+// Tutor Tests - POST
+app.post("/api/tutor/tests", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId, title, description, dueDate, totalPoints, questions } = req.body
+    const tutorId = req.user?.id
+
+    if (!courseId || !title || !questions || !Array.isArray(questions)) {
+      return res.status(400).json({ success: false, error: "Course ID, title, and questions array are required" })
+    }
+
+    // Verify tutor owns the course
+    const course = await prisma.course.findFirst({
+      where: {
+        id: Number.parseInt(String(courseId)),
+        tutorId: Number.parseInt(String(tutorId)),
+      },
+    })
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found or unauthorized" })
+    }
+
+    // Create test with questions
+    const test = await prisma.test.create({
+      data: {
+        courseId: Number.parseInt(String(courseId)),
+        title,
+        description: description || null,
+        dueDate: dueDate || null,
+        totalPoints: totalPoints || questions.length,
+        questions: {
+          create: questions.map((q: any) => ({
+            question: q.question,
+            options: JSON.stringify(q.options),
+            answer: q.answer,
+          })),
+        },
+      },
+      include: { questions: true },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Test created successfully",
+      data: test,
+    })
+  } catch (error) {
+    console.error("Error creating test:", error)
+    return res.status(500).json({ success: false, error: "Failed to create test" })
+  }
+})
+
+// Tutor Tests - PUT
+app.put("/api/tutor/tests", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { testId, title, description, dueDate, totalPoints } = req.body
+    const tutorId = req.user?.id
+
+    if (!testId) {
+      return res.status(400).json({ success: false, error: "Test ID is required" })
+    }
+
+    // Verify ownership
+    const test = await prisma.test.findUnique({
+      where: { id: testId },
+      include: { course: true },
+    })
+
+    if (!test) {
+      return res.status(404).json({ success: false, error: "Test not found" })
+    }
+
+    if (test.course.tutorId !== Number.parseInt(String(tutorId))) {
+      return res.status(403).json({ success: false, error: "Unauthorized" })
+    }
+
+    // Update test
+    const updated = await prisma.test.update({
+      where: { id: testId },
+      data: {
+        title: title || test.title,
+        description: description !== undefined ? description : test.description,
+        dueDate: dueDate !== undefined ? dueDate : test.dueDate,
+        totalPoints: totalPoints || test.totalPoints,
+      },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Test updated successfully",
+      data: updated,
+    })
+  } catch (error) {
+    console.error("Error updating test:", error)
+    return res.status(500).json({ success: false, error: "Failed to update test" })
+  }
+})
+
+// Tutor Tests - DELETE
+app.delete("/api/tutor/tests", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const testId = req.query.testId as string
+    const tutorId = req.user?.id
+
+    if (!testId) {
+      return res.status(400).json({ success: false, error: "Test ID is required" })
+    }
+
+    // Verify ownership
+    const test = await prisma.test.findUnique({
+      where: { id: testId },
+      include: { course: true },
+    })
+
+    if (!test) {
+      return res.status(404).json({ success: false, error: "Test not found" })
+    }
+
+    if (test.course.tutorId !== Number.parseInt(String(tutorId))) {
+      return res.status(403).json({ success: false, error: "Unauthorized" })
+    }
+
+    // Delete test (questions and submissions will cascade)
+    await prisma.test.delete({
+      where: { id: testId },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Test deleted successfully",
+    })
+  } catch (error) {
+    console.error("Error deleting test:", error)
+    return res.status(500).json({ success: false, error: "Failed to delete test" })
+  }
+})
+
+// Tutor Assignments - GET
+app.get("/api/tutor/assignments", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tutorIdParam = (req.query.tutorId as string) || req.user?.id
+    const courseId = req.query.courseId ? Number.parseInt(req.query.courseId as string) : undefined
+
+    const tutorId = Number.parseInt(String(tutorIdParam), 10)
+
+    // Get tutor's courses
+    const where: any = { tutorId }
+    if (courseId) where.id = courseId
+
+    const courses = await prisma.course.findMany({
+      where,
+      include: {
+        assignments: {
+          include: { submissions: true },
+        },
+      },
+    })
+
+    const assignments = courses.flatMap((course) => course.assignments)
+
+    return res.status(200).json({ success: true, data: assignments })
+  } catch (error) {
+    console.error("Error fetching assignments:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch assignments" })
+  }
+})
+
+// Tutor Assignments - POST
+app.post("/api/tutor/assignments", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId, title, description, dueDate, maxPoints, attachments } = req.body
+    const tutorId = req.user?.id
+
+    if (!courseId || !title || !dueDate) {
+      return res.status(400).json({ success: false, error: "Course ID, title, and due date are required" })
+    }
+
+    // Verify tutor owns the course
+    const course = await prisma.course.findFirst({
+      where: {
+        id: Number.parseInt(String(courseId)),
+        tutorId: Number.parseInt(String(tutorId)),
+      },
+    })
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found or unauthorized" })
+    }
+
+    // Create assignment
+    const assignment = await prisma.assignment.create({
+      data: {
+        courseId: Number.parseInt(String(courseId)),
+        title,
+        description: description || "",
+        dueDate: new Date(dueDate),
+        maxPoints: maxPoints || 100,
+        attachments: attachments ? JSON.stringify(attachments) : null,
+      },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Assignment created successfully",
+      data: assignment,
+    })
+  } catch (error) {
+    console.error("Error creating assignment:", error)
+    return res.status(500).json({ success: false, error: "Failed to create assignment" })
+  }
+})
+
+// Tutor Assignments - PUT
+app.put("/api/tutor/assignments", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { assignmentId, title, description, dueDate, maxPoints, attachments } = req.body
+    const tutorId = req.user?.id
+
+    if (!assignmentId) {
+      return res.status(400).json({ success: false, error: "Assignment ID is required" })
+    }
+
+    // Verify ownership
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: assignmentId },
+      include: { course: true },
+    })
+
+    if (!assignment) {
+      return res.status(404).json({ success: false, error: "Assignment not found" })
+    }
+
+    if (assignment.course.tutorId !== Number.parseInt(String(tutorId))) {
+      return res.status(403).json({ success: false, error: "Unauthorized" })
+    }
+
+    // Update assignment
+    const updated = await prisma.assignment.update({
+      where: { id: assignmentId },
+      data: {
+        title: title || assignment.title,
+        description: description !== undefined ? description : assignment.description,
+        dueDate: dueDate ? new Date(dueDate) : assignment.dueDate,
+        maxPoints: maxPoints || assignment.maxPoints,
+        attachments: attachments !== undefined ? JSON.stringify(attachments) : assignment.attachments,
+      },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Assignment updated successfully",
+      data: updated,
+    })
+  } catch (error) {
+    console.error("Error updating assignment:", error)
+    return res.status(500).json({ success: false, error: "Failed to update assignment" })
+  }
+})
+
+// Tutor Assignments - DELETE
+app.delete("/api/tutor/assignments", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const assignmentId = req.query.assignmentId as string
+    const tutorId = req.user?.id
+
+    if (!assignmentId) {
+      return res.status(400).json({ success: false, error: "Assignment ID is required" })
+    }
+
+    // Verify ownership
+    const assignment = await prisma.assignment.findUnique({
+      where: { id: assignmentId },
+      include: { course: true },
+    })
+
+    if (!assignment) {
+      return res.status(404).json({ success: false, error: "Assignment not found" })
+    }
+
+    if (assignment.course.tutorId !== Number.parseInt(String(tutorId))) {
+      return res.status(403).json({ success: false, error: "Unauthorized" })
+    }
+
+    // Delete assignment (submissions will cascade)
+    await prisma.assignment.delete({
+      where: { id: assignmentId },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Assignment deleted successfully",
+    })
+  } catch (error) {
+    console.error("Error deleting assignment:", error)
+    return res.status(500).json({ success: false, error: "Failed to delete assignment" })
+  }
+})
+
+// Tutor Scheduled Sessions - GET
+app.get("/api/tutor/scheduled-sessions", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const tutorIdParam = (req.query.tutorId as string) || req.user?.id
+    const courseId = req.query.courseId ? Number.parseInt(req.query.courseId as string) : undefined
+    const status = req.query.status as string | undefined
+
+    const tutorId = Number.parseInt(String(tutorIdParam), 10)
+
+    // Build where clause
+    const where: any = { tutorId }
+    if (courseId) where.courseId = courseId
+    if (status) where.status = status
+
+    const sessions = await prisma.scheduledSession.findMany({
+      where,
+      include: {
+        course: true,
+        tutor: true,
+      },
+      orderBy: { scheduledAt: "asc" },
+    })
+
+    return res.status(200).json({ success: true, data: sessions })
+  } catch (error) {
+    console.error("Error fetching scheduled sessions:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch scheduled sessions" })
+  }
+})
+
+// Tutor Scheduled Sessions - POST
+app.post("/api/tutor/scheduled-sessions", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { courseId, title, description, scheduledAt, duration } = req.body
+    const tutorId = req.user?.id
+
+    if (!courseId || !title || !scheduledAt || !duration) {
+      return res.status(400).json({ success: false, error: "Course ID, title, scheduled time, and duration are required" })
+    }
+
+    // Verify tutor owns the course
+    const course = await prisma.course.findFirst({
+      where: {
+        id: Number.parseInt(String(courseId)),
+        tutorId: Number.parseInt(String(tutorId)),
+      },
+    })
+
+    if (!course) {
+      return res.status(404).json({ success: false, error: "Course not found or unauthorized" })
+    }
+
+    // Create scheduled session
+    const session = await prisma.scheduledSession.create({
+      data: {
+        courseId: Number.parseInt(String(courseId)),
+        tutorId: Number.parseInt(String(tutorId)),
+        title,
+        description: description || null,
+        scheduledAt: new Date(scheduledAt),
+        duration: Number.parseInt(String(duration)),
+        status: "scheduled",
+      },
+    })
+
+    return res.status(201).json({
+      success: true,
+      message: "Session scheduled successfully",
+      data: session,
+    })
+  } catch (error) {
+    console.error("Error scheduling session:", error)
+    return res.status(500).json({ success: false, error: "Failed to schedule session" })
+  }
+})
+
+// Tutor Scheduled Sessions - PUT
+app.put("/api/tutor/scheduled-sessions", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { sessionId, title, description, scheduledAt, duration, status } = req.body
+    const tutorId = req.user?.id
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: "Session ID is required" })
+    }
+
+    // Verify ownership
+    const session = await prisma.scheduledSession.findUnique({
+      where: { id: sessionId },
+    })
+
+    if (!session) {
+      return res.status(404).json({ success: false, error: "Session not found" })
+    }
+
+    if (session.tutorId !== Number.parseInt(String(tutorId))) {
+      return res.status(403).json({ success: false, error: "Unauthorized" })
+    }
+
+    // Update session
+    const updated = await prisma.scheduledSession.update({
+      where: { id: sessionId },
+      data: {
+        title: title || session.title,
+        description: description !== undefined ? description : session.description,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : session.scheduledAt,
+        duration: duration || session.duration,
+        status: status || session.status,
+      },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Session updated successfully",
+      data: updated,
+    })
+  } catch (error) {
+    console.error("Error updating session:", error)
+    return res.status(500).json({ success: false, error: "Failed to update session" })
+  }
+})
+
+// Tutor Scheduled Sessions - DELETE
+app.delete("/api/tutor/scheduled-sessions", authenticateJWT as RequestHandler, authorizeRoles("tutor", "admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const sessionId = req.query.sessionId || req.query.id
+    const tutorId = req.user?.id
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: "Session ID is required" })
+    }
+
+    // Verify ownership
+    const session = await prisma.scheduledSession.findUnique({
+      where: { id: String(sessionId) },
+    })
+
+    if (!session) {
+      return res.status(404).json({ success: false, error: "Session not found" })
+    }
+
+    if (session.tutorId !== Number.parseInt(String(tutorId))) {
+      return res.status(403).json({ success: false, error: "Unauthorized" })
+    }
+
+    // Delete session
+    await prisma.scheduledSession.delete({
+      where: { id: String(sessionId) },
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: "Session deleted successfully",
+    })
+  } catch (error) {
+    console.error("Error deleting session:", error)
+    return res.status(500).json({ success: false, error: "Failed to delete session" })
+  }
+})
 // Database initialization
 async function initializeDatabase(): Promise<void> {
   try {
