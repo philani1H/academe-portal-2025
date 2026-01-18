@@ -672,7 +672,7 @@ io.on("connection", (socket) => {
   
   socket.on(
     "join-session",
-    async ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn }) => {
+    async ({ sessionId, userId, userRole, userName, courseId, courseName, category, isVideoOn, isAudioOn, isHandRaised, isScreenSharing, isRecording }) => {
       // Prevent duplicate joins for the same session
       const sessionKey = `${socket.id}-${sessionId}`;
       if (socketSessions.has(sessionKey)) {
@@ -694,13 +694,25 @@ io.on("connection", (socket) => {
         userName,
         isVideoOn: isVideoOn ?? true,
         isAudioOn: isAudioOn ?? true,
-        isHandRaised: false
+        isHandRaised: isHandRaised ?? false,
+        isScreenSharing: isScreenSharing ?? false,
+        isRecording: isRecording ?? false
       });
 
       // Notify others that this user joined
       socket
         .to(sessionId)
-        .emit("user-joined", { userId, userRole, socketId: socket.id, userName, isVideoOn, isAudioOn })
+        .emit("user-joined", {
+          userId,
+          userRole,
+          socketId: socket.id,
+          userName,
+          isVideoOn,
+          isAudioOn,
+          isHandRaised: isHandRaised ?? false,
+          isScreenSharing: isScreenSharing ?? false,
+          isRecording: isRecording ?? false
+        })
 
       // Find or create database session to send start time and persist participant
       try {
@@ -779,11 +791,34 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("stream-state-change", ({ sessionId, isVideoOn, isAudioOn }) => {
-    socket.to(sessionId).emit("stream-state-changed", { socketId: socket.id, isVideoOn, isAudioOn })
+  socket.on("stream-state-change", ({ sessionId, isVideoOn, isAudioOn, isScreenSharing, isRecording }) => {
+    // Update stored user state
+    const usersInSession = sessionUsers.get(sessionId);
+    if (usersInSession && usersInSession.has(socket.id)) {
+      const userData = usersInSession.get(socket.id)!;
+      userData.isVideoOn = isVideoOn;
+      userData.isAudioOn = isAudioOn;
+      userData.isScreenSharing = isScreenSharing ?? false;
+      // Note: isRecording is not stored in sessionUsers, only broadcast
+    }
+
+    // Broadcast state change to all other users in session
+    socket.to(sessionId).emit("stream-state-changed", {
+      socketId: socket.id,
+      isVideoOn,
+      isAudioOn,
+      isScreenSharing: isScreenSharing ?? false,
+      isRecording: isRecording ?? false
+    })
   })
 
   socket.on("hand-raised-change", ({ sessionId, isHandRaised }) => {
+    // Update stored user state
+    const usersInSession = sessionUsers.get(sessionId);
+    if (usersInSession && usersInSession.has(socket.id)) {
+      usersInSession.get(socket.id)!.isHandRaised = isHandRaised;
+    }
+
     socket.to(sessionId).emit("hand-raised-changed", { socketId: socket.id, isHandRaised })
   })
 
