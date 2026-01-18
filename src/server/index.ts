@@ -1019,20 +1019,16 @@ io.on("connection", (socket) => {
   })
 })
 
-// Preflight handler
+// Preflight handler - Allow all origins
 app.options(
   "*",
   cors({
-    origin: isProd ? undefined : true,
+    origin: true, // Allow all origins
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"],
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   }),
 )
-
-// Security and performance middleware
-app.use(express.json({ limit: "5mb" }))
-app.use(express.urlencoded({ extended: true, limit: "5mb" }))
 
 // Serve static uploads
 app.use("/uploads", (req: Request, res: Response, next: NextFunction) => {
