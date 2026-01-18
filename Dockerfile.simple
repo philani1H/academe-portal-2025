@@ -23,6 +23,13 @@ RUN npm ci --omit=dev --legacy-peer-deps --prefer-offline
 # Copy source code
 COPY . .
 
+# Set Prisma to use npm instead of bun
+ENV PRISMA_CLI_BINARY_TARGETS=native
+ENV PRISMA_GENERATE_SKIP_AUTOINSTALL=true
+
+# Install Prisma client explicitly with npm
+RUN npm install @prisma/client
+
 # Generate Prisma client
 RUN npx prisma generate
 
