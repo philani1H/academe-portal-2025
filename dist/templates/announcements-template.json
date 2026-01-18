@@ -1,0 +1,5 @@
+[
+  { "title": "Important Update", "content": "School will be closed on Friday", "type": "warning", "pinned": true, "isActive": true },
+  { "title": "Welcome", "content": "Welcome to Excellence Akademie!", "type": "success", "pinned": false, "isActive": true },
+  { "title": "Article Title", "content": "<p>Rich HTML content allowed</p>", "type": "info", "pinned": false, "isActive": true, "mediaUrl": "https://example.com/banner.jpg", "mediaType": "image" }
+]

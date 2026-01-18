@@ -84,6 +84,7 @@
     "html2canvas": "^1.4.1",
     "input-otp": "^1.2.4",
     "jsonwebtoken": "^9.0.2",
+    "jspdf": "^4.0.0",
     "katex": "^0.16.27",
     "lucide-react": "^0.462.0",
     "multer": "^2.0.2",
