@@ -1708,10 +1708,27 @@ app.get("/api/admin/users", authenticateJWT as RequestHandler, authorizeRoles("a
   try {
     const roleParam = (req.query.role ?? "").toString().trim()
     const where = roleParam ? { role: roleParam } : {}
-    const users = await prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-    })
+
+    let users = []
+    let retries = 3
+    while (retries > 0) {
+      try {
+        users = await prisma.user.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+        })
+        break
+      } catch (e: any) {
+        if (e?.code === 'P1001' || e?.code === 'P2024') {
+          console.warn(`Database connection retry for users (${retries} left)...`)
+          retries--
+          await new Promise(r => setTimeout(r, 1000))
+          continue
+        }
+        throw e
+      }
+    }
+
     const data = users.map((u) => ({
       id: u.id,
       name: u.name,
@@ -1732,9 +1749,26 @@ app.get("/api/admin/users", authenticateJWT as RequestHandler, authorizeRoles("a
 app.get("/api/admin/admin-users", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await ensureAdminUsersTable()
-    const admins = await safeQuery(() => prisma.adminUser.findMany({
-      orderBy: { createdAt: "desc" },
-    }))
+
+    let admins = []
+    let retries = 3
+    while (retries > 0) {
+      try {
+        admins = await prisma.adminUser.findMany({
+          orderBy: { createdAt: "desc" },
+        })
+        break
+      } catch (e: any) {
+        if (e?.code === 'P1001' || e?.code === 'P2024') {
+          console.warn(`Database connection retry for admin-users (${retries} left)...`)
+          retries--
+          await new Promise(r => setTimeout(r, 1000))
+          continue
+        }
+        throw e
+      }
+    }
+
     const data = admins.map((a) => ({
       id: a.id,
       username: a.username,
@@ -2012,13 +2046,32 @@ app.get("/api/admin/departments", authenticateJWT as RequestHandler, authorizeRo
     const studentCounts = await Promise.all(
       departments.map(async (dept) => {
         // Count students enrolled in courses of this department
-        const count = await prisma.user.count({
-          where: {
-            role: "student",
-            department: dept
+        try {
+          let retries = 3
+          while (retries > 0) {
+            try {
+              const count = await prisma.user.count({
+                where: {
+                  role: "student",
+                  department: dept
+                }
+              })
+              return { department: dept, count }
+            } catch (e: any) {
+              if (e?.code === 'P1001' || e?.code === 'P2024') {
+                console.warn(`Database retry for dept ${dept} (${retries} left)...`)
+                retries--
+                await new Promise(r => setTimeout(r, 1000))
+                continue
+              }
+              throw e
+            }
           }
-        })
-        return { department: dept, count }
+          return { department: dept, count: 0 }
+        } catch (e) {
+          console.warn(`Failed to count students for ${dept}:`, e)
+          return { department: dept, count: 0 }
+        }
       })
     )
 
@@ -3354,11 +3407,27 @@ app.get("/api/notifications", authenticateJWT as RequestHandler, async (req: Aut
       userId: targetUserId
     }
 
-    const notifications = await prisma.notification.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 200,
-    })
+    let notifications = []
+    let retries = 3
+    while (retries > 0) {
+      try {
+        notifications = await prisma.notification.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: 200,
+        })
+        break
+      } catch (e: any) {
+        if (e?.code === 'P1001' || e?.code === 'P2024') {
+          console.warn(`Database connection retry for notifications (${retries} left)...`)
+          retries--
+          await new Promise(r => setTimeout(r, 1000))
+          continue
+        }
+        throw e
+      }
+    }
+
     const data = notifications.map((n) => ({
       id: n.id,
       title: n.title,
