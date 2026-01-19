@@ -1,6 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
-import formidable from 'formidable';
+import formidable, { File } from 'formidable';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -16,45 +16,89 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'recordings');
+    
+    // Ensure upload directory exists before parsing
+    await fs.mkdir(uploadDir, { recursive: true });
+
     const form = formidable({
-      uploadDir: path.join(process.cwd(), 'public', 'uploads', 'recordings'),
+      uploadDir,
       keepExtensions: true,
       maxFileSize: 500 * 1024 * 1024, // 500MB
+      filename: (name, ext, part) => {
+        // Generate unique filename during upload
+        const timestamp = Date.now();
+        return `recording-${timestamp}${ext}`;
+      },
     });
-
-    // Ensure upload directory exists
-    await fs.mkdir(path.join(process.cwd(), 'public', 'uploads', 'recordings'), { recursive: true });
 
     const [fields, files] = await form.parse(req);
     
-    const courseId = Array.isArray(fields.courseId) ? fields.courseId[0] : fields.courseId;
-    const sessionId = Array.isArray(fields.sessionId) ? fields.sessionId[0] : fields.sessionId;
-    const sessionName = Array.isArray(fields.sessionName) ? fields.sessionName[0] : fields.sessionName;
-    const duration = Array.isArray(fields.duration) ? fields.duration[0] : fields.duration;
+    // Helper function to extract field value
+    const getFieldValue = (field: string | string[] | undefined): string | undefined => {
+      if (Array.isArray(field)) return field[0];
+      return field;
+    };
+
+    const courseId = getFieldValue(fields.courseId);
+    const sessionId = getFieldValue(fields.sessionId);
+    const sessionName = getFieldValue(fields.sessionName);
+    const duration = getFieldValue(fields.duration);
     
     const videoFile = Array.isArray(files.video) ? files.video[0] : files.video;
 
     if (!videoFile || !courseId) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      // Clean up uploaded file if validation fails
+      if (videoFile) {
+        await fs.unlink(videoFile.filepath).catch(() => {});
+      }
+      return res.status(400).json({ error: 'Missing required fields: video and courseId' });
     }
 
-    // Generate filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `recording-${sessionId || timestamp}.webm`;
-    const relativePath = `/uploads/recordings/${filename}`;
-    const absolutePath = path.join(process.cwd(), 'public', relativePath);
+    // Validate courseId is a valid number
+    const courseIdNum = parseInt(courseId, 10);
+    if (isNaN(courseIdNum)) {
+      await fs.unlink(videoFile.filepath).catch(() => {});
+      return res.status(400).json({ error: 'Invalid courseId format' });
+    }
 
-    // Move file to final location
+    // Verify course exists
+    const courseExists = await prisma.course.findUnique({
+      where: { id: courseIdNum },
+      select: { id: true },
+    });
+
+    if (!courseExists) {
+      await fs.unlink(videoFile.filepath).catch(() => {});
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Generate final filename with session info
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const ext = path.extname(videoFile.originalFilename || '.webm');
+    const filename = `recording-${sessionId || timestamp}${ext}`;
+    const relativePath = `/uploads/recordings/${filename}`;
+    const absolutePath = path.join(uploadDir, filename);
+
+    // Move/rename file to final location
     await fs.rename(videoFile.filepath, absolutePath);
+
+    // Format duration for description
+    const durationText = duration ? ` (Duration: ${duration})` : '';
+    const recordingDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
 
     // Save to database as course material
     const material = await prisma.courseMaterial.create({
       data: {
-        courseId: parseInt(courseId),
-        name: sessionName || `Live Session Recording - ${new Date().toLocaleDateString()}`,
+        courseId: courseIdNum,
+        name: sessionName || `Live Session Recording - ${recordingDate}`,
         type: 'video',
         url: relativePath,
-        description: `Recorded live session${duration ? ` (Duration: ${duration})` : ''}`,
+        description: `Recorded live session${durationText}`,
       },
     });
 
@@ -65,6 +109,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (error) {
     console.error('Error saving recording:', error);
+    
+    // Provide more specific error messages
+    if (error instanceof Error) {
+      return res.status(500).json({ 
+        error: 'Failed to save recording',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      });
+    }
+    
     return res.status(500).json({ error: 'Failed to save recording' });
   }
 }
