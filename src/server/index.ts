@@ -81,20 +81,27 @@ const sessionUsers = new Map<string, Map<string, { userId: string, userRole: str
 // Helper for safe database queries with retry logic
 const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
   let retries = 3
+  let delay = 1000
   while (retries > 0) {
     try {
       return await fn()
     } catch (e: any) {
-      if (e?.code === 'P1001' || e?.code === 'P2024') {
-        console.warn(`Database query retry (${retries} left)...`)
+      if (
+        e?.code === 'P1001' || // Can't reach database server
+        e?.code === 'P2024' || // Timed out fetching a new connection
+        e?.message?.includes('Can\'t reach database server')
+      ) {
+        console.warn(`Database query retry (${retries} left) in ${delay}ms...`)
         retries--
-        await new Promise(r => setTimeout(r, 1000))
+        await new Promise(r => setTimeout(r, delay))
+        delay *= 2 // Exponential backoff
         continue
       }
       throw e
     }
   }
-  throw new Error("Database connection failed after retries")
+  console.error("Database connection failed after retries")
+  return null // Return null instead of throwing to prevent crash
 }
 
 // Scheduled session checker
@@ -7488,8 +7495,18 @@ app.post("/api/admin/live-sessions/:sessionId/kick/:participantId", authenticate
   }
 })
 
-    // Initialize database schema
-    await initializeDatabase()
+  // Check database connection on start
+  try {
+    console.log("🔌 Testing database connection...")
+    // Use a simple query that doesn't depend on tables existing
+    await prisma.$queryRaw`SELECT 1`
+    console.log("✓ Database connection established")
+  } catch (e) {
+    console.error("⚠ Initial database connection failed (will retry on requests):", e)
+  }
+
+  // Initialize database schema
+  await initializeDatabase()
 
     await seedAdminFromEnv()
 
