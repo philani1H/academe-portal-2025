@@ -119,6 +119,7 @@
     "sqlite3": "^5.1.7",
     "tailwind-merge": "^2.5.2",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.19.0",
     "util": "^0.12.5",
     "vaul": "^0.9.3",
     "wrap-ansi": "^9.0.2",

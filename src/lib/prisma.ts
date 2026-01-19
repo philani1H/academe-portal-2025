@@ -13,9 +13,10 @@ const getClient = (): PrismaClient => {
 
   if (!databaseUrl || databaseUrl.trim() === '') {
     if (isProd) {
-      throw new Error('DATABASE_URL is not set in production environment');
+      console.warn('⚠️ DATABASE_URL is not set in production environment. Using fallback Neon URL.');
+    } else {
+      console.warn('⚠️ No DATABASE_URL found, using hardcoded Neon URL (development only)');
     }
-    console.warn('⚠️ No DATABASE_URL found, using hardcoded Neon URL (development only)');
     databaseUrl = NEON_DATABASE_URL;
   }
 
@@ -23,9 +24,10 @@ const getClient = (): PrismaClient => {
     new URL(databaseUrl);
   } catch {
     if (isProd) {
-      throw new Error('Invalid DATABASE_URL in production environment');
+      console.warn('⚠️ Invalid DATABASE_URL in production environment. Using fallback Neon URL.');
+    } else {
+      console.warn('⚠️ Invalid DATABASE_URL format, using hardcoded Neon URL (development only)');
     }
-    console.warn('⚠️ Invalid DATABASE_URL format, using hardcoded Neon URL (development only)');
     databaseUrl = NEON_DATABASE_URL;
   }
 
