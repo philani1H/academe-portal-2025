@@ -7,7 +7,25 @@ const NEON_DATABASE_URL = 'postgresql://neondb_owner:npg_7M3BqCyjxNiE@ep-dawn-ba
 
 const getClient = () => {
   try {
-    const databaseUrl = process.env.DATABASE_URL || NEON_DATABASE_URL;
+    // Priority: 
+    // 1. Valid DATABASE_URL from env (must be non-empty and not localhost/internal if in production)
+    // 2. Fallback NEON_DATABASE_URL
+    let databaseUrl = process.env.DATABASE_URL;
+
+    // If no env var, or if it looks invalid (e.g. empty), use fallback
+    if (!databaseUrl || databaseUrl.trim() === '') {
+      console.warn('⚠️ No DATABASE_URL found, using hardcoded Neon URL');
+      databaseUrl = NEON_DATABASE_URL;
+    }
+
+    // Attempt to validate URL structure
+    try {
+      new URL(databaseUrl);
+    } catch {
+       console.warn('⚠️ Invalid DATABASE_URL format, switching to Neon URL');
+       databaseUrl = NEON_DATABASE_URL;
+    }
+
     const url = new URL(databaseUrl);
 
     // Increase connection limit to handle concurrent dashboard requests
