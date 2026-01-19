@@ -98,7 +98,7 @@ const Hero = () => {
   }
 
   const title = heroContent?.title || "Welcome to Excellence Akademie"
-  const subtitle = heroContent?.subtitle || "25 Years of Academic Excellence"
+  const subtitle = heroContent?.subtitle || "3 Years of Academic Excellence"
   const description = heroContent?.description || "Empowering South African students to reach their full potential through world-class education and personalized guidance"
   const buttonText = heroContent?.buttonText || "View Our Pricing Plans"
 

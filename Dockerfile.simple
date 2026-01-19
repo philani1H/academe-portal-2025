@@ -18,7 +18,7 @@ ENV npm_config_build_from_source=false
 ENV npm_config_cache=/tmp/.npm
 
 # Install dependencies
-RUN npm ci --omit=dev --legacy-peer-deps --prefer-offline
+RUN npm ci --legacy-peer-deps --prefer-offline
 
 # Copy source code
 COPY . .

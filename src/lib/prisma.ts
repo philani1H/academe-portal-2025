@@ -30,6 +30,7 @@ const getClient = () => {
     });
   } catch (e) {
     console.error('Failed to parse DATABASE_URL, using hardcoded Neon URL', e);
+    console.warn('⚠️ WARNING: Using fallback hardcoded database URL. This is not recommended for production!');
     return new PrismaClient({
       datasources: {
         db: {

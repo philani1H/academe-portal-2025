@@ -24,20 +24,14 @@ ENV PYTHON=/usr/bin/python3
 ENV npm_config_python=/usr/bin/python3
 
 # Install dependencies with legacy peer deps to handle version conflicts
-RUN npm ci --omit=dev --legacy-peer-deps
+RUN npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .
 
-# Set Prisma to use npm instead of bun
-ENV PRISMA_CLI_BINARY_TARGETS=native
+# Ensure Prisma uses npm-managed engines and generate the client
 ENV PRISMA_GENERATE_SKIP_AUTOINSTALL=true
-
-# Install Prisma client explicitly with npm
-RUN npm install @prisma/client
-
-# Generate Prisma client
-RUN npx prisma generate
+RUN npm install @prisma/client && npx prisma generate
 
 # Build the application
 RUN npm run build

@@ -14,6 +14,7 @@ import Timetable from "@/components/Timetable"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { apiFetch } from "@/lib/api"
+import { generatePasswordFromName } from "@/lib/utils"
 import { BulkUploadDialog } from "@/components/BulkUploadDialog"
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -1478,15 +1479,18 @@ export default function AdminDashboard() {
       const rows = await fetchTutorUsersForExport()
       const now = new Date()
       const datePart = now.toISOString().slice(0, 10)
-      const loginRows = rows.map((row: any, index: number) => ({
-        "#": index + 1,
-        "Tutor Name": row.name,
-        Email: row.email,
-        Department: row.department || "",
-        Courses: row.courses || "",
-        TemporaryPassword: `${normalizeUsernameForPassword(row.name)}@EA25!`,
-        LoginUrl: `${window.location.origin}/tutor/login`,
-      }))
+      const loginRows = rows.map((row: any, index: number) => {
+        const tempPassword = generatePasswordFromName(row.name)
+        return {
+          "#": index + 1,
+          "Tutor Name": row.name,
+          Email: row.email,
+          Department: row.department || "",
+          Courses: row.courses || "",
+          TemporaryPassword: tempPassword,
+          LoginUrl: `${window.location.origin}/tutor/login`,
+        }
+      })
       const ws = XLSX.utils.json_to_sheet(loginRows)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, "Tutor Logins")
@@ -1515,18 +1519,20 @@ export default function AdminDashboard() {
       const header =
         "<tr><th>#</th><th>Tutor Name</th><th>Email</th><th>Department</th><th>Courses</th><th>Temporary Password</th><th>Login URL</th></tr>"
       const body = rows
-        .map(
-          (row: any, index: number) =>
+        .map((row: any, index: number) => {
+          const tempPassword = generatePasswordFromName(row.name)
+          return (
             `<tr>` +
             `<td>${index + 1}</td>` +
             `<td>${row.name}</td>` +
             `<td>${row.email}</td>` +
             `<td>${row.department || ""}</td>` +
             `<td>${row.courses || ""}</td>` +
-            `<td>${normalizeUsernameForPassword(row.name)}@EA25!</td>` +
+            `<td>${tempPassword}</td>` +
             `<td>${loginUrl}</td>` +
-            `</tr>`,
-        )
+            `</tr>`
+          )
+        })
         .join("")
       const html = `<!DOCTYPE html>
 <html>
@@ -1622,16 +1628,19 @@ export default function AdminDashboard() {
       const rows = await fetchStudentUsersForExport()
       const now = new Date()
       const datePart = now.toISOString().slice(0, 10)
-      const loginRows = rows.map((row: any, index: number) => ({
-        "#": index + 1,
-        "Student Name": row.name,
-        Email: row.email,
-        Department: row.department || "",
-        Grade: row.grade || "",
-        Courses: row.courses || "",
-        TemporaryPassword: buildStudentPasswordForEmail(row.email),
-        LoginUrl: `${window.location.origin}/student-login`,
-      }))
+      const loginRows = rows.map((row: any, index: number) => {
+        const tempPassword = generatePasswordFromName(row.name)
+        return {
+          "#": index + 1,
+          "Student Name": row.name,
+          Email: row.email,
+          Department: row.department || "",
+          Grade: row.grade || "",
+          Courses: row.courses || "",
+          TemporaryPassword: tempPassword,
+          LoginUrl: `${window.location.origin}/student-login`,
+        }
+      })
       const ws = XLSX.utils.json_to_sheet(loginRows)
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, "Student Logins")
@@ -1660,8 +1669,9 @@ export default function AdminDashboard() {
       const header =
         "<tr><th>#</th><th>Student Name</th><th>Email</th><th>Department</th><th>Grade</th><th>Courses</th><th>Temporary Password</th><th>Login URL</th></tr>"
       const body = rows
-        .map(
-          (row: any, index: number) =>
+        .map((row: any, index: number) => {
+          const tempPassword = generatePasswordFromName(row.name)
+          return (
             `<tr>` +
             `<td>${index + 1}</td>` +
             `<td>${row.name}</td>` +
@@ -1669,10 +1679,11 @@ export default function AdminDashboard() {
             `<td>${row.department || ""}</td>` +
             `<td>${row.grade || ""}</td>` +
             `<td>${row.courses || ""}</td>` +
-            `<td>${normalizeUsernameForPassword(row.name)}@EA25!</td>` +
+            `<td>${tempPassword}</td>` +
             `<td>${loginUrl}</td>` +
-            `</tr>`,
-        )
+            `</tr>`
+          )
+        })
         .join("")
       const html = `<!DOCTYPE html>
 <html>
