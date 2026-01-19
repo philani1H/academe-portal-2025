@@ -8,7 +8,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "start": "export DATABASE_URL=\"postgresql://neondb_owner:npg_7M3BqCyjxNiE@ep-dawn-band-ah9ov9c8-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require\" && prisma generate && prisma migrate deploy && tsx src/server/index.ts",
+    "start": "prisma generate && prisma migrate deploy && tsx src/server/index.ts",
     "railway:start": "prisma generate && prisma migrate deploy && npm run seed:all && tsx src/server/index.ts",
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
     "dev:client": "vite",
