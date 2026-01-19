@@ -1608,18 +1608,18 @@ app.get("/api/users", authenticateJWT as RequestHandler, async (req: Authenticat
     // If tutor is calling, only return their students
     if (userRole === "tutor" && userId) {
       // Get tutor's courses
-      const tutorCourses = await prisma.course.findMany({
+      const tutorCourses = await safeQuery(() => prisma.course.findMany({
         where: { tutorId: userId },
         select: { id: true }
-      })
+      })) || []
       const courseIds = tutorCourses.map(c => c.id)
 
       // Get students enrolled in those courses
-      const enrollments = await prisma.courseEnrollment.findMany({
+      const enrollments = await safeQuery(() => prisma.courseEnrollment.findMany({
         where: { courseId: { in: courseIds } },
         select: { userId: true },
         distinct: ['userId']
-      })
+      })) || []
       const studentIds = enrollments.map(e => e.userId)
 
       where = {
@@ -1628,10 +1628,10 @@ app.get("/api/users", authenticateJWT as RequestHandler, async (req: Authenticat
       }
     }
 
-    const users = await prisma.user.findMany({
+    const users = await safeQuery(() => prisma.user.findMany({
       where,
       orderBy: { createdAt: "desc" }
-    })
+    })) || []
 
     return res.json({ success: true, data: users })
   } catch (error) {
@@ -1648,14 +1648,14 @@ app.get("/api/tutor/:tutorId/students", authenticateJWT as RequestHandler, autho
       return res.status(400).json({ success: false, error: "Invalid tutor ID" })
     }
 
-    const courses = await prisma.course.findMany({
+    const courses = await safeQuery(() => prisma.course.findMany({
       where: { tutorId },
       include: {
         courseEnrollments: {
           include: { user: true },
         },
       },
-    })
+    })) || []
 
     const studentMap = new Map()
     courses.forEach((course) => {
@@ -4378,10 +4378,10 @@ app.get("/api/courses", authenticateJWT as RequestHandler, async (req: Authentic
 
     // If all=true, fetch everything (but still filtered by tutor if applicable)
     if (all === 'true') {
-      const courses = await prisma.course.findMany({
+      const courses = await safeQuery(() => prisma.course.findMany({
         where,
         orderBy: { createdAt: 'desc' }
-      })
+      })) || []
       return res.json({
         success: true,
         data: courses,
@@ -4397,14 +4397,14 @@ app.get("/api/courses", authenticateJWT as RequestHandler, async (req: Authentic
     const limitInt = Math.min(Number.parseInt(limit as string) || 50, 100)
     const offsetInt = Math.max(Number.parseInt(offset as string) || 0, 0)
 
-    const courses = await prisma.course.findMany({
+    const courses = await safeQuery(() => prisma.course.findMany({
       where,
       take: limitInt,
       skip: offsetInt,
       orderBy: { createdAt: 'desc' }
-    })
+    })) || []
 
-    const count = await prisma.course.count({ where })
+    const count = await safeQuery(() => prisma.course.count({ where })) || 0
 
     res.set("Cache-Control", "public, max-age=60") // Reduced cache time for updates
     res.json({
