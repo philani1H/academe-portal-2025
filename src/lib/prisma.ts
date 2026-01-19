@@ -48,7 +48,7 @@ const getClient = (): PrismaClient => {
         url: url.toString(),
       },
     },
-    log: isProd ? ['error'] : ['query', 'error', 'warn'],
+    log: isProd ? ['error'] : ['error', 'warn'],
   });
 };
 

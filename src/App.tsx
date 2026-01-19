@@ -27,6 +27,7 @@ import NotFound from "./pages/NotFound";
 import NoInternetModal from "./components/NoInternetModal";
 import AgreementBlockModal from "./components/AgreementBlockModal";
 import MaintenanceModal from "./components/MaintenanceModal";
+import PromoPopup from "./components/PromoPopup";
 import { Analytics } from "@vercel/analytics/react";
 
 import Dashboard from "./pages/Dashboard";
@@ -56,9 +57,18 @@ const queryClient = new QueryClient();
 const AppInner = () => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
+  const isLoginRoute = ["/student-login", "/tutor-login", "/admin-login"].includes(location.pathname);
+  
   const [isAgreementMet, setIsAgreementMet] = useState(true);
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  
+  // Promo Popup State
+  const [promoPopup, setPromoPopup] = useState({
+    active: false,
+    image: "",
+    link: ""
+  });
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -71,6 +81,12 @@ const AppInner = () => {
         const agreementRow = list.find(
           (r) => String(r.key).toLowerCase() === "system_agreement_met"
         );
+        
+        // Popup Settings
+        const popupActiveRow = list.find((r) => String(r.key).toLowerCase() === "system_popup_active");
+        const popupImageRow = list.find((r) => String(r.key).toLowerCase() === "system_popup_image");
+        const popupLinkRow = list.find((r) => String(r.key).toLowerCase() === "system_popup_link");
+
         if (maintRow) {
           const v = String(maintRow.value).toLowerCase();
           setIsMaintenanceMode(v === "true" || v === "1");
@@ -79,6 +95,18 @@ const AppInner = () => {
           const v = String(agreementRow.value).toLowerCase();
           setIsAgreementMet(!(v === "false" || v === "0"));
         }
+        
+        if (popupActiveRow) {
+          const v = String(popupActiveRow.value).toLowerCase();
+          setPromoPopup(prev => ({ ...prev, active: v === "true" || v === "1" }));
+        }
+        if (popupImageRow) {
+          setPromoPopup(prev => ({ ...prev, image: String(popupImageRow.value) }));
+        }
+        if (popupLinkRow) {
+          setPromoPopup(prev => ({ ...prev, link: String(popupLinkRow.value) }));
+        }
+
       } catch (error) {
         console.error("Error loading site settings:", error);
       } finally {
@@ -88,15 +116,24 @@ const AppInner = () => {
     loadSettings();
   }, []);
 
+  const shouldShowBlocker = !isAdminRoute && !isLoginRoute;
+
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
         <TooltipProvider>
           <AuthProvider>
-            {!isAdminRoute && isMaintenanceMode && <MaintenanceModal />}
-            {!isAdminRoute && !isAgreementMet && !isMaintenanceMode && (
+            {shouldShowBlocker && isMaintenanceMode && <MaintenanceModal />}
+            {shouldShowBlocker && !isAgreementMet && !isMaintenanceMode && (
               <AgreementBlockModal />
             )}
+            
+            <PromoPopup 
+              active={promoPopup.active} 
+              image={promoPopup.image} 
+              link={promoPopup.link} 
+            />
+
             <Toaster />
             <Sonner />
             <NoInternetModal />

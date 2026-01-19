@@ -77,6 +77,26 @@ const activeSessions = new Map<string, SessionData>()
 // Track users in each session with their details (sessionId -> Map<socketId, UserData>)
 const sessionUsers = new Map<string, Map<string, { userId: string, userRole: string, userName: string, isVideoOn: boolean, isAudioOn: boolean, isHandRaised: boolean }>>();
 
+
+// Helper for safe database queries with retry logic
+const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
+  let retries = 3
+  while (retries > 0) {
+    try {
+      return await fn()
+    } catch (e: any) {
+      if (e?.code === 'P1001' || e?.code === 'P2024') {
+        console.warn(`Database query retry (${retries} left)...`)
+        retries--
+        await new Promise(r => setTimeout(r, 1000))
+        continue
+      }
+      throw e
+    }
+  }
+  throw new Error("Database connection failed after retries")
+}
+
 // Scheduled session checker
 let scheduledSessionChecker: NodeJS.Timeout
 
@@ -2054,24 +2074,6 @@ app.post(
 
 app.get("/api/admin/departments", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
-      let retries = 3
-      while (retries > 0) {
-        try {
-          return await fn()
-        } catch (e: any) {
-          if (e?.code === 'P1001' || e?.code === 'P2024') {
-            console.warn(`Database query retry (${retries} left)...`)
-            retries--
-            await new Promise(r => setTimeout(r, 1000))
-            continue
-          }
-          throw e
-        }
-      }
-      throw new Error("Database connection failed after retries")
-    }
-
     // Get course counts by department
     const courseGroups = await safeQuery(() => prisma.course.groupBy({
       by: ["department"],
@@ -4855,44 +4857,44 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
         }
       },
       "team-members": () =>
-        prisma.teamMember.findMany({
+        safeQuery(() => prisma.teamMember.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "desc" }],
-        }).catch(() => []),
+        })).catch(() => []),
       "about-us": () =>
-        prisma.aboutUsContent.findFirst({
+        safeQuery(() => prisma.aboutUsContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }).catch(() => null),
+        })).catch(() => null),
       hero: () =>
-        prisma.heroContent.findFirst({
+        safeQuery(() => prisma.heroContent.findFirst({
           orderBy: { updatedAt: "desc" },
-        }).catch(() => null),
+        })).catch(() => null),
       features: () =>
-        prisma.feature.findMany({
+        safeQuery(() => prisma.feature.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        }).catch(() => []),
+        })).catch(() => []),
       announcements: () =>
-        prisma.announcement
+        safeQuery(() => prisma.announcement
           .findMany({
             orderBy: [{ pinned: "desc" }, { createdAt: "desc" }],
-          })
+          }))
           .catch(() => []),
       testimonials: () =>
-        prisma.testimonial.findMany({
+        safeQuery(() => prisma.testimonial.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "desc" }],
-        }).catch(() => []),
+        })).catch(() => []),
       pricing: () =>
-        prisma.pricingPlan.findMany({
+        safeQuery(() => prisma.pricingPlan.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        }).catch(() => []),
+        })).catch(() => []),
       "site-settings": () =>
-        prisma.siteSettings.findMany({
+        safeQuery(() => prisma.siteSettings.findMany({
           orderBy: [{ category: "asc" }, { key: "asc" }],
-        }).catch(() => []),
+        })).catch(() => []),
       events: async () => {
         // Events table might not exist in Prisma schema, return empty array
         try {
@@ -4902,41 +4904,41 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
         }
       },
       footer: () =>
-        prisma.footerContent.findFirst({
+        safeQuery(() => prisma.footerContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }).catch(() => null),
+        })).catch(() => null),
       subjects: () =>
-        prisma.subject.findMany({
+        safeQuery(() => prisma.subject.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        }).catch(() => []),
+        })).catch(() => []),
       navigation: () =>
-        prisma.navigationItem.findMany({
+        safeQuery(() => prisma.navigationItem.findMany({
           where: { isActive: true },
           select: { path: true, label: true, type: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        }).catch(() => []),
+        })).catch(() => []),
       "exam-rewrite": () =>
-        prisma.examRewriteContent.findFirst({
+        safeQuery(() => prisma.examRewriteContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }).catch(() => null),
+        })).catch(() => null),
       "university-application": () =>
-        prisma.universityApplicationContent.findFirst({
+        safeQuery(() => prisma.universityApplicationContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }).catch(() => null),
+        })).catch(() => null),
       "contact-us": () =>
-        prisma.contactUsContent.findFirst({
+        safeQuery(() => prisma.contactUsContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }).catch(() => null),
+        })).catch(() => null),
       "become-tutor": () =>
-        prisma.becomeTutorContent.findFirst({
+        safeQuery(() => prisma.becomeTutorContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        }).catch(() => null),
+        })).catch(() => null),
     }
 
     const queryFn = contentQueries[contentType]
