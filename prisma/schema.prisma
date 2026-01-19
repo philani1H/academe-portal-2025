@@ -8,661 +8,290 @@ datasource db {
 }
 
 model User {
-  id                    Int                    @id @default(autoincrement())
-  name                  String
-  email                 String                 @unique
-  studentNumber         String?                @unique @map("student_number")
-  programCode           Int?                   @map("program_code")
-  personalEmail         String?                @map("personal_email")
-  password_hash         String
-  role                  String
-  department            String?
-  subjects              String?
-  createdAt             DateTime?              @default(now()) @map("created_at")
-  updatedAt             DateTime?              @default(now()) @updatedAt @map("updated_at")
-  assignmentSubmissions AssignmentSubmission[]
-  courseEnrollments     CourseEnrollment[]
-  courses               Course[]
-  financialRecords      FinancialRecord[]
-  notifications         Notification[]
-  payslips              Payslip[]
-  scheduledSessions     ScheduledSession[]
-  testSubmissions       TestSubmission[]
-  timetableDocuments    TimetableDocument[]
-  timetableEntries      TimetableEntry[]
-
-  @@map("users")
-}
-
-model ScheduledSession {
-  id          String       @id @default(uuid())
-  title       String
-  description String?
-  duration    Int
-  status      String       @default("scheduled")
-  courseId    Int          @map("course_id")
-  createdAt   DateTime     @default(now()) @map("created_at")
-  scheduledAt DateTime     @map("scheduled_at")
-  sessionId   String?      @map("session_id")
-  tutorId     Int          @map("tutor_id")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  liveSession LiveSession?
-  course      Course       @relation(fields: [courseId], references: [id])
-  tutor       User         @relation(fields: [tutorId], references: [id])
-
-  @@map("scheduled_sessions")
-}
-
-model LiveSession {
-  id               String                   @id @default(uuid())
-  scheduledId      String?                  @unique @map("scheduled_id")
-  sessionId        String                   @unique @map("session_id")
-  courseId         Int                      @map("course_id")
-  tutorId          Int                      @map("tutor_id")
-  startTime        DateTime                 @default(now()) @map("start_time")
-  endTime          DateTime?                @map("end_time")
-  status           String                   @default("active")
-  participantCount Int                      @default(0) @map("participant_count")
-  createdAt        DateTime                 @default(now()) @map("created_at")
-  updatedAt        DateTime                 @updatedAt @map("updated_at")
-  participants     LiveSessionParticipant[]
-  scheduledSession ScheduledSession?        @relation(fields: [scheduledId], references: [id])
-
-  @@index([sessionId])
-  @@index([courseId])
-  @@map("live_sessions")
-}
-
-model LiveSessionParticipant {
-  id            String      @id @default(uuid())
-  liveSessionId String      @map("live_session_id")
-  userId        Int?        @map("user_id")
-  socketId      String      @map("socket_id")
-  userName      String      @map("user_name")
-  userRole      String      @map("user_role")
-  joinedAt      DateTime    @default(now()) @map("joined_at")
-  leftAt        DateTime?   @map("left_at")
-  liveSession   LiveSession @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
-
-  @@index([liveSessionId])
-  @@index([socketId])
-  @@map("live_session_participants")
-}
-
-model AdminUser {
-  id            Int      @id @default(autoincrement())
-  username      String   @unique
-  displayName   String?  @map("display_name")
-  email         String?  @unique
-  personalEmail String?  @map("personal_email")
-  passwordHash  String   @map("password_hash")
-  permissions   String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
-
-  @@map("admin_users")
+  id              String         @id @default(cuid())
+  email           String         @unique
+  password        String
+  name            String?
+  role            String         @default("student") // admin, tutor, student
+  resetToken      String?
+  resetTokenExpiry DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  // Profile fields
+  bio             String?
+  subjects        String?        // JSON string of subjects
+  profileImage    String?
+  
+  // Relations
+  enrollments     CourseEnrollment[]
+  teachingCourses Course[]       @relation("TutorCourses")
+  sentMessages    Message[]      @relation("SentMessages")
+  receivedMessages Message[]     @relation("ReceivedMessages")
+  
+  // Timetable
+  timetableEntries TimetableEntry[]
 }
 
 model Course {
-  id                Int                  @id @default(autoincrement())
-  name              String
-  description       String?
-  category          String?
-  department        String?
-  tutorId           Int?                 @map("tutor_id")
-  createdAt         DateTime?            @default(now()) @map("created_at")
-  updatedAt         DateTime?            @default(now()) @updatedAt @map("updated_at")
-  assignments       Assignment[]
-  announcements     CourseAnnouncement[]
-  courseEnrollments CourseEnrollment[]
-  materials         CourseMaterial[]
-  tutor             User?                @relation(fields: [tutorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  scheduledSessions ScheduledSession[]
-  tests             Test[]
-  timetableEntries  TimetableEntry[]
-
-  @@map("courses")
-}
-
-model CourseMaterial {
-  id          String   @id @default(uuid())
-  courseId    Int      @map("course_id")
-  name        String
-  type        String
-  url         String
+  id          String   @id @default(cuid())
+  title       String
   description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  course      Course   @relation(fields: [courseId], references: [id])
-
-  @@map("course_materials")
-}
-
-model CourseAnnouncement {
-  id        String   @id @default(uuid())
-  courseId  Int      @map("course_id")
-  title     String
-  content   String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  course    Course   @relation(fields: [courseId], references: [id])
-
-  @@map("course_announcements")
+  imageUrl    String?
+  price       Float    @default(0)
+  category    String   @default("General") // High School, University, etc.
+  grade       String?  // Grade 10, 11, 12, etc.
+  
+  // Status
+  isPublished Boolean  @default(false)
+  
+  // Relations
+  tutorId     String
+  tutor       User     @relation("TutorCourses", fields: [tutorId], references: [id])
+  students    CourseEnrollment[]
+  modules     Module[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model CourseEnrollment {
-  id        String   @id @default(uuid())
-  userId    Int      @map("user_id")
-  courseId  Int      @map("course_id")
-  status    String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  course    Course   @relation(fields: [courseId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
-
-  @@map("course_enrollments")
-}
-
-model Test {
-  id          String           @id @default(uuid())
-  title       String
-  courseId    Int              @map("course_id")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  description String?
-  dueDate     String?          @map("due_date")
-  totalPoints Int?             @default(0) @map("total_points")
-  questions   TestQuestion[]
-  submissions TestSubmission[]
-  course      Course           @relation(fields: [courseId], references: [id])
-
-  @@map("tests")
-}
-
-model TestQuestion {
-  id       String @id @default(uuid())
-  testId   String @map("test_id")
-  question String
-  options  String
-  answer   String
-  test     Test   @relation(fields: [testId], references: [id])
-
-  @@map("test_questions")
-}
-
-model TestSubmission {
-  id        String   @id @default(uuid())
-  userId    Int
-  testId    String
-  answers   String
-  score     Float
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  status    String   @default("active") // active, completed, dropped
+  progress  Float    @default(0)
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
   createdAt DateTime @default(now())
-  test      Test     @relation(fields: [testId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  updatedAt DateTime @updatedAt
 
-  @@map("test_submissions")
+  @@unique([userId, courseId])
 }
 
-model Assignment {
-  id          String                 @id @default(uuid())
-  courseId    Int
+model Module {
+  id          String   @id @default(cuid())
   title       String
-  description String
-  dueDate     DateTime               @map("due_date")
-  maxPoints   Int                    @default(100) @map("max_points")
-  attachments String?
-  createdAt   DateTime               @default(now()) @map("created_at")
-  updatedAt   DateTime               @updatedAt @map("updated_at")
-  submissions AssignmentSubmission[]
-  course      Course                 @relation(fields: [courseId], references: [id])
-
-  @@map("assignments")
+  description String?
+  order       Int      @default(0)
+  
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     Lesson[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-model AssignmentSubmission {
-  id           String     @id @default(uuid())
-  userId       Int        @map("user_id")
-  assignmentId String     @map("assignment_id")
-  content      String
-  attachments  String?
-  status       String     @default("submitted")
-  score        Float?
-  feedback     String?
-  submittedAt  DateTime   @default(now()) @map("submitted_at")
-  gradedAt     DateTime?  @map("graded_at")
-  assignment   Assignment @relation(fields: [assignmentId], references: [id])
-  user         User       @relation(fields: [userId], references: [id])
-
-  @@map("assignment_submissions")
+model Lesson {
+  id          String   @id @default(cuid())
+  title       String
+  content     String?  // Markdown or HTML content
+  videoUrl    String?
+  duration    Int?     // In minutes
+  order       Int      @default(0)
+  isFree      Boolean  @default(false)
+  
+  moduleId    String
+  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-model Notification {
-  id        String   @id @default(uuid())
-  userId    Int      @map("user_id")
-  title     String?
-  message   String
-  type      String?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  user      User     @relation(fields: [userId], references: [id])
-
-  @@map("notifications")
+model Message {
+  id          String   @id @default(cuid())
+  content     String
+  isRead      Boolean  @default(false)
+  
+  senderId    String
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id])
+  
+  receiverId  String
+  receiver    User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  
+  createdAt   DateTime @default(now())
 }
+
+// Content Management Models
 
 model HeroContent {
-  id                  String   @id @default(uuid())
-  title               String
-  subtitle            String
-  description         String
-  buttonText          String
-  secondaryButtonText String
-  trustIndicatorText  String
-  universities        String
-  features            String
-  backgroundGradient  String
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-
-  @@map("hero_content")
+  id          String   @id @default(cuid())
+  title       String
+  subtitle    String
+  ctaText     String?
+  ctaLink     String?
+  backgroundImage String?
+  updatedAt   DateTime @updatedAt
 }
 
 model Feature {
-  id          String   @id @default(uuid())
+  id          String   @id @default(cuid())
   title       String
   description String
   icon        String
-  benefits    String
-  isActive    Boolean  @default(true)
   order       Int      @default(0)
+  isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  @@map("features")
-}
-
-model PricingPlan {
-  id          String   @id @default(uuid())
-  name        String
-  price       String
-  period      String
-  features    String
-  notIncluded String
-  color       String
-  icon        String
-  popular     Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("pricing_plans")
-}
-
-model Testimonial {
-  id          String   @id @default(uuid())
-  content     String
-  author      String
-  role        String
-  subject     String
-  improvement String
-  image       String
-  rating      Int      @default(5)
-  isActive    Boolean  @default(true)
-  order       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("testimonials")
-}
-
-model TeamMember {
-  id        String   @id @default(uuid())
-  name      String
-  role      String
-  bio       String
-  image     String
-  isActive  Boolean  @default(true)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("team_members")
-}
-
-model AboutUsContent {
-  id                    String   @id @default(uuid())
-  goal                  String
-  mission               String
-  rolesResponsibilities String
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  @@map("about_us_content")
-}
-
-model ContactInfo {
-  id        String   @id @default(uuid())
-  type      String
-  label     String
-  value     String
-  icon      String?
-  isActive  Boolean  @default(true)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("contact_info")
-}
-
-model SiteSettings {
-  id        String   @id @default(uuid())
-  key       String   @unique
-  value     String
-  type      String
-  label     String
-  category  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("site_settings")
-}
-
-model Tutor {
-  id           String   @id @default(uuid())
-  name         String
-  subjects     String
-  image        String
-  contactName  String
-  contactPhone String
-  contactEmail String
-  description  String
-  ratings      String
-  isActive     Boolean  @default(true)
-  order        Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@map("tutors")
-}
-
-model Subject {
-  id            String   @id @default(uuid())
-  name          String
-  description   String
-  image         String
-  category      String
-  tutorsCount   Int      @default(0)
-  popularTopics String
-  difficulty    String
-  isActive      Boolean  @default(true)
-  order         Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@map("subjects")
-}
-
-model FooterContent {
-  id            String   @id @default(uuid())
-  companyName   String
-  tagline       String
-  contactPhone  String
-  contactEmail  String
-  contactPerson String
-  whatsappLink  String
-  socialLinks   String
-  quickLinks    String
-  resourceLinks String
-  copyrightText String
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@map("footer_content")
-}
-
-model NavigationItem {
-  id        String   @id @default(uuid())
-  path      String
-  label     String
-  type      String
-  isActive  Boolean  @default(true)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("navigation_items")
-}
-
-model BecomeTutorContent {
-  id             String   @id @default(uuid())
-  title          String
-  description    String
-  requirements   String
-  benefits       String
-  applicationUrl String
-  formEmbedCode  String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@map("become_tutor_content")
-}
-
-model ExamRewriteContent {
-  id                 String   @id @default(uuid())
-  title              String
-  description        String
-  heroTitle          String
-  heroDescription    String
-  benefits           String
-  process            String
-  subjects           String
-  applicationFormUrl String
-  grade11FormUrl     String?
-  grade12FormUrl     String?
-  pricingInfo        String
-  isActive           Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  @@map("exam_rewrite_content")
-}
-
-model ContactUsContent {
-  id           String   @id @default(uuid())
-  title        String
-  description  String
-  logo         String
-  formEndpoint String
-  contactInfo  String
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@map("contact_us_content")
-}
-
-model UniversityApplicationContent {
-  id           String   @id @default(uuid())
-  title        String
-  description  String
-  services     String
-  process      String
-  requirements String
-  pricing      String
-  formUrl      String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@map("university_application_content")
-}
-
-model Email {
-  id        String   @id @default(uuid())
-  from      String
-  fromName  String   @map("from_name")
-  to        String
-  subject   String
-  body      String
-  htmlBody  String?  @map("html_body")
-  timestamp DateTime @default(now())
-  read      Boolean  @default(false)
-  starred   Boolean  @default(false)
-  folder    String   @default("inbox")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@index([to, folder])
-  @@index([from, folder])
-  @@map("emails")
-}
-
-model Payslip {
-  id          String   @id @default(uuid())
-  userId      Int      @map("user_id")
-  month       String
-  year        Int
-  basicSalary Float    @map("basic_salary")
-  allowances  Float    @default(0)
-  deductions  Float    @default(0)
-  netSalary   Float    @map("net_salary")
-  paymentDate String?  @map("payment_date")
-  status      String   @default("pending")
-  notes       String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  user        User     @relation(fields: [userId], references: [id])
-
-  @@map("payslips")
-}
-
-model FinancialRecord {
-  id              String   @id @default(uuid())
-  type            String
-  category        String
-  amount          Float
-  description     String?
-  date            String
-  userId          Int?     @map("user_id")
-  status          String   @default("completed")
-  referenceNumber String?  @map("reference_number")
-  paymentMethod   String?  @map("payment_method")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  user            User?    @relation(fields: [userId], references: [id])
-
-  @@map("financial_records")
-}
-
-model TimetableEntry {
-  id        String   @id @default(uuid())
-  day       String
-  timeSlot  String   @map("time_slot")
-  courseId  Int      @map("course_id")
-  tutorId   Int      @map("tutor_id")
-  room      String?
-  grade     String?
-  students  String?
-  type      String   @default("lecture")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  course    Course   @relation(fields: [courseId], references: [id])
-  tutor     User     @relation(fields: [tutorId], references: [id])
-
-  @@map("timetable_entries")
-}
-
-model TimetableDocument {
-  id         String   @id @default(uuid())
-  filename   String
-  filePath   String   @map("file_path")
-  uploadedBy Int      @map("uploaded_by")
-  processed  Boolean  @default(false)
-  createdAt  DateTime @default(now()) @map("created_at")
-  uploader   User     @relation(fields: [uploadedBy], references: [id])
-
-  @@map("timetable_documents")
-}
-
-model Channel {
-  id          String           @id @default(uuid())
-  name        String
-  description String?
-  type        String           @default("team")
-  department  String?
-  isPrivate   Boolean          @default(false)
-  createdAt   DateTime         @default(now()) @map("created_at")
-  updatedAt   DateTime         @updatedAt @map("updated_at")
-  members     ChannelMember[]
-  messages    ChannelMessage[]
-
-  @@map("channels")
-}
-
-model ChannelMember {
-  id        String   @id @default(uuid())
-  channelId String   @map("channel_id")
-  userId    Int      @map("user_id")
-  role      String   @default("member")
-  joinedAt  DateTime @default(now()) @map("joined_at")
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-  @@unique([channelId, userId])
-  @@map("channel_members")
-}
-
-model ChannelMessage {
-  id        String   @id @default(uuid())
-  channelId String   @map("channel_id")
-  userId    Int      @map("user_id")
-  content   String
-  fileUrl   String?  @map("file_url")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-
-  @@index([channelId, createdAt])
-  @@map("channel_messages")
-}
-
-model DirectMessage {
-  id         String   @id @default(uuid())
-  fromUserId Int      @map("from_user_id")
-  toUserId   Int      @map("to_user_id")
-  content    String
-  fileUrl    String?  @map("file_url")
-  read       Boolean  @default(false)
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  @@index([fromUserId, toUserId, createdAt])
-  @@index([toUserId, read])
-  @@map("direct_messages")
 }
 
 model Announcement {
-  id         String   @id @default(uuid())
-  title      String
-  content    String
-  type       String   @default("general")
-  department String?
-  authorId   Int      @map("author_id")
-  pinned     Boolean  @default(false)
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  @@map("announcements_board")
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  type        String   @default("info") // info, warning, success, etc.
+  pinned      Boolean  @default(false)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-model user_credentials {
-  email         String  @id
-  user_id       String?
-  password_hash String?
-  created_at    String?
-  updated_at    String?
+model Testimonial {
+  id          String   @id @default(cuid())
+  name        String
+  role        String?
+  content     String
+  avatarUrl   String?
+  rating      Int      @default(5)
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PricingPlan {
+  id          String   @id @default(cuid())
+  name        String
+  price       Float
+  interval    String   // month, year, once
+  features    String   // JSON string of features
+  isPopular   Boolean  @default(false)
+  buttonText  String   @default("Get Started")
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Subject {
+  id          String   @id @default(cuid())
+  name        String
+  code        String?
+  description String?
+  imageUrl    String?
+  category    String?  // High School, University, etc.
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SiteSettings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  category    String   @default("general")
+  updatedAt   DateTime @updatedAt
+}
+
+model FooterContent {
+  id          String   @id @default(cuid())
+  description String?
+  address     String?
+  email       String?
+  phone       String?
+  socialLinks String?  // JSON string
+  updatedAt   DateTime @updatedAt
+  isActive    Boolean  @default(true)
+}
+
+model NavigationItem {
+  id          String   @id @default(cuid())
+  label       String
+  path        String
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  type        String   @default("main") // main, footer, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ExamRewriteContent {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  features    String?  // JSON string
+  requirements String? // JSON string
+  updatedAt   DateTime @updatedAt
+  isActive    Boolean  @default(true)
+}
+
+model UniversityApplicationContent {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  services    String?  // JSON string
+  deadlines   String?  // JSON string
+  updatedAt   DateTime @updatedAt
+  isActive    Boolean  @default(true)
+}
+
+model ContactUsContent {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  email       String?
+  phone       String?
+  address     String?
+  mapUrl      String?
+  updatedAt   DateTime @updatedAt
+  isActive    Boolean  @default(true)
+}
+
+model BecomeTutorContent {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  requirements String? // JSON string
+  benefits    String?  // JSON string
+  ctaText     String?
+  updatedAt   DateTime @updatedAt
+  isActive    Boolean  @default(true)
+}
+
+model LiveSession {
+  id          String   @id @default(cuid())
+  sessionId   String   @unique
+  courseId    String
+  hostId      String
+  startTime   DateTime @default(now())
+  endedAt     DateTime?
+  status      String   @default("active") // active, ended
+  
+  // Metadata for logs
+  participantsCount Int @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TimetableEntry {
+  id          String   @id @default(cuid())
+  day         String   // Monday, Tuesday, etc.
+  startTime   String   // HH:mm
+  endTime     String   // HH:mm
+  subject     String
+  type        String   // Class, Exam, Event
+  room        String?  // Can be used for targeted students (JSON array of IDs)
+  color       String?  // Hex color code
+  
+  userId      String?  // Optional: Assign to specific user
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
