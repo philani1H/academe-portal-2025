@@ -7457,7 +7457,8 @@ app.post("/api/admin/live-sessions/:sessionId/kick/:participantId", authenticate
 
     // Serve static frontend files (Production/Render support)
     const distDir = path.resolve(baseDir, "..", "dist")
-    if (process.env.NODE_ENV === "production" || process.env.SERVE_STATIC === "true") {
+    // Serve static files if in production, explicit flag, or running on Render
+    if (process.env.NODE_ENV === "production" || process.env.SERVE_STATIC === "true" || process.env.RENDER) {
       console.log(`✓ Serving static files from: ${distDir}`)
       app.use(express.static(distDir))
       
