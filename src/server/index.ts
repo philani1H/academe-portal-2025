@@ -3320,6 +3320,61 @@ app.get(
   },
 )
 
+app.get(
+  "/api/admin/auth/me",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const id = req.user?.username
+      if (!id) {
+        return res.status(401).json({ success: false, error: "Unauthorized" })
+      }
+
+      const anyPrisma: any = prisma as any
+      let admin = null
+      
+      if (anyPrisma.adminUser) {
+        admin = await anyPrisma.adminUser.findFirst({
+            where: {
+            OR: [
+                { username: id },
+                { email: id },
+                { personalEmail: id }
+            ]
+            }
+        })
+      }
+
+      if (!admin) {
+        return res.status(200).json({ 
+            success: true, 
+            user: {
+                username: id,
+                displayName: id,
+                email: id.includes("@") ? id : undefined,
+                role: "admin"
+            }
+        })
+      }
+
+      return res.status(200).json({
+        success: true,
+        user: {
+          username: admin.username,
+          displayName: admin.displayName || admin.username,
+          email: admin.email,
+          role: "admin",
+          personalEmail: admin.personalEmail
+        }
+      })
+    } catch (error) {
+      console.error("Error fetching admin profile:", error)
+      return res.status(500).json({ success: false, error: "Failed to fetch profile" })
+    }
+  },
+)
+
 app.post("/api/admin/auth/logout", (req: Request, res: Response) => {
   const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
   res.setHeader("Set-Cookie", `admin_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict;${secure}`)

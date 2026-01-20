@@ -479,6 +479,27 @@ export default function AdminDashboard() {
         setUser({ name: parsed.name || "", email: parsed.email || "", role: parsed.role || "admin" })
       }
     } catch {}
+
+    // Fetch latest profile to ensure display name is up to date
+    const fetchProfile = async () => {
+      try {
+        const data = await apiFetch<{ success: boolean; user: any }>("/api/admin/auth/me")
+        if (data && data.success && data.user) {
+          const u = data.user
+          const mapped = {
+             name: u.displayName || u.username || u.email,
+             email: u.email || u.username,
+             role: u.role || "admin"
+          }
+          setUser(mapped)
+          localStorage.setItem("user", JSON.stringify(mapped))
+        }
+      } catch (e) {
+        // Silent fail - keep using localStorage data
+        console.error("Failed to refresh admin profile", e)
+      }
+    }
+    fetchProfile()
   }, [])
 
   const handleSaveSystemSettings = async () => {
