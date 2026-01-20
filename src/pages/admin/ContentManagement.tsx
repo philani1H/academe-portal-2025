@@ -64,6 +64,7 @@ import { BulkUploadDialog } from "@/components/BulkUploadDialog"
 import { uploadToCloudinary } from "@/lib/cloudinary"
 import { io } from "socket.io-client"
 import { API_BASE } from "@/lib/api"
+import * as XLSX from "xlsx"
 
 // Types
 interface HeroContent {
@@ -1026,7 +1027,12 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
     setUploadingPricing(true)
     try {
       const fileContent = await fileToText(file)
-      const fileType = file.name.endsWith(".json") ? "json" : "csv"
+      const isJson = file.name.endsWith(".json") || 
+                     file.name.endsWith(".md") || 
+                     fileContent.trim().startsWith("[") || 
+                     fileContent.trim().startsWith("{")
+      const fileType = isJson ? "json" : "csv"
+      
       const response = await apiFetch<{ message: string; updated: number; created: number; warnings?: string[] }>(
         "/api/admin/content/pricing/bulk-upload",
         {
@@ -1100,7 +1106,13 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
     setUploadingTutors(true)
     try {
       const fileContent = await fileToText(file)
-      const fileType = file.name.endsWith(".json") ? "json" : "csv"
+      // Check for JSON extension or if content looks like JSON
+      const isJson = file.name.endsWith(".json") || 
+                     file.name.endsWith(".md") || 
+                     fileContent.trim().startsWith("[") || 
+                     fileContent.trim().startsWith("{")
+      const fileType = isJson ? "json" : "csv"
+      
       const response = await apiFetch<{ message: string; updated: number; created: number }>(
         "/api/admin/content/tutors/bulk-upload",
         {
@@ -1136,7 +1148,13 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
     setUploadingTutorPlacement(true)
     try {
       const fileContent = await fileToText(file)
-      const fileType = file.name.endsWith(".json") ? "json" : "csv"
+      // Check for JSON extension or if content looks like JSON (starts with [ or {)
+      const isJson = file.name.endsWith(".json") || 
+                     file.name.endsWith(".md") || 
+                     fileContent.trim().startsWith("[") || 
+                     fileContent.trim().startsWith("{")
+      const fileType = isJson ? "json" : "csv"
+      
       const response = await apiFetch<{ message: string; placements: number; tutorsMatched: number; coursesCreated: number; warnings?: string[] }>(
         "/api/admin/content/tutor-placement/bulk-upload",
         {
@@ -1171,7 +1189,12 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
     setUploadingTeam(true)
     try {
       const fileContent = await fileToText(file)
-      const fileType = file.name.endsWith(".json") ? "json" : "csv"
+      const isJson = file.name.endsWith(".json") || 
+                     file.name.endsWith(".md") || 
+                     fileContent.trim().startsWith("[") || 
+                     fileContent.trim().startsWith("{")
+      const fileType = isJson ? "json" : "csv"
+      
       const response = await apiFetch<{ message: string; updated: number; created: number }>(
         "/api/admin/content/team/bulk-upload",
         {
@@ -3617,18 +3640,25 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       popular: plan.popular,
       order: plan.order,
     }))
-    const csv = [
-      "name,price,period,features,notIncluded,color,icon,popular,order",
-      ...data.map(row => `${row.name},${row.price},${row.period},"${row.features}","${row.notIncluded}",${row.color},${row.icon},${row.popular},${row.order}`)
-    ].join("\n")
     
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "pricing-plans.csv"
-    a.click()
-    URL.revokeObjectURL(url)
+    const ws = XLSX.utils.json_to_sheet(data);
+    
+    // Professional column widths
+    ws['!cols'] = [
+      { wch: 20 }, // Name
+      { wch: 10 }, // Price
+      { wch: 10 }, // Period
+      { wch: 40 }, // Features
+      { wch: 30 }, // Not Included
+      { wch: 15 }, // Color
+      { wch: 10 }, // Icon
+      { wch: 10 }, // Popular
+      { wch: 8 },  // Order
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Pricing Plans");
+    XLSX.writeFile(wb, "pricing-plans.xlsx");
   }
 
   const handleExportAnnouncements = async () => {
@@ -3641,30 +3671,29 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       mediaUrl: a.mediaUrl || "",
       mediaType: a.mediaType || "",
     }))
-    const csvHeader = "title,content,type,pinned,isActive,mediaUrl,mediaType"
-    const escape = (val: string) => {
-      const needsQuotes = /[",\n]/.test(val)
-      const v = val.replace(/"/g, '""')
-      return needsQuotes ? `"${v}"` : v
-    }
-    const csvRows = data.map(
-      (row) =>
-        `${escape(row.title)},${escape(row.content)},${row.type},${row.pinned},${row.isActive},${escape(row.mediaUrl)},${escape(row.mediaType)}`,
-    )
-    const csv = [csvHeader, ...csvRows].join("\n")
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "announcements.csv"
-    a.click()
-    URL.revokeObjectURL(url)
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+
+    // Professional column widths
+    ws['!cols'] = [
+      { wch: 30 }, // Title
+      { wch: 50 }, // Content
+      { wch: 10 }, // Type
+      { wch: 10 }, // Pinned
+      { wch: 10 }, // IsActive
+      { wch: 30 }, // MediaUrl
+      { wch: 10 }, // MediaType
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Announcements");
+    XLSX.writeFile(wb, "announcements.xlsx");
   }
 
   const handleExportTutors = () => {
     const data = tutors.map((tutor) => ({
       name: tutor.name,
-      subjects: safeArray(tutor.subjects),
+      subjects: safeArray(tutor.subjects).join("|"),
       image: tutor.image,
       contactName: tutor.contactName,
       contactPhone: tutor.contactPhone,
@@ -3674,13 +3703,26 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       isActive: tutor.isActive,
       hasLogin: (tutor as any).hasSystemAccount ? "Yes" : "No",
     }))
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `tutors-export-${new Date().toISOString().split("T")[0]}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+
+    // Professional column widths
+    ws['!cols'] = [
+      { wch: 25 }, // Name
+      { wch: 40 }, // Subjects
+      { wch: 30 }, // Image
+      { wch: 25 }, // ContactName
+      { wch: 20 }, // ContactPhone
+      { wch: 30 }, // ContactEmail
+      { wch: 50 }, // Description
+      { wch: 10 }, // Order
+      { wch: 10 }, // IsActive
+      { wch: 10 }, // HasLogin
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Tutors");
+    XLSX.writeFile(wb, `tutors-export-${new Date().toISOString().split("T")[0]}.xlsx`);
   }
 
   const handleExportTeamMembers = () => {
@@ -3692,13 +3734,22 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       order: member.order,
       isActive: member.isActive,
     }))
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `team-members-export-${new Date().toISOString().split("T")[0]}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+    
+    const ws = XLSX.utils.json_to_sheet(data);
+
+    // Professional column widths
+    ws['!cols'] = [
+      { wch: 25 }, // Name
+      { wch: 25 }, // Role
+      { wch: 50 }, // Bio
+      { wch: 30 }, // Image
+      { wch: 10 }, // Order
+      { wch: 10 }, // IsActive
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Team Members");
+    XLSX.writeFile(wb, `team-members-export-${new Date().toISOString().split("T")[0]}.xlsx`);
   }
 
   return (

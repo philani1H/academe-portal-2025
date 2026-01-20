@@ -441,13 +441,31 @@ export function Whiteboard({ socket, sessionId, onClose, isTutor }: WhiteboardPr
         if (!canvas) return;
 
         const imgData = canvas.toDataURL('image/png');
+        // Force Landscape A4 for professional look as requested
         const pdf = new jsPDF({
-            orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
-            unit: 'px',
-            format: [canvas.width, canvas.height]
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4'
         });
 
-        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        
+        const imgProps = pdf.getImageProperties(imgData);
+        let imgWidth = pageWidth;
+        let imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+        
+        // If image height is greater than page height, scale by height
+        if (imgHeight > pageHeight) {
+            imgHeight = pageHeight;
+            imgWidth = (imgProps.width * imgHeight) / imgProps.height;
+        }
+        
+        // Center the image
+        const x = (pageWidth - imgWidth) / 2;
+        const y = (pageHeight - imgHeight) / 2;
+
+        pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
         pdf.save(`whiteboard-${Date.now()}.pdf`);
     };
 

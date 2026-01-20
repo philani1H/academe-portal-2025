@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
+import io from "socket.io-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,10 +10,19 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { toast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { apiFetch } from "@/lib/api"
 import { Loading } from "@/components/ui/loading"
+import { useAuth } from "@/contexts/AuthContext"
 import {
   LayoutDashboard,
   BookOpen,
@@ -38,6 +48,8 @@ import {
   Calendar,
   Video,
   Mail,
+  LogOut,
+  User as UserIcon,
 } from "lucide-react"
 import Timetable from "@/components/Timetable"
 import { ChangePassword } from "@/components/ChangePassword"
@@ -146,6 +158,7 @@ interface Analytics {
 // Mock data removed - all data now comes from real API calls
 
 export default function TutorDashboard() {
+  const { logout } = useAuth()
   // State
   const [user, setUser] = useState<User | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
@@ -319,6 +332,39 @@ export default function TutorDashboard() {
   useEffect(() => {
     loadData()
   }, [])
+
+  // Socket.IO integration
+  useEffect(() => {
+    const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+    const socket = io(SOCKET_SERVER_URL)
+
+    if (user?.id) {
+      socket.emit('join-user-room', user.id)
+    }
+
+    socket.on('enrollment-updated', () => {
+      toast({ title: "Update", description: "Student enrollment updated." })
+      loadData()
+    })
+
+    socket.on('course-updated', () => {
+      loadData()
+    })
+
+    socket.on('material-added', () => {
+      toast({ title: "Update", description: "Course material added." })
+      loadData()
+    })
+
+    socket.on('announcement-added', () => {
+      toast({ title: "New Announcement", description: "A new announcement has been posted." })
+      loadData()
+    })
+
+    return () => {
+      socket.disconnect()
+    }
+  }, [user?.id])
 
   // Effects
   useEffect(() => {
@@ -507,18 +553,40 @@ export default function TutorDashboard() {
 
             {/* User Profile */}
             <div className="p-4 border-t border-sidebar-border">
-              <div className={`flex items-center gap-3 ${!sidebarOpen && "justify-center"}`}>
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
-                  <AvatarFallback className="bg-primary text-primary-foreground">{user.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-                {sidebarOpen && (
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
-                    <p className="text-xs text-sidebar-foreground/70 truncate">{user.role}</p>
-                  </div>
-                )}
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className={`w-full flex items-center gap-3 h-auto p-2 ${!sidebarOpen && "justify-center"}`}>
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
+                      <AvatarFallback className="bg-primary text-primary-foreground">{user.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    {sidebarOpen && (
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-sm font-medium text-sidebar-foreground truncate">{user.name}</p>
+                        <p className="text-xs text-sidebar-foreground/70 truncate">{user.role}</p>
+                      </div>
+                    )}
+                    {sidebarOpen && <MoreHorizontal className="h-4 w-4 ml-auto" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setActiveTab('settings')}>
+                    <UserIcon className="mr-2 h-4 w-4" />
+                    <span>Profile</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setActiveTab('settings')}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Logout</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </aside>

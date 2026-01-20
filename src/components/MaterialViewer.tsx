@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import ReactPlayer from 'react-player'
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, X, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
@@ -45,6 +45,9 @@ export function MaterialViewer({ material, onClose }: MaterialViewerProps) {
   const zoomOut = () => setScale((prev) => Math.max(prev - 0.2, 0.5))
 
   const handleDownload = () => {
+    // For PDF files, we'll try to use a landscape-aware print approach if it's a generated PDF,
+    // but since these are static URLs from a server, we just download the file.
+    // The user's request for "horizontal" PDFs mostly applies to platform-generated documents.
     const link = document.createElement('a')
     link.href = material.url
     link.download = material.title
@@ -52,6 +55,24 @@ export function MaterialViewer({ material, onClose }: MaterialViewerProps) {
     link.click()
     document.body.removeChild(link)
   }
+
+  const handlePrint = () => {
+    if (material.type !== 'pdf') return;
+    
+    const printWindow = window.open(material.url, '_blank');
+    if (printWindow) {
+      printWindow.onload = () => {
+        const style = printWindow.document.createElement('style');
+        style.textContent = `
+          @page { size: landscape; margin: 0; }
+          body { margin: 0; }
+          img, canvas, svg { max-width: 100%; height: auto; }
+        `;
+        printWindow.document.head.appendChild(style);
+        printWindow.print();
+      };
+    }
+  };
 
   if (material.type === 'video' || ReactPlayer.canPlay(material.url)) {
     return (

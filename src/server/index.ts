@@ -80,7 +80,7 @@ const sessionUsers = new Map<string, Map<string, { userId: string, userRole: str
 
 // Helper for safe database queries with retry logic
 const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
-  let retries = 3
+  let retries = 5
   let delay = 1000
   while (retries > 0) {
     try {
@@ -89,12 +89,14 @@ const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
       if (
         e?.code === 'P1001' || // Can't reach database server
         e?.code === 'P2024' || // Timed out fetching a new connection
-        e?.message?.includes('Can\'t reach database server')
+        e?.name === 'PrismaClientInitializationError' ||
+        e?.message?.includes('Can\'t reach database server') ||
+        e?.message?.includes('connection closed')
       ) {
         console.warn(`Database query retry (${retries} left) in ${delay}ms...`)
         retries--
         await new Promise(r => setTimeout(r, delay))
-        delay *= 2 // Exponential backoff
+        delay *= 1.5 // Exponential backoff (gentler)
         continue
       }
       throw e
@@ -269,6 +271,27 @@ app.use(cors(corsOptions as cors.CorsOptions))
 app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ limit: "10mb", extended: true }))
 
+// Server Readiness Check
+// This prevents "Connection Refused" errors during startup by accepting connections
+// but returning 503 until the server is fully initialized.
+let isServerReady = false
+app.use((req, res, next) => {
+  // Allow health checks and static files even during startup
+  if (req.path === '/api/health' || !req.path.startsWith('/api')) {
+    return next()
+  }
+  
+  if (!isServerReady) {
+    return res.status(503).json({ 
+      success: false, 
+      error: 'Server is initializing', 
+      retryAfter: 5 
+    })
+  }
+  
+  next()
+})
+
 // Timetable API
 // Remove file-based storage references
 // const timetableFile = path.resolve(resolvedDir, "data", "timetable.json")
@@ -363,6 +386,123 @@ app.post("/api/timetable", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error saving timetable:", error)
     res.status(500).json({ error: "Failed to save timetable" })
+  }
+})
+
+
+// Upload endpoint for timetable (CSV/Excel)
+app.post("/api/timetable/upload", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { fileContent, fileType } = req.body || {}
+    if (!fileContent) return res.status(400).json({ error: "No file content provided" })
+
+    let entries: any[] = []
+
+    if (fileType === "json") {
+      const parsed = JSON.parse(fileContent)
+      entries = Array.isArray(parsed) ? parsed : parsed.timetable || []
+    } else if (fileType === "csv") {
+      const lines = fileContent.trim().split("\n")
+      if (lines.length < 2) throw new Error("CSV must have header and data rows")
+      
+      // Expected headers: Tutor, Day, Start, End, Course, Subject, Grade, Type, Students
+      const headers = lines[0].split(",").map((h: string) => h.trim().toLowerCase())
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i])
+        if (values.length === 0) continue
+        
+        const row: any = {}
+        headers.forEach((header: string, index: number) => {
+          if (values[index] !== undefined) row[header] = values[index].trim()
+        })
+        
+        // Map CSV columns to Timetable structure
+        if (row.tutor && row.day && row.start && row.course) {
+          entries.push({
+            tutorName: row.tutor,
+            day: row.day,
+            startTime: row.start,
+            endTime: row.end || addMinutesToTime(row.start, 60), // Default 1h if missing
+            courseName: row.course,
+            subject: row.subject || "General",
+            grade: row.grade || "Grade 12",
+            type: row.type || "Group",
+            students: row.students || ""
+          })
+        }
+      }
+    } else {
+      return res.status(400).json({ error: "Unsupported file type. Use CSV or JSON." })
+    }
+
+    if (entries.length === 0) {
+      return res.status(400).json({ error: "No valid timetable entries found" })
+    }
+
+    // Process entries similar to POST /api/timetable
+    const validEntries = []
+    for (const entry of entries) {
+      if (!entry.tutorName || !entry.courseName) continue
+
+      // Find Tutor ID
+      let user = await prisma.user.findFirst({
+        where: { name: entry.tutorName, role: "tutor" },
+      })
+      
+      // If tutor not found, try to find by fuzzy match or skip? 
+      // For now, strict match or skip.
+      if (!user) continue;
+
+      // Find Course ID
+      let course = await prisma.course.findFirst({
+        where: { name: entry.courseName },
+      })
+      
+      // If course not found, maybe create it or skip?
+      // Strict match for safety.
+      if (!course) continue;
+
+      validEntries.push({
+        day: entry.day,
+        timeSlot: `${entry.startTime}-${entry.endTime}`,
+        courseId: course.id,
+        tutorId: user.id,
+        type: entry.type || "Group",
+        grade: entry.grade || null,
+        students: entry.students || "",
+      })
+    }
+
+    if (validEntries.length === 0) {
+      return res.status(400).json({ error: "No entries could be matched to existing Tutors/Courses. Please ensure names match exactly." })
+    }
+
+    // Transaction: Append or Replace? 
+    // Usually uploads are additive or replacements. Let's assume replacement for consistency with bulk operations, 
+    // OR we can make it additive. Given the request "upload a timetable", it often implies setting the schedule.
+    // However, safely we should probably append or ask user. 
+    // For this implementation, I will APPEND to avoid wiping existing data unless user explicitly clears.
+    // Wait, the previous POST /api/timetable REPLACES everything. 
+    // Let's stick to REPLACING for consistency with "uploading a NEW timetable".
+    
+    await prisma.$transaction([
+      prisma.timetableEntry.deleteMany({}),
+      prisma.timetableEntry.createMany({
+        data: validEntries,
+      }),
+    ])
+
+    const ioInstance = req.app.get("io") as Server | undefined
+    if (ioInstance) {
+      ioInstance.emit("timetable-updated")
+    }
+
+    return res.json({ success: true, count: validEntries.length, message: `Successfully uploaded ${validEntries.length} classes` })
+
+  } catch (error) {
+    console.error("Timetable upload error:", error)
+    return res.status(500).json({ success: false, error: "Failed to upload timetable" })
   }
 })
 
@@ -495,6 +635,10 @@ app.post("/api/upload/cloudinary-material", authenticateJWT as RequestHandler, a
         description: description || `Cloudinary video - ${format} format${duration ? `, ${Math.round(duration)}s duration` : ''}${size ? `, ${Math.round(size / (1024 * 1024))}MB` : ''}`,
       },
     })
+
+    const io = req.app.get("io")
+    io.emit("material-added", { courseId, material })
+    io.to(`course:${courseId}`).emit("course-updated", { courseId })
 
     res.json({
       success: true,
@@ -1538,6 +1682,13 @@ app.post(
           results.push({ email: clean, error: "User already exists" })
         }
       }
+      
+      if (results.some(r => r.sent)) {
+         const io = req.app.get("io")
+         io.emit("user-updated", { role: "tutor", action: "invite" })
+         io.emit("admin-stats-updated")
+      }
+
       return res.json({ success: true, invited: results })
     } catch (error) {
       console.error("Tutor invite error:", error)
@@ -1714,23 +1865,14 @@ app.get("/api/tutor/:tutorId/students", authenticateJWT as RequestHandler, autho
 // Admin stats for analytics
 app.get("/api/admin/stats", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const [
-      tutorsCount,
-      subjectsCount,
-      testimonialsCount,
-      activeAnnouncementsCount,
-      totalStudents,
-      totalTutors,
-      totalCourses,
-    ] = await Promise.all([
-      safeQuery(() => prisma.tutor.count({ where: { isActive: true } })).then(r => r ?? 0),
-      safeQuery(() => prisma.subject.count({ where: { isActive: true } })).then(r => r ?? 0),
-      safeQuery(() => prisma.testimonial.count({ where: { isActive: true } })).then(r => r ?? 0),
-      safeQuery(() => prisma.announcement.count().catch(() => 0)).then(r => r ?? 0),
-      safeQuery(() => prisma.user.count({ where: { role: "student" } })).then(r => r ?? 0),
-      safeQuery(() => prisma.user.count({ where: { role: "tutor" } })).then(r => r ?? 0),
-      safeQuery(() => prisma.course.count()).then(r => r ?? 0),
-    ])
+    // Execute sequentially to avoid exhausting connection pool
+    const tutorsCount = await safeQuery(() => prisma.tutor.count({ where: { isActive: true } })).then(r => r ?? 0)
+    const subjectsCount = await safeQuery(() => prisma.subject.count({ where: { isActive: true } })).then(r => r ?? 0)
+    const testimonialsCount = await safeQuery(() => prisma.testimonial.count({ where: { isActive: true } })).then(r => r ?? 0)
+    const activeAnnouncementsCount = await safeQuery(() => prisma.announcement.count().catch(() => 0)).then(r => r ?? 0)
+    const totalStudents = await safeQuery(() => prisma.user.count({ where: { role: "student" } })).then(r => r ?? 0)
+    const totalTutors = await safeQuery(() => prisma.user.count({ where: { role: "tutor" } })).then(r => r ?? 0)
+    const totalCourses = await safeQuery(() => prisma.course.count()).then(r => r ?? 0)
 
     const totalUsers = totalStudents + totalTutors
     const activeStudents = Math.round(totalStudents * 0.7)
@@ -2056,31 +2198,46 @@ app.get("/api/admin/departments", authenticateJWT as RequestHandler, authorizeRo
     // Get all departments from courses
     const departments = courseGroups.map(g => g.department || "General")
 
-    // Get student counts by department
-    const studentCounts = await Promise.all(
-      departments.map(async (dept) => {
-        const count = await safeQuery(() => prisma.user.count({
-          where: {
-            role: "student",
-            department: dept
-          }
-        })) || 0
-        return { department: dept, count }
-      })
-    )
+    // Get student counts by department (Optimized to avoid N+1 queries)
+    const studentGroups = await safeQuery(() => prisma.user.groupBy({
+      by: ["department"],
+      where: { role: "student" },
+      _count: { _all: true },
+    })) || []
 
-    // Get tutor counts by department
-    const tutorCounts = await Promise.all(
-      departments.map(async (dept) => {
-        const count = await safeQuery(() => prisma.user.count({
-          where: {
-            role: "tutor",
-            department: dept
-          }
-        })) || 0
-        return { department: dept, count }
-      })
-    )
+    const studentCounts = departments.map(dept => {
+      const group = studentGroups.find(g => g.department === dept)
+      return { department: dept, count: group?._count._all || 0 }
+    })
+
+    // Get tutor counts by department (Based on active course assignments)
+    // This ensures tutors teaching across multiple departments are counted in each
+    const coursesWithTutors = await safeQuery(() => prisma.course.findMany({
+      where: { 
+        tutorId: { not: null } 
+      },
+      select: {
+        department: true,
+        tutorId: true
+      }
+    })) || []
+
+    const departmentTutorMap = new Map<string, Set<number>>()
+    
+    coursesWithTutors.forEach(c => {
+        const dept = c.department || "General"
+        if (!departmentTutorMap.has(dept)) {
+            departmentTutorMap.set(dept, new Set())
+        }
+        if (c.tutorId) {
+            departmentTutorMap.get(dept)!.add(c.tutorId)
+        }
+    })
+
+    const tutorCounts = departments.map(dept => {
+      const count = departmentTutorMap.get(dept)?.size || 0
+      return { department: dept, count }
+    })
 
     // Combine all data
     const data = courseGroups.map((g) => {
@@ -4579,6 +4736,10 @@ app.post("/api/courses", async (req: Request, res: Response) => {
         }
     })
 
+    const io = req.app.get("io")
+    io.emit("course-updated", { action: "create", course: newCourse })
+    io.emit("admin-stats-updated")
+
     res.status(201).json({ success: true, data: newCourse })
   } catch (error) {
     console.error("Error creating course:", error)
@@ -6323,6 +6484,27 @@ function chooseDepartmentForSubject(subject: string, departments: string[]): str
 
 // Initialize and start server
 const startServer = async (): Promise<void> => {
+  // Start server IMMEDIATELY to prevent connection refused
+  const server = httpServer.listen(Number(port), "0.0.0.0", () => {
+    console.log(`✓ Server listening on port ${port} (Initializing...)`)
+    console.log(`✓ Environment: ${process.env.NODE_ENV || "development"}`)
+  })
+
+  // Handle server errors
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(`❌ Port ${port} is in use`)
+      process.exit(1)
+    } else {
+      console.error("❌ Server error:", error)
+      process.exit(1)
+    }
+  })
+
+  // Prevent server timeout on Render
+  server.keepAliveTimeout = 120000
+  server.headersTimeout = 120000
+
   try {
     console.log("🚀 Starting Excellence Akademie API Server...")
 
@@ -6793,13 +6975,6 @@ const startServer = async (): Promise<void> => {
               continue
             }
 
-            // Find Content Tutor (for verification)
-            const contentTutor = await prisma.tutor.findFirst({ where: { name: tutorName } })
-            if (!contentTutor) {
-              warnings.push(`Tutor "${tutorName}" not found in content records; skipping placement`)
-              continue
-            }
-
             const subjects = Array.isArray(item.subjects)
               ? item.subjects.map((s: any) => String(s || "").trim()).filter((s: string) => s.length > 0)
               : parseArrayField(item.subjects)
@@ -6807,6 +6982,37 @@ const startServer = async (): Promise<void> => {
             const departments = Array.isArray(item.departments)
               ? item.departments.map((d: any) => String(d || "").trim()).filter((d: string) => d.length > 0)
               : parseArrayField(item.departments)
+
+            // Find Content Tutor (for verification)
+            let contentTutor = await prisma.tutor.findFirst({ where: { name: tutorName } })
+            
+            if (!contentTutor) {
+               // Create Content Tutor if missing
+               const subjectsJson = JSON.stringify(subjects)
+               const generatedEmail = `${tutorName.replace(/[^a-zA-Z0-9]/g, ".").toLowerCase()}@excellenceakademie.co.za`
+               
+               try {
+                   contentTutor = await prisma.tutor.create({
+                       data: {
+                           name: tutorName,
+                           subjects: subjectsJson,
+                           image: "/placeholder-tutor.png", // Default image
+                           contactName: tutorName,
+                           contactPhone: "",
+                           contactEmail: generatedEmail,
+                           description: `Professional tutor specializing in ${subjects.join(", ")}`,
+                           ratings: "5.0",
+                           isActive: true,
+                           order: 0
+                       }
+                   })
+                   warnings.push(`✓ Created new content tutor record for "${tutorName}"`)
+               } catch (err) {
+                   const msg = err instanceof Error ? err.message : String(err)
+                   warnings.push(`✗ Failed to create content tutor for "${tutorName}": ${msg}`)
+                   continue // Skip if creation fails
+               }
+            }
 
             // Find System User (for linking)
             let userTutor = await prisma.user.findFirst({
@@ -6817,9 +7023,24 @@ const startServer = async (): Promise<void> => {
             })
 
             if (!userTutor && contentTutor.contactEmail) {
-              userTutor = await prisma.user.findUnique({
+              const userByEmail = await prisma.user.findUnique({
                 where: { email: contentTutor.contactEmail },
               })
+              // Validate that the user found by email actually matches the tutor name
+              // This prevents accidental linking if multiple tutors share an email (copy-paste error)
+              if (userByEmail) {
+                  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '')
+                  const name1 = normalize(userByEmail.name)
+                  const name2 = normalize(tutorName)
+                  
+                  // Simple check: is one name contained in the other?
+                  if (name1.includes(name2) || name2.includes(name1)) {
+                      userTutor = userByEmail
+                  } else {
+                      // Name mismatch (e.g. Roshan vs Rohan), assume email collision/error
+                      // Treat as not found so we can create a new user with a fresh email
+                  }
+              }
             }
 
             if (!userTutor) {
@@ -6832,7 +7053,28 @@ const startServer = async (): Promise<void> => {
                   email = `${tutorName.replace(/[^a-zA-Z0-9]/g, ".").toLowerCase()}@excellenceakademie.co.za`
                 }
 
-                const existingEmail = await prisma.user.findUnique({ where: { email } })
+                // Check for email collision
+                let existingEmail = await prisma.user.findUnique({ where: { email } })
+                
+                // If email exists but names don't match, generate a unique email
+                if (existingEmail) {
+                   const normalize = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '')
+                   const name1 = normalize(existingEmail.name)
+                   const name2 = normalize(tutorName)
+                   
+                   if (!name1.includes(name2) && !name2.includes(name1)) {
+                       // Collision! Generate a unique email
+                       let counter = 1
+                       let baseEmail = email.split('@')[0]
+                       const domain = email.split('@')[1]
+                       while (existingEmail) {
+                           email = `${baseEmail}${counter}@${domain}`
+                           existingEmail = await prisma.user.findUnique({ where: { email } })
+                           counter++
+                       }
+                   }
+                }
+
                 if (existingEmail) {
                   // Check if existing user is a tutor
                   if (existingEmail.role === "tutor") {
@@ -7511,8 +7753,8 @@ app.post("/api/admin/live-sessions/:sessionId/kick/:participantId", authenticate
   // Check database connection on start
   try {
     console.log("🔌 Testing database connection...")
-    // Use a simple query that doesn't depend on tables existing
-    await prisma.$queryRaw`SELECT 1`
+    // Use safeQuery wrapper to handle connection retries gracefully
+    await safeQuery(() => prisma.$queryRaw`SELECT 1`)
     console.log("✓ Database connection established")
   } catch (e) {
     console.error("⚠ Initial database connection failed (will retry on requests):", e)
@@ -7547,32 +7789,16 @@ app.post("/api/admin/live-sessions/:sessionId/kick/:participantId", authenticate
     // Start scheduled session checker
     startScheduledSessionChecker()
 
-    // Start server
-    const server = httpServer.listen(Number(port), "0.0.0.0", () => {
-      console.log(`✓ Server running on port ${port}`)
-      console.log(`✓ Environment: ${process.env.NODE_ENV || "development"}`)
-      console.log(`✓ Socket.IO: Enabled`)
-      console.log(`✓ Health check: http://localhost:${port}/api/health`)
-      console.log(`✓ Tutors API: http://localhost:${port}/api/tutors`)
-      console.log(`✓ Ready for connections!`)
-    })
+    // Mark server as ready
+    isServerReady = true
+    console.log(`✓ Socket.IO: Enabled`)
+    console.log(`✓ Health check: http://localhost:${port}/api/health`)
+    console.log(`✓ Tutors API: http://localhost:${port}/api/tutors`)
+    console.log(`✓ Ready for connections!`)
 
-    // Handle server errors
-    server.on("error", (error: NodeJS.ErrnoException) => {
-      if (error.code === "EADDRINUSE") {
-        console.error(`❌ Port ${port} is in use`)
-        process.exit(1)
-      } else {
-        console.error("❌ Server error:", error)
-        process.exit(1)
-      }
-    })
-
-    // Prevent server timeout on Render
-    server.keepAliveTimeout = 120000
-    server.headersTimeout = 120000
   } catch (error) {
     console.error("❌ Failed to start server:", error)
+    // Note: server is available in scope now
     process.exit(1)
   }
 }

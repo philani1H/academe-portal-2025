@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { motion } from "framer-motion"
 import * as XLSX from 'xlsx'
+import io from "socket.io-client"
 import { Bell, Calendar, Users, BookOpen, Upload, Plus, Search, FileText, CheckCircle, AlertCircle, MoreHorizontal, Send, ChevronDown, Mail, Check, X, Edit, User, Settings, LogOut, Menu, Home, Shield, BarChart4, UserPlus, Trash2, Building, GraduationCap, UserCheck, Filter, RefreshCw, Eye, Download, Layout, DollarSign, Server, Database, Globe, Video } from 'lucide-react'
 
 import ContentManagement from './ContentManagement'
@@ -806,6 +807,41 @@ export default function AdminDashboard() {
     fetchNotifications()
     fetchDepartmentsAndStats()
     fetchAdmins()
+  }, [])
+
+  // Socket.IO Integration
+  useEffect(() => {
+    const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+    const socket = io(SOCKET_SERVER_URL)
+
+    socket.on('admin-stats-updated', () => {
+      fetchDepartmentsAndStats()
+    })
+
+    socket.on('course-updated', () => {
+      fetchCourses()
+      fetchDepartmentsAndStats()
+    })
+
+    socket.on('user-updated', () => {
+      fetchTutors()
+      fetchStudents()
+      fetchDepartmentsAndStats()
+    })
+
+    socket.on('enrollment-updated', () => {
+      fetchStudents()
+      fetchCourses()
+      fetchDepartmentsAndStats()
+    })
+
+    socket.on('announcement-added', () => {
+      fetchNotifications()
+    })
+
+    return () => {
+      socket.disconnect()
+    }
   }, [])
 
   // Handlers

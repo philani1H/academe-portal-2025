@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Lock, User, Shield } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { withBase } from "@/lib/api"
 
 const AdminLogin = () => {
   const [username, setUsername] = useState("")
@@ -31,7 +32,7 @@ const AdminLogin = () => {
           ? { email: identifier, password }
           : { username: identifier, password }
 
-      const response = await fetch('/api/admin/auth/login', {
+      const response = await fetch(withBase('/api/admin/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

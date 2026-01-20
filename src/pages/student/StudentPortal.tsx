@@ -170,7 +170,7 @@ interface UserType {
 
 // Main component
 export default function StudentPortal() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, logout } = useAuth();
   // State
   const [user, setUser] = useState<UserType | null>(null)
   const [courses, setCourses] = useState<Course[]>([])
@@ -263,16 +263,9 @@ export default function StudentPortal() {
       const studentId = authUser.id;
       if (!studentId) return;
 
-      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
-
-      const response = await fetch(`/api/student/scheduled-sessions?studentId=${encodeURIComponent(studentId)}`, {
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      const data = await apiFetch<{ sessions: any[] }>(`/student/scheduled-sessions?studentId=${encodeURIComponent(studentId)}`);
+      
+      if (data && data.sessions) {
         setScheduledSessions(data.sessions || []);
       }
     } catch (error) {
@@ -339,6 +332,30 @@ export default function StudentPortal() {
         }
         return session;
       }));
+    });
+
+    socket.on('announcement-added', () => {
+      toast.message('New Announcement', { description: "A new announcement has been posted." });
+      fetchStudentData();
+    });
+
+    socket.on('material-added', (data: any) => {
+      const currentCourses = coursesRef.current;
+      const isEnrolled = currentCourses.some(c => String(c.id) === String(data.courseId));
+      if (isEnrolled) {
+        toast.message('New Material', { description: "New material added to your course." });
+        fetchStudentData();
+      }
+    });
+
+    socket.on('course-updated', () => {
+      fetchStudentData();
+    });
+
+    socket.on('enrollment-updated', (data: any) => {
+      // If the student is the one enrolled, or if we just want to refresh to see new classmates (if visible)
+      // For now, just refresh to be safe
+      fetchStudentData();
     });
 
     return () => {
@@ -735,7 +752,7 @@ export default function StudentPortal() {
                         <span>Settings</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={logout}>
                         <LogOut className="mr-2 h-4 w-4" />
                         <span>Logout</span>
                       </DropdownMenuItem>

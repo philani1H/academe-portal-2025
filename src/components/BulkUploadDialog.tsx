@@ -41,6 +41,30 @@ export const BulkUploadDialog: React.FC<BulkUploadDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
+  const handleDownloadTemplate = () => {
+    try {
+      // Create workbook from the CSV example string
+      const wb = XLSX.read(csvExample, { type: 'string' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+
+      // Set professional column widths
+      const range = XLSX.utils.decode_range(ws['!ref'] || "A1:A1");
+      const colWidths = [];
+      for(let C = range.s.c; C <= range.e.c; ++C) {
+          colWidths.push({ wch: 25 }); // Set a reasonable width for all columns
+      }
+      ws['!cols'] = colWidths;
+
+      // Generate filename from title
+      const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-template.xlsx`;
+      
+      XLSX.writeFile(wb, filename);
+    } catch (error) {
+      console.error('Failed to generate template:', error);
+      setError('Failed to generate Excel template');
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
