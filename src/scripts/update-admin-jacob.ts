@@ -1,9 +1,9 @@
 
-import { PrismaClient } from '@prisma/client'
+import prisma from '../lib/prisma'
 import bcrypt from 'bcryptjs'
 import { generatePasswordFromName } from '../lib/utils'
 
-const prisma = new PrismaClient()
+
 
 function getCompanyDomain(): string {
   const frontend = process.env.FRONTEND_URL || process.env.VITE_FRONTEND_URL
