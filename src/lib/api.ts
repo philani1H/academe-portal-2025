@@ -5,7 +5,7 @@ const __env = (typeof import.meta !== 'undefined' ? (import.meta as any).env : u
 
 export const API_BASE: string = __env?.DEV
   ? '/api'
-  : (__env?.VITE_API_URL || '/api');
+  : (__env?.VITE_API_URL || 'https://academe-portal-2025.onrender.com/api');
 
 console.log('🔌 API Base URL:', API_BASE);
 

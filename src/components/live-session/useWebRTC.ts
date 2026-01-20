@@ -3,7 +3,7 @@ import io, { Socket } from 'socket.io-client';
 import SimplePeer, { Instance as PeerInstance } from 'simple-peer';
 import { toast } from 'sonner';
 
-const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://academe-portal-2025.onrender.com' : 'http://localhost:3000');
 
 // Sound effects
 const playJoinSound = () => {
