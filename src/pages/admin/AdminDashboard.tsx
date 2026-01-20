@@ -2288,10 +2288,10 @@ export default function AdminDashboard() {
               {sidebarOpen ? (
                 <div className="flex items-center space-x-3">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0)}</AvatarFallback>
+                    <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate capitalize">{user.name}</p>
                     <p className="text-xs text-gray-500 truncate">{user.role}</p>
                   </div>
                   <DropdownMenu>
@@ -2319,7 +2319,7 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0)}</AvatarFallback>
+                  <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0).toUpperCase()}</AvatarFallback>
                 </Avatar>
               )}
             </div>
@@ -2481,10 +2481,10 @@ export default function AdminDashboard() {
             <div className="p-4 border-t border-gray-200">
               <div className="flex items-center space-x-3">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0)}</AvatarFallback>
+                  <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0).toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+                  <p className="text-sm font-medium text-gray-900 truncate capitalize">{user.name}</p>
                   <p className="text-xs text-gray-500 truncate">{user.role}</p>
                 </div>
               </div>
@@ -2543,9 +2543,9 @@ export default function AdminDashboard() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2">
                     <Avatar className="h-8 w-8">
-                      <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0)}</AvatarFallback>
+                      <AvatarFallback className="bg-indigo-600 text-white">{user.name.charAt(0).toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    <span className="hidden md:inline-block">{user.name}</span>
+                    <span className="hidden md:inline-block font-medium capitalize">{user.name}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -3804,11 +3804,14 @@ export default function AdminDashboard() {
                             <SelectValue placeholder="Select course to auto-place" />
                           </SelectTrigger>
                           <SelectContent>
-                            {courses.map((c) => (
-                              <SelectItem key={c.id} value={String(c.id)}>
-                                {c.name}
-                              </SelectItem>
-                            ))}
+                            {courses.map((c) => {
+                              const tutor = tutors.find((t) => t.id === c.tutorId)
+                              return (
+                                <SelectItem key={c.id} value={String(c.id)}>
+                                  {c.name} {tutor ? `(${tutor.name})` : ""}
+                                </SelectItem>
+                              )
+                            })}
                           </SelectContent>
                         </Select>
                         <Button
@@ -3856,9 +3859,9 @@ export default function AdminDashboard() {
                 templateCsvUrl="/templates/student-placement-template.csv"
                 templateJsonUrl="/templates/student-placement-template.json"
                 csvExample={
-                  "name,email,courses,department,grade\n" +
-                  'John Doe,john@example.com,"Mathematics Grade 10|Physics Grade 10",Science,Grade 10\n' +
-                  'Jane Smith,jane@example.com,"English Literature|History",Languages,Grade 11'
+                  "name,email,courses,tutors,department,grade\n" +
+                  'John Doe,john@example.com,"Mathematics Grade 10|Physics Grade 10","Mr Smith|Dr Jones",Science,Grade 10\n' +
+                  'Jane Smith,jane@example.com,"English Literature|History","Ms Davis|",Languages,Grade 11'
                 }
                 jsonExample={
                   '[\n' +
@@ -3866,6 +3869,7 @@ export default function AdminDashboard() {
                   '    "name": "John Doe",\n' +
                   '    "email": "john@example.com",\n' +
                   '    "courses": ["Mathematics Grade 10", "Physics Grade 10"],\n' +
+                  '    "tutors": ["Mr Smith", "Dr Jones"],\n' +
                   '    "department": "Science",\n' +
                   '    "grade": "Grade 10"\n' +
                   '  },\n' +
@@ -3873,6 +3877,7 @@ export default function AdminDashboard() {
                   '    "name": "Jane Smith",\n' +
                   '    "email": "jane@example.com",\n' +
                   '    "courses": ["English Literature", "History"],\n' +
+                  '    "tutors": ["Ms Davis"],\n' +
                   '    "department": "Languages",\n' +
                   '    "grade": "Grade 11"\n' +
                   '  }\n' +
@@ -3881,7 +3886,8 @@ export default function AdminDashboard() {
                 guidelines={[
                   "Students are matched by email; new students are created if not found",
                   "Courses are matched by name; students are enrolled in matching courses",
-                  "Use pipe (|) to separate multiple courses in CSV format",
+                  "Tutors can be specified to select a specific course section (optional)",
+                  "Use pipe (|) to separate multiple courses and tutors",
                   "Department and grade are optional but recommended",
                   "Existing enrollments are preserved; only new courses are added",
                   "Excel: Save as CSV before uploading",

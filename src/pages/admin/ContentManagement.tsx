@@ -271,6 +271,7 @@ const navItems = [
   { id: "become-tutor", label: "Become a Tutor", icon: UserPlus },
   { id: "exam-rewrite", label: "Exam Rewrite", icon: FileText },
   { id: "university", label: "University Apps", icon: Building },
+  { id: "settings", label: "System Settings", icon: Settings },
 ]
 
 interface ContentManagementProps {
@@ -2350,6 +2351,84 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
   )
 
   // Render main content based on active tab
+  const updateSiteSetting = async (key: string, value: string, label: string) => {
+    try {
+      const existing = siteSettings.find((r) => String(r.key).toLowerCase() === key.toLowerCase())
+      const payload = {
+        ...(existing?.id ? { id: existing.id } : {}),
+        key: key,
+        value: value,
+        type: "boolean",
+        label: label,
+        category: "system",
+      }
+      const method = existing?.id ? "PUT" : "POST"
+      await apiFetch("/api/admin/content/site-settings", {
+        method,
+        body: JSON.stringify(payload),
+      })
+      toast({ title: "Saved", description: `${label} updated` })
+      await fetchSiteSettings()
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to update setting", variant: "destructive" })
+    }
+  }
+
+  const renderSettingsSection = () => {
+    const maintenanceMode = siteSettings.find((r) => r.key === "system_maintenance_mode")?.value === "true"
+    // Agreement is met by default (true). If it's "false", then it's NOT met (blocked).
+    // So "Blocking Active" means agreementMet is false.
+    const agreementMetVal = siteSettings.find((r) => r.key === "system_agreement_met")?.value
+    const isBlockingActive = agreementMetVal === "false" || agreementMetVal === "0"
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">System Settings</h2>
+          <p className="text-muted-foreground">Manage global system configurations.</p>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle>Maintenance Mode</CardTitle>
+              <CardDescription>
+                When active, only admins can access the system.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  checked={maintenanceMode}
+                  onCheckedChange={(checked) => updateSiteSetting("system_maintenance_mode", String(checked), "Maintenance Mode")}
+                />
+                <Label>Maintenance Mode {maintenanceMode ? "On" : "Off"}</Label>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle>Agreement Block</CardTitle>
+              <CardDescription>
+                If active, users must wait for agreement requirements to be met (Blocks access).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  checked={isBlockingActive}
+                  onCheckedChange={(checked) => updateSiteSetting("system_agreement_met", String(!checked), "Agreement Status")}
+                />
+                <Label>Block Access {isBlockingActive ? "On" : "Off"}</Label>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   const renderContent = () => {
     switch (activeTab) {
       case "overview":
@@ -2451,6 +2530,8 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
           <Building className="h-12 w-12 text-muted-foreground" />,
           { title: "", description: "", services: [], process: [], requirements: [], pricing: {} },
         )
+      case "settings":
+        return renderSettingsSection()
       default:
         return renderOverview()
     }

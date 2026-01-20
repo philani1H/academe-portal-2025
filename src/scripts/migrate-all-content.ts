@@ -592,7 +592,7 @@ async function migrateAllContent() {
       prisma.aboutUsContent.deleteMany(),
       prisma.teamMember.deleteMany(),
       prisma.pricingPlan.deleteMany(),
-      prisma.announcements.deleteMany(),
+      // prisma.announcementsBoard.deleteMany(),
       prisma.feature.deleteMany(),
       prisma.heroContent.deleteMany(),
       prisma.footerContent.deleteMany(),
@@ -621,12 +621,14 @@ async function migrateAllContent() {
 
     // Migrate Announcements
     console.log('Migrating announcements...')
+    /*
     for (const announcement of announcementsData) {
-      await prisma.announcements.create({
+      await prisma.announcementsBoard.create({
         data: { ...announcement, isActive: true }
       })
     }
     console.log(`✓ Migrated ${announcementsData.length} announcements`)
+    */
 
     // Migrate Team Members
     console.log('Migrating team members...')

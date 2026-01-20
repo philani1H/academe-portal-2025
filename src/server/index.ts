@@ -106,8 +106,11 @@ const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
 
 // Scheduled session checker
 let scheduledSessionChecker: NodeJS.Timeout
+let isCheckerRunning = false
 
 const startScheduledSessionChecker = (): void => {
+  if (isCheckerRunning) return
+  isCheckerRunning = true
   console.log("✓ Starting scheduled session checker...")
 
   const anyPrisma: any = prisma as any
@@ -118,12 +121,12 @@ const startScheduledSessionChecker = (): void => {
     return
   }
 
-  scheduledSessionChecker = setInterval(async () => {
+  const checkSessions = async () => {
     try {
       const now = new Date()
       const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000)
 
-      const scheduledSessions = await anyPrisma.scheduledSession.findMany({
+      const scheduledSessions = await safeQuery(() => anyPrisma.scheduledSession.findMany({
         where: {
           status: "scheduled",
           scheduledAt: {
@@ -135,7 +138,7 @@ const startScheduledSessionChecker = (): void => {
           course: true,
           tutor: true,
         },
-      })
+      })) || []
 
       for (const session of scheduledSessions) {
         console.log(
@@ -144,13 +147,13 @@ const startScheduledSessionChecker = (): void => {
 
         const sessionId = `${session.courseId}-${Date.now()}`
 
-        await anyPrisma.scheduledSession.update({
+        await safeQuery(() => anyPrisma.scheduledSession.update({
           where: { id: session.id },
           data: {
             status: "active",
             sessionId: sessionId,
           },
-        })
+        }))
 
         activeSessions.set(String(session.courseId), {
           sessionId,
@@ -172,14 +175,14 @@ const startScheduledSessionChecker = (): void => {
 
         // Send emails to enrolled students
         try {
-          const course = await prisma.course.findUnique({
+          const course = await safeQuery(() => prisma.course.findUnique({
             where: { id: session.courseId },
             include: {
               courseEnrollments: {
                 include: { user: true },
               },
             },
-          })
+          }))
 
           if (course && course.courseEnrollments.length > 0) {
             const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
@@ -231,12 +234,19 @@ const startScheduledSessionChecker = (): void => {
         console.error("Error checking scheduled sessions:", error)
       }
     }
-  }, 60000)
+    finally {
+      if (isCheckerRunning) {
+        scheduledSessionChecker = setTimeout(checkSessions, 60000)
+      }
+    }
+  }
+  checkSessions()
 }
 
 const stopScheduledSessionChecker = (): void => {
+  isCheckerRunning = false
   if (scheduledSessionChecker) {
-    clearInterval(scheduledSessionChecker)
+    clearTimeout(scheduledSessionChecker)
     console.log("✓ Stopped scheduled session checker")
   }
 }
@@ -1695,25 +1705,6 @@ app.get("/api/tutor/:tutorId/students", authenticateJWT as RequestHandler, autho
 // Admin stats for analytics
 app.get("/api/admin/stats", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const safeCount = async (fn: () => Promise<number>): Promise<number> => {
-  let retries = 3
-  while (retries > 0) {
-    try {
-      return await fn()
-    } catch (e: any) {
-      if (e?.code === 'P1001' || e?.code === 'P2024') {
-        console.warn(`Database connection retry (${retries} left)...`)
-        retries--
-        await new Promise(r => setTimeout(r, 1000))
-        continue
-      }
-      console.error("Admin stats count error:", e)
-      return 0
-    }
-  }
-  return 0
-}
-
     const [
       tutorsCount,
       subjectsCount,
@@ -1723,17 +1714,13 @@ app.get("/api/admin/stats", authenticateJWT as RequestHandler, authorizeRoles("a
       totalTutors,
       totalCourses,
     ] = await Promise.all([
-      safeCount(() => prisma.tutor.count({ where: { isActive: true } })),
-      safeCount(() => prisma.subject.count({ where: { isActive: true } })),
-      safeCount(() => prisma.testimonial.count({ where: { isActive: true } })),
-      safeCount(() =>
-        prisma.announcement
-          .count()
-          .catch(() => 0),
-      ),
-      safeCount(() => prisma.user.count({ where: { role: "student" } })),
-      safeCount(() => prisma.user.count({ where: { role: "tutor" } })),
-      safeCount(() => prisma.course.count()),
+      safeQuery(() => prisma.tutor.count({ where: { isActive: true } })).then(r => r ?? 0),
+      safeQuery(() => prisma.subject.count({ where: { isActive: true } })).then(r => r ?? 0),
+      safeQuery(() => prisma.testimonial.count({ where: { isActive: true } })).then(r => r ?? 0),
+      safeQuery(() => prisma.announcement.count().catch(() => 0)).then(r => r ?? 0),
+      safeQuery(() => prisma.user.count({ where: { role: "student" } })).then(r => r ?? 0),
+      safeQuery(() => prisma.user.count({ where: { role: "tutor" } })).then(r => r ?? 0),
+      safeQuery(() => prisma.course.count()).then(r => r ?? 0),
     ])
 
     const totalUsers = totalStudents + totalTutors
@@ -1775,25 +1762,10 @@ app.get("/api/admin/users", authenticateJWT as RequestHandler, authorizeRoles("a
     const roleParam = (req.query.role ?? "").toString().trim()
     const where = roleParam ? { role: roleParam } : {}
 
-    let users = []
-    let retries = 3
-    while (retries > 0) {
-      try {
-        users = await prisma.user.findMany({
-          where,
-          orderBy: { createdAt: "desc" },
-        })
-        break
-      } catch (e: any) {
-        if (e?.code === 'P1001' || e?.code === 'P2024') {
-          console.warn(`Database connection retry for users (${retries} left)...`)
-          retries--
-          await new Promise(r => setTimeout(r, 1000))
-          continue
-        }
-        throw e
-      }
-    }
+    const users = await safeQuery(() => prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+    })) || []
 
     const data = users.map((u) => ({
       id: u.id,
@@ -1815,25 +1787,10 @@ app.get("/api/admin/users", authenticateJWT as RequestHandler, authorizeRoles("a
 app.get("/api/admin/admin-users", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await ensureAdminUsersTable()
-
-    let admins = []
-    let retries = 3
-    while (retries > 0) {
-      try {
-        admins = await prisma.adminUser.findMany({
-          orderBy: { createdAt: "desc" },
-        })
-        break
-      } catch (e: any) {
-        if (e?.code === 'P1001' || e?.code === 'P2024') {
-          console.warn(`Database connection retry for admin-users (${retries} left)...`)
-          retries--
-          await new Promise(r => setTimeout(r, 1000))
-          continue
-        }
-        throw e
-      }
-    }
+    
+    const admins = await safeQuery(() => prisma.adminUser.findMany({
+      orderBy: { createdAt: "desc" },
+    })) || []
 
     const data = admins.map((a) => ({
       id: a.id,
@@ -2093,46 +2050,25 @@ app.get("/api/admin/departments", authenticateJWT as RequestHandler, authorizeRo
     // Get student counts by department
     const studentCounts = await Promise.all(
       departments.map(async (dept) => {
-        // Count students enrolled in courses of this department
-        try {
-          let retries = 3
-          while (retries > 0) {
-            try {
-              const count = await prisma.user.count({
-                where: {
-                  role: "student",
-                  department: dept
-                }
-              })
-              return { department: dept, count }
-            } catch (e: any) {
-              if (e?.code === 'P1001' || e?.code === 'P2024') {
-                console.warn(`Database retry for dept ${dept} (${retries} left)...`)
-                retries--
-                await new Promise(r => setTimeout(r, 1000))
-                continue
-              }
-              throw e
-            }
+        const count = await safeQuery(() => prisma.user.count({
+          where: {
+            role: "student",
+            department: dept
           }
-          return { department: dept, count: 0 }
-        } catch (e) {
-          console.warn(`Failed to count students for ${dept}:`, e)
-          return { department: dept, count: 0 }
-        }
+        })) || 0
+        return { department: dept, count }
       })
     )
 
     // Get tutor counts by department
     const tutorCounts = await Promise.all(
       departments.map(async (dept) => {
-        // Count tutors in this department
-        const count = await prisma.user.count({
+        const count = await safeQuery(() => prisma.user.count({
           where: {
             role: "tutor",
             department: dept
           }
-        })
+        })) || 0
         return { department: dept, count }
       })
     )
@@ -3455,26 +3391,11 @@ app.get("/api/notifications", authenticateJWT as RequestHandler, async (req: Aut
       userId: targetUserId
     }
 
-    let notifications = []
-    let retries = 3
-    while (retries > 0) {
-      try {
-        notifications = await prisma.notification.findMany({
-          where,
-          orderBy: { createdAt: "desc" },
-          take: 200,
-        })
-        break
-      } catch (e: any) {
-        if (e?.code === 'P1001' || e?.code === 'P2024') {
-          console.warn(`Database connection retry for notifications (${retries} left)...`)
-          retries--
-          await new Promise(r => setTimeout(r, 1000))
-          continue
-        }
-        throw e
-      }
-    }
+    const notifications = await safeQuery(() => prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    })) || []
 
     const data = notifications.map((n) => ({
       id: n.id,
@@ -4904,11 +4825,8 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
         })).catch(() => []),
       events: async () => {
         // Events table might not exist in Prisma schema, return empty array
-        try {
-          return await prisma.$queryRaw`SELECT * FROM events ORDER BY date ASC`;
-        } catch (e) {
-          return [];
-        }
+        return await safeQuery(() => prisma.$queryRaw`SELECT * FROM events ORDER BY date ASC`)
+          .catch(() => []);
       },
       footer: () =>
         safeQuery(() => prisma.footerContent.findFirst({
@@ -5571,15 +5489,17 @@ app.post("/api/students/bulk", async (req: Request, res: Response) => {
           .replace(/[.]/g, " ")
           .replace(/\b\w/g, (l: string) => l.toUpperCase())
 
-        const newUser = await prisma.user.create({
+        const newUser = await safeQuery(() => prisma.user.create({
             data: {
                 name,
                 email,
                 role: "student",
                 createdAt: new Date().toISOString()
             }
-        })
-        ids.push(newUser.id.toString())
+        }))
+        if (newUser) {
+          ids.push(newUser.id.toString())
+        }
       }
     }
 
@@ -5604,18 +5524,18 @@ app.get("/api/students", authenticateJWT as RequestHandler, async (req: Authenti
     // CRITICAL: If tutor, only return THEIR students
     if (userRole === "tutor" && userId) {
       // Get tutor's courses
-      const tutorCourses = await prisma.course.findMany({
+      const tutorCourses = await safeQuery(() => prisma.course.findMany({
         where: { tutorId: userId },
         select: { id: true }
-      })
+      })) || []
       const courseIds = tutorCourses.map(c => c.id)
 
       // Get students enrolled in those courses
-      const enrollments = await prisma.courseEnrollment.findMany({
+      const enrollments = await safeQuery(() => prisma.courseEnrollment.findMany({
         where: { courseId: { in: courseIds } },
         select: { userId: true },
         distinct: ['userId']
-      })
+      })) || []
       const studentIds = enrollments.map(e => e.userId)
 
       where = {
@@ -6838,6 +6758,8 @@ const startServer = async (): Promise<void> => {
               try {
                 const tempPassword = generatePasswordFromName(tutorName)
                 const passwordHash = await bcrypt.hash(tempPassword, 10)
+
+                let email = contentTutor.contactEmail
                 if (!email || !email.includes("@")) {
                   email = `${tutorName.replace(/[^a-zA-Z0-9]/g, ".").toLowerCase()}@excellenceakademie.co.za`
                 }
@@ -7036,6 +6958,7 @@ const startServer = async (): Promise<void> => {
             })
 
             const courseNames = parseArrayField(row.courses || row.coursenames || row["course names"])
+            const tutorNames = parseArrayField(row.tutors || row.tutor || row["tutor names"])
             const department = row.department || row.dept || ""
             const grade = row.grade || row.level || ""
 
@@ -7043,6 +6966,7 @@ const startServer = async (): Promise<void> => {
               name: row.name || "",
               email: row.email || "",
               courses: courseNames,
+              tutors: tutorNames,
               department,
               grade,
             })
@@ -7104,19 +7028,23 @@ const startServer = async (): Promise<void> => {
             }
 
             const courseNames = Array.isArray(item.courses) ? item.courses : []
+            const tutorNames = Array.isArray(item.tutors) ? item.tutors : []
             const preferredDepartment =
               String(item.department || student.department || "")
                 .trim()
                 .toLowerCase()
 
-            for (const courseName of courseNames) {
-              const courseTitle = String(courseName || "").trim()
+            for (let i = 0; i < courseNames.length; i++) {
+              const courseTitle = String(courseNames[i] || "").trim()
+              const preferredTutor = String(tutorNames[i] || "").trim()
+
               if (!courseTitle) continue
 
               const candidates = await prisma.course.findMany({
                 where: {
                   name: courseTitle
                 },
+                include: { tutor: true },
               })
 
               if (!candidates || candidates.length === 0) {
@@ -7126,7 +7054,24 @@ const startServer = async (): Promise<void> => {
 
               let course = candidates[0]
 
-              if (preferredDepartment) {
+              if (preferredTutor) {
+                const tutorMatch = candidates.find(
+                  (c) =>
+                    c.tutor &&
+                    (c.tutor.name.toLowerCase().includes(preferredTutor.toLowerCase()) ||
+                      c.tutor.email.toLowerCase().includes(preferredTutor.toLowerCase())),
+                )
+
+                if (tutorMatch) {
+                  course = tutorMatch
+                } else {
+                  warnings.push(
+                    `⚠ Course "${courseTitle}" found, but not with tutor "${preferredTutor}". Assigned to "${
+                      course.tutor?.name || "Unknown"
+                    }" instead.`,
+                  )
+                }
+              } else if (preferredDepartment) {
                 const deptMatch = candidates.find(
                   (c) => c.department && c.department.toLowerCase() === preferredDepartment,
                 )
