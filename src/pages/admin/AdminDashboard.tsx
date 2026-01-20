@@ -553,6 +553,7 @@ export default function AdminDashboard() {
       console.error("Logout failed", e)
     } finally {
       localStorage.removeItem("user")
+      localStorage.removeItem("auth_token")
       navigate("/admin-login")
     }
   }

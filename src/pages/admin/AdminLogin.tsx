@@ -41,8 +41,12 @@ const AdminLogin = () => {
       })
 
       const data = await response.json()
-
+      
       if (response.ok && data.success) {
+        if (data.token) {
+          try { localStorage.setItem('auth_token', data.token); } catch {}
+        }
+        
         try {
           const uname = String(data?.user?.displayName || data?.user?.username || identifier)
           const stored = {

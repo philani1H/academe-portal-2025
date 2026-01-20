@@ -24,7 +24,7 @@ const AdminLogin = () => {
     setError(null);
     
     try {
-      const res = await apiFetch<{ success: boolean; user?: { username: string; role: string } }>('/api/admin/auth/login', {
+      const res = await apiFetch<{ success: boolean; token?: string; user?: { username: string; role: string } }>('/api/admin/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username: id, email: id, password }),
       });
@@ -32,6 +32,10 @@ const AdminLogin = () => {
       if (!res || (res as any)?.success === false) {
         setError('Invalid credentials');
         return;
+      }
+      
+      if (res.token) {
+        try { localStorage.setItem('auth_token', res.token); } catch {}
       }
       
       const user = { id: id, email: id.includes('@') ? id : `${id}@local`, name: id, role: 'admin' } as any;

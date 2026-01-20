@@ -1165,21 +1165,30 @@ function parseCookies(req: Request): Record<string, string> {
 }
 
 function authenticateJWT(req: AuthenticatedRequest, res: Response, next: NextFunction): void | Response {
-  try {
-    const cookies = parseCookies(req)
-    const headerToken = req.headers.authorization?.startsWith("Bearer ")
-      ? req.headers.authorization.slice("Bearer ".length)
-      : undefined
-    const token = headerToken || cookies["admin_token"] || cookies["auth_token"]
-    if (!token) {
-      res.status(401).json({ success: false, error: "Unauthorized" })
-      return
+  const cookies = parseCookies(req)
+  const headerToken = req.headers.authorization?.startsWith("Bearer ")
+    ? req.headers.authorization.slice("Bearer ".length)
+    : undefined
+
+  // Helper to verify token and return decoded payload or null
+  const verify = (token: string | undefined): any | null => {
+    if (!token) return null
+    try {
+      return jwt.verify(token, JWT_SECRET)
+    } catch {
+      return null
     }
-    const decoded = jwt.verify(token, JWT_SECRET) as any
+  }
+
+  // Try to validate tokens in order of precedence: Header -> Admin Cookie -> Auth Cookie
+  // This ensures that if a header token is stale (e.g. from localStorage), we fall back to a valid cookie
+  const decoded = verify(headerToken) || verify(cookies["admin_token"]) || verify(cookies["auth_token"])
+
+  if (decoded) {
     req.user = decoded
     next()
-  } catch (err) {
-    res.status(401).json({ success: false, error: "Invalid token" })
+  } else {
+    res.status(401).json({ success: false, error: "Unauthorized" })
   }
 }
 
@@ -3289,16 +3298,20 @@ app.post("/api/admin/auth/login", async (req: Request, res: Response) => {
       { username: canonicalId, role: "admin", exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60 },
       JWT_SECRET,
     )
-    const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+    const isProd = process.env.NODE_ENV === "production"
+    const secure = isProd ? " Secure;" : ""
+    const sameSite = isProd ? "None" : "Lax"
+    
     res.setHeader(
       "Set-Cookie",
-      `admin_token=${token}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Strict;${secure}`,
+      `admin_token=${token}; HttpOnly; Path=/; Max-Age=${24 * 60 * 60}; SameSite=${sameSite};${secure}`,
     )
     return res
       .status(200)
       .json({
         success: true,
         message: "Login successful",
+        token,
         user: {
           username: canonicalId,
           displayName: adminFromDb?.displayName || process.env.ADMIN_DISPLAY_NAME || canonicalId,
