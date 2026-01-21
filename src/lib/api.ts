@@ -562,6 +562,7 @@ export const api = {
           const json = JSON.parse(xhr.responseText);
           const data = json.data || json;
           cache.invalidate('materials');
+          cache.invalidate('courses');
           resolve({
             url: data.url,
             id: data.id || crypto.randomUUID(),

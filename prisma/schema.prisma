@@ -681,6 +681,8 @@ model Announcement {
   content    String
   type       String   @default("general")
   department String?
+  mediaUrl   String?  @map("media_url")
+  mediaType  String?  @map("media_type")
   authorId   Int      @map("author_id")
   pinned     Boolean  @default(false)
   createdAt  DateTime @default(now()) @map("created_at")

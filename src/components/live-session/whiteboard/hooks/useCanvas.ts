@@ -92,25 +92,7 @@ export function useCanvas({
   useEffect(() => {
     initCanvas();
     window.addEventListener('resize', initCanvas);
-    
-    // Add ResizeObserver for container resize handling (e.g. sidebar toggle)
-    const canvas = canvasRef.current;
-    const parent = canvas?.parentElement;
-    let resizeObserver: ResizeObserver | null = null;
-    
-    if (parent) {
-      resizeObserver = new ResizeObserver(() => {
-        initCanvas();
-      });
-      resizeObserver.observe(parent);
-    }
-
-    return () => {
-      window.removeEventListener('resize', initCanvas);
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
-    };
+    return () => window.removeEventListener('resize', initCanvas);
   }, [initCanvas]);
 
   // Save to history
@@ -328,18 +310,7 @@ export function useCanvas({
 
     ctx.globalAlpha = 1;
     clearOverlay();
-    
-    // Emit shape action
-    onDraw?.({ 
-      type: 'shape', 
-      shapeType: selectedShape, 
-      start, 
-      end, 
-      color, 
-      lineWidth, 
-      opacity 
-    });
-  }, [color, lineWidth, opacity, selectedShape, clearOverlay, onDraw]);
+  }, [color, lineWidth, opacity, selectedShape, clearOverlay]);
 
   // Draw methods
   const startDrawing = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -501,125 +472,7 @@ export function useCanvas({
     
     ctx.globalAlpha = 1;
     saveToHistory();
-    onDraw?.({ type: 'text', text, x, y, color, fontSize });
-  }, [color, opacity, saveToHistory, onDraw]);
-
-  const drawRemote = useCallback((action: any) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    if (action.tool === 'eraser') {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.strokeStyle = 'rgba(0,0,0,1)';
-      ctx.lineWidth = (action.lineWidth || lineWidth) * 3;
-    } else if (action.tool === 'highlighter') {
-      ctx.globalCompositeOperation = 'multiply';
-      ctx.strokeStyle = action.color || color;
-      ctx.lineWidth = (action.lineWidth || lineWidth) * 4;
-      ctx.globalAlpha = 0.3;
-    } else {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = action.color || color;
-      ctx.lineWidth = action.lineWidth || lineWidth;
-      ctx.globalAlpha = action.opacity || opacity; // Use provided opacity or current default
-    }
-
-    if (action.type === 'start') {
-        ctx.beginPath();
-        ctx.moveTo(action.x, action.y);
-    } else if (action.type === 'draw') {
-        ctx.lineTo(action.x, action.y);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(action.x, action.y);
-    } else if (action.type === 'end') {
-        ctx.beginPath();
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-        saveToHistory();
-    } else if (action.type === 'clear') {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-        saveToHistory();
-    } else if (action.type === 'image') {
-        const img = new Image();
-        img.onload = () => {
-            ctx.drawImage(img, action.x, action.y); // Simplified image draw for sync
-            saveToHistory();
-        };
-        img.src = action.src;
-    } else if (action.type === 'text') {
-        // Handle remote text
-        const fontSize = action.fontSize || 16;
-        ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
-        ctx.fillStyle = action.color || color;
-        ctx.fillText(action.text, action.x, action.y);
-        saveToHistory();
-    } else if (action.type === 'shape') {
-        // Handle remote shape
-        const start = action.start;
-        const end = action.end;
-        const width = end.x - start.x;
-        const height = end.y - start.y;
-
-        ctx.beginPath();
-        
-        switch (action.shapeType) {
-          case 'rectangle':
-            ctx.strokeRect(start.x, start.y, width, height);
-            break;
-          case 'circle':
-            const radius = Math.sqrt(width * width + height * height) / 2;
-            const centerX = start.x + width / 2;
-            const centerY = start.y + height / 2;
-            ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-            ctx.stroke();
-            break;
-          case 'line':
-            ctx.moveTo(start.x, start.y);
-            ctx.lineTo(end.x, end.y);
-            ctx.stroke();
-            break;
-          case 'arrow':
-            ctx.moveTo(start.x, start.y);
-            ctx.lineTo(end.x, end.y);
-            ctx.stroke();
-            const angle = Math.atan2(end.y - start.y, end.x - start.x);
-            const headLength = 15;
-            ctx.beginPath();
-            ctx.moveTo(end.x, end.y);
-            ctx.lineTo(
-              end.x - headLength * Math.cos(angle - Math.PI / 6),
-              end.y - headLength * Math.sin(angle - Math.PI / 6)
-            );
-            ctx.moveTo(end.x, end.y);
-            ctx.lineTo(
-              end.x - headLength * Math.cos(angle + Math.PI / 6),
-              end.y - headLength * Math.sin(angle + Math.PI / 6)
-            );
-            ctx.stroke();
-            break;
-          case 'triangle':
-            const midX = start.x + width / 2;
-            ctx.moveTo(midX, start.y);
-            ctx.lineTo(start.x, end.y);
-            ctx.lineTo(end.x, end.y);
-            ctx.closePath();
-            ctx.stroke();
-            break;
-        }
-        saveToHistory();
-    }
-
-    // Reset settings
-    ctx.globalAlpha = 1;
-  }, [color, lineWidth, opacity, saveToHistory]);
+  }, [color, opacity, saveToHistory]);
 
   // Export canvas
   const exportCanvas = useCallback((format: 'png' | 'jpeg' = 'png') => {
@@ -668,6 +521,5 @@ export function useCanvas({
     zoomOut,
     resetZoom,
     setOffset,
-    drawRemote,
   };
 }

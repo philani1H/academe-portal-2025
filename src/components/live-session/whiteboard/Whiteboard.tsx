@@ -1,15 +1,17 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Toolbar } from './Toolbar';
 import { Canvas } from './Canvas';
 import { MathDialog } from './MathDialog';
 import { DocumentViewer } from './DocumentViewer';
+import { CanvasDocument } from './CanvasDocument';
 import { StickyNote } from './StickyNote';
 import { TextInput } from './TextInput';
 import { LaserPointer } from './LaserPointer';
+import { RecordingControls } from './RecordingControls';
 import { useCanvas } from './hooks/useCanvas';
-import { DraggableDocument } from './DraggableDocument';
-import { DrawTool, ShapeType, StickyNote as StickyNoteType, PDFDocument, STICKY_COLORS, CanvasDocument } from './types';
+import { useRecording } from './useRecording';
+import { DrawTool, ShapeType, StickyNote as StickyNoteType, PDFDocument, STICKY_COLORS } from './types';
 import { toast } from 'sonner';
 import katex from 'katex';
 import html2canvas from 'html2canvas';
@@ -18,17 +20,24 @@ import 'katex/dist/katex.min.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-import { Socket } from 'socket.io-client';
-
 interface WhiteboardProps {
   sessionId?: string;
   onClose?: () => void;
   className?: string;
-  socket?: Socket | null;
-  isTutor?: boolean;
+  isStudent?: boolean;
+  onToggleRecording?: () => void;
+  isRecordingActive?: boolean;
 }
 
-export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: WhiteboardProps) {
+export function Whiteboard({ 
+  sessionId, 
+  onClose, 
+  className, 
+  isStudent = false,
+  onToggleRecording,
+  isRecordingActive 
+}: WhiteboardProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<DrawTool>('pen');
   const [color, setColor] = useState('#1e1e1e');
   const [lineWidth, setLineWidth] = useState(4);
@@ -37,17 +46,34 @@ export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: W
   const [isMathDialogOpen, setIsMathDialogOpen] = useState(false);
   const [currentDocument, setCurrentDocument] = useState<PDFDocument | null>(null);
   const [isDocViewerOpen, setIsDocViewerOpen] = useState(false);
+  const [canvasDocuments, setCanvasDocuments] = useState<PDFDocument[]>([]);
   const [stickyNotes, setStickyNotes] = useState<StickyNoteType[]>([]);
-  const [documents, setDocuments] = useState<CanvasDocument[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [textInputPos, setTextInputPos] = useState<{ x: number; y: number } | null>(null);
+  const [documentCounter, setDocumentCounter] = useState(0);
 
-  const handleDraw = useCallback((action: any) => {
-    if (socket && sessionId) {
-      socket.emit('whiteboard-draw', { sessionId, action });
+  // Recording hook (Local fallback if no external control provided)
+  const localRecording = useRecording({ containerRef });
+  
+  // Use external props if provided, otherwise local state
+  const isRecording = isRecordingActive !== undefined ? isRecordingActive : localRecording.isRecording;
+  const startRecording = onToggleRecording || localRecording.startRecording;
+  const stopRecording = onToggleRecording || localRecording.stopRecording;
+  const isPaused = isRecordingActive !== undefined ? false : localRecording.isPaused; // External pause not supported yet
+  const formattedDuration = isRecordingActive !== undefined ? (isRecordingActive ? "REC" : "00:00:00") : localRecording.formattedDuration;
+  const hasRecording = isRecordingActive !== undefined ? false : localRecording.hasRecording;
+
+  const handleRecordingAction = () => {
+    if (onToggleRecording) {
+      onToggleRecording();
+    } else {
+      if (isRecording) {
+        localRecording.stopRecording();
+      } else {
+        localRecording.startRecording();
+      }
     }
-  }, [socket, sessionId]);
+  };
 
   const {
     canvasRef,
@@ -68,101 +94,18 @@ export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: W
     zoomIn,
     zoomOut,
     resetZoom,
-    drawRemote,
   } = useCanvas({
     tool,
     color,
     lineWidth,
     opacity,
     selectedShape,
-    onDraw: handleDraw,
   });
-
-  const handleSendDocument = useCallback((doc: CanvasDocument) => {
-    // Ensure currentPage is 1-based as DraggableDocument expects 1-based index for display but array access is 0-based
-    // DraggableDocument: src={doc.pages[doc.currentPage - 1]}
-    // DocumentViewer sends 0-based index? Let's check.
-    // In DocumentViewer I set currentPage: 0.
-    // So if I set currentPage: 1 here, it matches DraggableDocument expectation.
-    const newDoc = { ...doc, currentPage: 1 };
-    
-    setDocuments(prev => [...prev, newDoc]);
-    if (socket && sessionId) {
-      socket.emit('whiteboard-doc-add', { sessionId, doc: newDoc });
-    }
-    setIsDocViewerOpen(false);
-  }, [socket, sessionId]);
-
-  const handleUpdateDocument = useCallback((id: string, updates: Partial<CanvasDocument>) => {
-    setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
-    if (socket && sessionId) {
-      socket.emit('whiteboard-doc-update', { sessionId, docId: id, updates });
-    }
-  }, [socket, sessionId]);
-
-  const handleDeleteDocument = useCallback((id: string) => {
-    setDocuments(prev => prev.filter(d => d.id !== id));
-    if (socket && sessionId) {
-      socket.emit('whiteboard-doc-delete', { sessionId, docId: id });
-    }
-  }, [socket, sessionId]);
-
-  useEffect(() => {
-    if (!socket || !sessionId) return;
-
-    // Request history on mount
-    socket.emit('get-whiteboard-history', { sessionId });
-
-    const handleRemoteDraw = ({ action }: { action: any }) => {
-      drawRemote(action);
-    };
-
-    const handleHistory = ({ history, documents: historyDocs }: { history: any[], documents?: CanvasDocument[] }) => {
-        if (Array.isArray(history)) {
-            history.forEach(item => {
-                if (item.action) {
-                    drawRemote(item.action);
-                }
-            });
-        }
-        if (Array.isArray(historyDocs)) {
-          setDocuments(historyDocs);
-        }
-    };
-
-    const handleDocAdd = ({ doc }: { doc: CanvasDocument }) => {
-      setDocuments(prev => {
-        if (prev.some(d => d.id === doc.id)) return prev;
-        return [...prev, doc];
-      });
-    };
-
-    const handleDocUpdate = ({ docId, updates }: { docId: string, updates: Partial<CanvasDocument> }) => {
-      setDocuments(prev => prev.map(d => d.id === docId ? { ...d, ...updates } : d));
-    };
-
-    const handleDocDelete = ({ docId }: { docId: string }) => {
-      setDocuments(prev => prev.filter(d => d.id !== docId));
-    };
-
-    socket.on('whiteboard-draw', handleRemoteDraw);
-    socket.on('whiteboard-history', handleHistory);
-    socket.on('whiteboard-doc-add', handleDocAdd);
-    socket.on('whiteboard-doc-update', handleDocUpdate);
-    socket.on('whiteboard-doc-delete', handleDocDelete);
-
-    return () => {
-      socket.off('whiteboard-draw', handleRemoteDraw);
-      socket.off('whiteboard-history', handleHistory);
-      socket.off('whiteboard-doc-add', handleDocAdd);
-      socket.off('whiteboard-doc-update', handleDocUpdate);
-      socket.off('whiteboard-doc-delete', handleDocDelete);
-    };
-  }, [socket, sessionId, drawRemote]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isStudent) return;
       if (e.key === 'v' || e.key === 'V') setTool('select');
       if (e.key === 'p' || e.key === 'P') setTool('pen');
       if (e.key === 'h' || e.key === 'H') setTool('highlighter');
@@ -171,6 +114,9 @@ export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: W
       if (e.key === 's' || e.key === 'S') setTool('shape');
       if (e.key === 'n' || e.key === 'N') setTool('sticky');
       if (e.key === 'l' || e.key === 'L') setTool('laser');
+      if (e.key === 'r' || e.key === 'R') {
+        if (!isRecording) startRecording();
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault();
         e.shiftKey ? redo() : undo();
@@ -178,7 +124,7 @@ export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: W
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo]);
+  }, [undo, redo, isRecording, startRecording]);
 
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -197,39 +143,11 @@ export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: W
     if (!file) return;
     const toastId = toast.loading('Processing PDF...');
     try {
-      // Attempt to upload file for persistence (so students can download)
-      let fileUrl = '';
-      const token = localStorage.getItem('auth_token');
-      
-      if (token) {
-        try {
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          // Use relative path assuming proxy or same-origin
-          const res = await fetch('http://localhost:3000/api/upload', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`
-            },
-            body: formData
-          });
-          
-          if (res.ok) {
-            const data = await res.json();
-            // Ensure full URL if relative
-            fileUrl = data.url.startsWith('http') ? data.url : `http://localhost:3000${data.url}`;
-          }
-        } catch (uploadError) {
-          console.warn('File upload failed, download will not be available for students:', uploadError);
-        }
-      }
-
       const uri = URL.createObjectURL(file);
       const pdf = await pdfjs.getDocument(uri).promise;
       const pageImages: string[] = [];
       
-      for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
+      for (let i = 1; i <= Math.min(pdf.numPages, 50); i++) {
         const page = await pdf.getPage(i);
         const viewport = page.getViewport({ scale: 1.5 });
         const tempCanvas = document.createElement('canvas');
@@ -248,7 +166,7 @@ export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: W
         pageCount: pdf.numPages,
         currentPage: 1,
         pageImages,
-        fileUrl: fileUrl || undefined
+        originalFile: file,
       });
       setIsDocViewerOpen(true);
       toast.success(`PDF loaded (${pdf.numPages} pages)`, { id: toastId });
@@ -273,6 +191,64 @@ export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: W
       document.body.removeChild(container);
     }
   }, [addImage]);
+
+  const handleSendPageToCanvas = useCallback((imageData: string) => {
+    addImage(imageData);
+    toast.success('Page added to canvas');
+  }, [addImage]);
+
+  const handleSendFullDocumentToCanvas = useCallback((doc: PDFDocument) => {
+    // Position documents in a cascade pattern
+    const offset = documentCounter * 30;
+    setDocumentCounter(prev => prev + 1);
+    
+    setCanvasDocuments(prev => [...prev, { 
+      ...doc, 
+      id: crypto.randomUUID(),
+    }]);
+    toast.success('Document added - drag header to move, corner to resize, double-click for fullscreen');
+  }, [documentCounter]);
+
+  const handleRemoveCanvasDocument = useCallback((docId: string) => {
+    setCanvasDocuments(prev => prev.filter(d => d.id !== docId));
+  }, []);
+
+  const handleDownloadDocument = useCallback(() => {
+    if (currentDocument?.originalFile) {
+      const url = URL.createObjectURL(currentDocument.originalFile);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = currentDocument.name;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Download started');
+    } else if (currentDocument?.pageImages.length) {
+      // Fallback: download first page as image
+      const link = document.createElement('a');
+      link.href = currentDocument.pageImages[0];
+      link.download = `${currentDocument.name.replace('.pdf', '')}-page1.png`;
+      link.click();
+      toast.success('First page downloaded as image');
+    }
+  }, [currentDocument]);
+
+  const handleDownloadCanvasDocument = useCallback((doc: PDFDocument) => {
+    if (doc.originalFile) {
+      const url = URL.createObjectURL(doc.originalFile);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.name;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Download started');
+    } else if (doc.pageImages.length) {
+      const link = document.createElement('a');
+      link.href = doc.pageImages[0];
+      link.download = `${doc.name.replace('.pdf', '')}-page1.png`;
+      link.click();
+      toast.success('First page downloaded as image');
+    }
+  }, []);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent) => {
     if (tool === 'text') {
@@ -314,108 +290,191 @@ export function Whiteboard({ sessionId, onClose, className, socket, isTutor }: W
     if (confirm('Clear the canvas?')) {
       clearCanvas();
       setStickyNotes([]);
-      setDocuments([]);
-      if (socket && sessionId) {
-        socket.emit('whiteboard-clear', { sessionId });
-      }
+      setCanvasDocuments([]);
+      setDocumentCounter(0);
     }
-  }, [clearCanvas, socket, sessionId]);
+  }, [clearCanvas]);
 
   return (
-    <div className={cn('relative w-full h-full bg-canvas overflow-hidden', className)}>
-      <div className="absolute inset-0 canvas-grid opacity-50" />
+    <div ref={containerRef} className={cn('flex flex-col w-full h-full bg-canvas overflow-hidden', className)}>
       
-      <DocumentViewer
-        document={currentDocument}
-        onClose={() => setIsDocViewerOpen(false)}
-        onSendToCanvas={addImage}
-        onSendDocument={handleSendDocument}
-        isOpen={isDocViewerOpen}
-      />
+      {/* Top Controls Bar */}
+      <div className="flex-none z-50 relative pointer-events-none">
+        {/* Mobile Layout Wrapper */}
+        {!isStudent && (
+          <div className="sm:hidden flex flex-col pointer-events-auto bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+            <Toolbar
+              tool={tool}
+              color={color}
+              lineWidth={lineWidth}
+              opacity={opacity}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              scale={scale}
+              onToolChange={setTool}
+              onColorChange={setColor}
+              onLineWidthChange={setLineWidth}
+              onOpacityChange={setOpacity}
+              onUndo={undo}
+              onRedo={redo}
+              onClear={handleClear}
+              onExport={handleExport}
+              onImageUpload={handleImageUpload}
+              onPdfUpload={handlePdfUpload}
+              onMathInsert={() => setIsMathDialogOpen(true)}
+              selectedShape={selectedShape}
+              onShapeChange={setSelectedShape}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onResetZoom={resetZoom}
+            />
+            <div className="p-2 flex justify-center border-t border-white/5">
+              <RecordingControls
+                isRecording={isRecording}
+                isPaused={isPaused}
+                hasRecording={hasRecording}
+                formattedDuration={formattedDuration}
+                onStart={handleRecordingAction}
+                onPause={isRecordingActive !== undefined ? () => {} : localRecording.pauseRecording}
+                onResume={isRecordingActive !== undefined ? () => {} : localRecording.resumeRecording}
+                onStop={handleRecordingAction}
+                onDownload={() => isRecordingActive === undefined && localRecording.downloadRecording()}
+                onDiscard={isRecordingActive !== undefined ? () => {} : localRecording.discardRecording}
+              />
+            </div>
+          </div>
+        )}
 
-      <Toolbar
-        tool={tool}
-        color={color}
-        lineWidth={lineWidth}
-        opacity={opacity}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        scale={scale}
-        onToolChange={setTool}
-        onColorChange={setColor}
-        onLineWidthChange={setLineWidth}
-        onOpacityChange={setOpacity}
-        onUndo={undo}
-        onRedo={redo}
-        onClear={handleClear}
-        onExport={handleExport}
-        onImageUpload={handleImageUpload}
-        onPdfUpload={handlePdfUpload}
-        onMathInsert={() => setIsMathDialogOpen(true)}
-        selectedShape={selectedShape}
-        onShapeChange={setSelectedShape}
-        onZoomIn={zoomIn}
-        onZoomOut={zoomOut}
-        onResetZoom={resetZoom}
-      />
-
-      <div className={cn('absolute inset-0', isDocViewerOpen && 'left-[380px]')}>
-        <Canvas
-          ref={canvasRef}
-          tool={tool}
-          scale={scale}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawingWithPoint}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={stopDrawingWithPoint}
-          onClick={handleCanvasClick}
-          overlayRef={overlayCanvasRef}
-        />
-
-        {documents.map(doc => (
-          <DraggableDocument
-            key={doc.id}
-            doc={doc}
-            onUpdate={handleUpdateDocument}
-            onDelete={handleDeleteDocument}
-            isSelected={selectedDocId === doc.id}
-            onSelect={setSelectedDocId}
-            isStudent={!isTutor}
-          />
-        ))}
-
-        {stickyNotes.map(note => (
-          <StickyNote
-            key={note.id}
-            note={note}
-            isSelected={selectedNoteId === note.id}
-            onSelect={setSelectedNoteId}
-            onUpdate={(id, updates) => setStickyNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n))}
-            onDelete={(id) => setStickyNotes(prev => prev.filter(n => n.id !== id))}
-          />
-        ))}
-
-        {textInputPos && (
-          <TextInput
-            x={textInputPos.x}
-            y={textInputPos.y}
-            color={color}
-            fontSize={18}
-            onSubmit={handleTextSubmit}
-            onCancel={() => setTextInputPos(null)}
-          />
+        {/* Desktop Layout Wrapper */}
+        {!isStudent && (
+          <div className="hidden sm:flex items-start justify-center p-4 relative w-full">
+            <div className="pointer-events-auto">
+              <Toolbar
+                tool={tool}
+                color={color}
+                lineWidth={lineWidth}
+                opacity={opacity}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                scale={scale}
+                onToolChange={setTool}
+                onColorChange={setColor}
+                onLineWidthChange={setLineWidth}
+                onOpacityChange={setOpacity}
+                onUndo={undo}
+                onRedo={redo}
+                onClear={handleClear}
+                onExport={handleExport}
+                onImageUpload={handleImageUpload}
+                onPdfUpload={handlePdfUpload}
+                onMathInsert={() => setIsMathDialogOpen(true)}
+                selectedShape={selectedShape}
+                onShapeChange={setSelectedShape}
+                onZoomIn={zoomIn}
+                onZoomOut={zoomOut}
+                onResetZoom={resetZoom}
+              />
+            </div>
+          </div>
         )}
       </div>
 
-      <LaserPointer isActive={tool === 'laser'} color="#ef4444" />
+      {/* Main Workspace */}
+      <div className="flex-1 relative w-full overflow-hidden">
+        {/* Desktop Recording Controls - Bottom Right */}
+        {!isStudent && (
+          <div className="hidden sm:block absolute right-4 bottom-4 pointer-events-auto z-50">
+            <RecordingControls
+              isRecording={isRecording}
+              isPaused={isPaused}
+              hasRecording={hasRecording}
+              formattedDuration={formattedDuration}
+              onStart={handleRecordingAction}
+              onPause={isRecordingActive !== undefined ? () => {} : localRecording.pauseRecording}
+              onResume={isRecordingActive !== undefined ? () => {} : localRecording.resumeRecording}
+              onStop={handleRecordingAction}
+              onDownload={() => isRecordingActive === undefined && localRecording.downloadRecording()}
+              onDiscard={isRecordingActive !== undefined ? () => {} : localRecording.discardRecording}
+            />
+          </div>
+        )}
 
-      <div className="absolute bottom-4 left-4 text-xs text-muted-foreground glass px-3 py-1.5 rounded-lg">
-        Tool: <span className="text-foreground font-medium capitalize">{tool}</span>
+        <div className="absolute inset-0 canvas-grid opacity-50" />
+        
+        <DocumentViewer
+          document={currentDocument}
+          onClose={() => setIsDocViewerOpen(false)}
+          onSendPageToCanvas={handleSendPageToCanvas}
+          onSendFullDocumentToCanvas={handleSendFullDocumentToCanvas}
+          onDownload={handleDownloadDocument}
+          isOpen={isDocViewerOpen}
+          isStudent={isStudent}
+        />
+
+        <div className={cn('absolute inset-0', isDocViewerOpen && 'sm:left-[380px]')}>
+          <Canvas
+            ref={canvasRef}
+            tool={tool}
+            scale={scale}
+            onMouseDown={!isStudent ? startDrawing : undefined}
+            onMouseMove={!isStudent ? draw : undefined}
+            onMouseUp={!isStudent ? stopDrawingWithPoint : undefined}
+            onTouchStart={!isStudent ? startDrawing : undefined}
+            onTouchMove={!isStudent ? draw : undefined}
+            onTouchEnd={!isStudent ? stopDrawingWithPoint : undefined}
+            onClick={!isStudent ? handleCanvasClick : undefined}
+            overlayRef={overlayCanvasRef}
+          />
+
+          {/* Canvas Documents (draggable, resizable) */}
+          {canvasDocuments.map((doc, index) => (
+            <CanvasDocument
+              key={doc.id}
+              document={doc}
+              onClose={() => handleRemoveCanvasDocument(doc.id)}
+              onDownload={() => handleDownloadCanvasDocument(doc)}
+              isStudent={isStudent}
+              initialPosition={{ x: 80 + index * 30, y: 80 + index * 30 }}
+            />
+          ))}
+
+          {stickyNotes.map(note => (
+            <StickyNote
+              key={note.id}
+              note={note}
+              isSelected={selectedNoteId === note.id}
+              onSelect={setSelectedNoteId}
+              onUpdate={(id, updates) => setStickyNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n))}
+              onDelete={(id) => setStickyNotes(prev => prev.filter(n => n.id !== id))}
+            />
+          ))}
+
+          {textInputPos && (
+            <TextInput
+              x={textInputPos.x}
+              y={textInputPos.y}
+              color={color}
+              fontSize={18}
+              onSubmit={handleTextSubmit}
+              onCancel={() => setTextInputPos(null)}
+            />
+          )}
+        </div>
+
+        <LaserPointer isActive={tool === 'laser'} color="#ef4444" />
+
+        <div className="absolute bottom-4 left-4 text-xs text-muted-foreground glass px-3 py-1.5 rounded-lg hidden sm:flex items-center gap-3">
+          <span>Tool: <span className="text-foreground font-medium capitalize">{tool}</span></span>
+          {isRecording && (
+            <span className="text-destructive font-medium flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+              REC
+            </span>
+          )}
+        </div>
+
+        <MathDialog open={isMathDialogOpen} onOpenChange={setIsMathDialogOpen} onInsert={handleMathInsert} />
       </div>
-
-      <MathDialog open={isMathDialogOpen} onOpenChange={setIsMathDialogOpen} onInsert={handleMathInsert} />
     </div>
   );
 }

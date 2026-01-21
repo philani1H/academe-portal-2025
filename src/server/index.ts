@@ -801,10 +801,15 @@ app.post("/api/cloudinary/delete", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Public ID is required" })
     }
 
-    // Cloudinary configuration
-    const cloudName = 'dszurpfhf'
-    const apiKey = '649648851431394'
-    const apiSecret = 'lVtK5OH5DI1fk3YMluxdXqjVGnY'
+    // Cloudinary configuration from environment variables
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME
+    const apiKey = process.env.CLOUDINARY_API_KEY
+    const apiSecret = process.env.CLOUDINARY_API_SECRET
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      console.error("Cloudinary credentials missing in environment")
+      return res.status(500).json({ error: "Server configuration error" })
+    }
 
     // Generate signature for deletion
     const timestamp = Math.round(new Date().getTime() / 1000)
@@ -4806,7 +4811,7 @@ app.post(
           const rows = await db.all(
             `SELECT DISTINCT u.email 
            FROM users u 
-           JOIN enrollments e ON e.student_id = u.id 
+           JOIN course_enrollments e ON e.user_id = u.id 
            WHERE e.course_id = ? 
              AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
             [courseId],
@@ -4816,7 +4821,7 @@ app.post(
           const rows = await db.all(
             `SELECT DISTINCT u.email 
            FROM users u 
-           JOIN enrollments e ON e.student_id = u.id 
+           JOIN course_enrollments e ON e.user_id = u.id 
            JOIN courses c ON c.id = e.course_id 
            WHERE c.tutor_id = ? 
              AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
@@ -5476,6 +5481,11 @@ app.get("/api/courses", authenticateJWT as RequestHandler, async (req: Authentic
     if (all === 'true') {
       const courses = await safeQuery(() => prisma.course.findMany({
         where,
+        include: {
+          materials: true,
+          tests: true,
+          courseEnrollments: true
+        },
         orderBy: { createdAt: 'desc' }
       })) || []
       return res.json({
@@ -5497,6 +5507,11 @@ app.get("/api/courses", authenticateJWT as RequestHandler, async (req: Authentic
       where,
       take: limitInt,
       skip: offsetInt,
+      include: {
+        materials: true,
+        tests: true,
+        courseEnrollments: true
+      },
       orderBy: { createdAt: 'desc' }
     })) || []
 
@@ -6177,6 +6192,8 @@ app.post(
       }
 
       if (type === "announcements") {
+        delete payload.created_at
+
         const contentText = String(payload.content || "").trim()
         if (!payload.title) {
           payload.title = contentText.slice(0, 80) || "Announcement"
@@ -6207,18 +6224,20 @@ app.post(
       let created
       if (cfg.isSingleton) {
         if (cfg.hasIsActive !== false) {
-          await model.updateMany({ where: { isActive: true }, data: { isActive: false } })
-          created = await model.create({ data: { ...payload, isActive: true } })
+          await safeQuery(() => model.updateMany({ where: { isActive: true }, data: { isActive: false } }))
+          created = await safeQuery(() => model.create({ data: { ...payload, isActive: true } }))
         } else {
-          created = await model.create({ data: payload })
+          created = await safeQuery(() => model.create({ data: payload }))
         }
       } else {
         if (cfg.hasIsActive !== false) {
-          created = await model.create({ data: { ...payload, isActive: true } })
+          created = await safeQuery(() => model.create({ data: { ...payload, isActive: true } }))
         } else {
-          created = await model.create({ data: payload })
+          created = await safeQuery(() => model.create({ data: payload }))
         }
       }
+
+      if (!created) throw new Error("Database create failed")
 
       const parsed = parseJsonFields(created, cfg.jsonFields)
 
@@ -6265,7 +6284,13 @@ app.put(
         delete data.isActive
       }
 
-      const updated = await model.update({ where: { id }, data })
+      // Special handling for announcements to remove frontend-only fields
+      if (type === "announcements") {
+        delete data.created_at
+      }
+
+      const updated = await safeQuery(() => model.update({ where: { id }, data }))
+      if (!updated) throw new Error("Database update failed")
       const parsed = parseJsonFields(updated, cfg.jsonFields)
 
       // Emit real-time update

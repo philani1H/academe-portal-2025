@@ -17,6 +17,11 @@ export default defineConfig(({ mode }) => ({
         secure: false,
         // Keep '/api' prefix so backend receives '/api/*' routes
         rewrite: (path) => path
+      },
+      '/socket.io': {
+        target: process.env.VITE_API_URL || 'http://127.0.0.1:3000',
+        changeOrigin: true,
+        ws: true
       }
     },
     hmr: {

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
-import { uploadVideoToCloudinary } from '@/lib/cloudinary';
+import { api } from '@/lib/api';
 
 export const useRecording = (
   courseId: string | undefined,
@@ -46,46 +46,40 @@ export const useRecording = (
     }
 
     safeSetState(setIsUploading, true);
-    const toastId = toast.loading("Uploading recording to cloud storage...");
+    const toastId = toast.loading("Uploading recording to server...");
 
     try {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `session-recording-${timestamp}.webm`;
 
-      // Convert blob to File for Cloudinary
+      // Convert blob to File
       const file = new File([blob], filename, { type: blob.type || 'video/webm' });
 
-      // Step 1: Upload to Cloudinary
-      toast.loading("Uploading video to Cloudinary...", { id: toastId });
-      const cloudinaryResult = await uploadVideoToCloudinary(file, 'live-session-recordings');
+      // Create FormData
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('courseId', courseId);
+      formData.append('type', 'video');
+      formData.append('name', `Live Session Recording - ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
+      formData.append('description', 'Live session recording uploaded from session');
 
-      console.log('Cloudinary upload successful:', cloudinaryResult);
-
-      // Step 2: Save Cloudinary URL to course materials database
-      toast.loading("Saving to course materials...", { id: toastId });
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/upload/cloudinary-material', {
+      const response = await fetch('/api/upload/material', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({
-          courseId,
-          type: 'video',
-          name: `Live Session Recording - ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`,
-          url: cloudinaryResult.secure_url,
-          publicId: cloudinaryResult.public_id,
-          format: cloudinaryResult.format,
-          duration: cloudinaryResult.duration,
-          size: cloudinaryResult.bytes
-        })
+        body: formData
       });
 
       if (response.ok) {
         const data = await response.json();
-        toast.success(`Recording saved to Course Materials! (${Math.round(cloudinaryResult.bytes / (1024 * 1024))}MB)`, { id: toastId, duration: 5000 });
+        toast.success(`Recording saved to Course Materials!`, { id: toastId, duration: 5000 });
         console.log('Material saved:', data);
+        
+        // Invalidate cache to update Tutor Dashboard immediately
+        api.invalidateCache('materials');
+        api.invalidateCache('courses');
       } else {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(errorData.error || 'Failed to save material to database');

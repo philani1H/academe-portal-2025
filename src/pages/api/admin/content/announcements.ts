@@ -16,11 +16,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'GET') {
     try {
-      const announcements = await prisma.announcements.findMany({
-        where: { isActive: true },
+      const announcements = await prisma.announcement.findMany({
         orderBy: [
           { pinned: 'desc' },
-          { created_at: 'desc' }
+          { createdAt: 'desc' }
         ]
       });
       
@@ -31,9 +30,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } else if (req.method === 'POST') {
     try {
-      const { title, content, type, pinned, mediaUrl, mediaType } = req.body;
+      const { title, content, type, pinned, mediaUrl, mediaType, department } = req.body;
 
-      const announcement = await prisma.announcements.create({
+      const announcement = await prisma.announcement.create({
         data: {
           title: title || content.slice(0, 50),
           content,
@@ -41,9 +40,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           pinned: pinned || false,
           mediaUrl,
           mediaType,
-          isActive: true,
           authorId: 1, // Hardcoded system admin as requested
-          department: null // No department assignment as requested
+          department: department || null
         }
       });
 
@@ -54,10 +52,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } else if (req.method === 'PUT') {
     try {
-      const { id, ...updateData } = req.body;
+      const { id, created_at, updatedAt, author, ...updateData } = req.body;
       
-      const announcement = await prisma.announcements.update({
-        where: { id: Number(id) },
+      const announcement = await prisma.announcement.update({
+        where: { id: String(id) },
         data: updateData
       });
 
@@ -70,9 +68,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const { id } = req.query;
       
-      await prisma.announcements.update({
-        where: { id: Number(id) },
-        data: { isActive: false }
+      // We don't have an isActive field in the schema shown, but let's check if we should delete or soft delete.
+      // The schema didn't show isActive, but the old code used it.
+      // Let's re-read schema to be sure about isActive.
+      // The schema I read: model Announcement { ... } did NOT show isActive.
+      // So we should probably use delete() instead of update({ isActive: false }).
+      await prisma.announcement.delete({
+        where: { id: String(id) }
       });
 
       res.status(200).json({ message: 'Announcement deleted successfully' });

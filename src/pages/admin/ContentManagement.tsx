@@ -57,11 +57,11 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useToast } from "@/hooks/use-toast"
-import { apiFetch } from "@/lib/api"
+import { apiFetch, api } from "@/lib/api"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { BulkUploadDialog } from "@/components/BulkUploadDialog"
-import { uploadToCloudinary } from "@/lib/cloudinary"
+
 import { io } from "socket.io-client"
 import { API_BASE } from "@/lib/api"
 import * as XLSX from "xlsx"
@@ -362,15 +362,10 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
 
   const uploadImage = async (file: File): Promise<string> => {
     try {
-      const dataUrl = await fileToBase64(file)
-      const res = await apiFetch<{ url: string }>("/api/admin/upload", {
-        method: "POST",
-        body: JSON.stringify({ file: dataUrl, fileName: file.name }),
-      })
-      if (!res || (!res.url && typeof res !== "string")) {
-        throw new Error("Invalid response from upload API")
-      }
-      return res.url || (res as unknown as string)
+      // Use standard upload API (same as Tutor dashboard) to handle large files correctly
+      // This bypasses the base64 payload limit and uses local/cloud storage as configured globally
+      const res = await api.uploadFile(file)
+      return res.url
     } catch (error) {
       toast({
         title: "Error",
@@ -580,10 +575,16 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
     const socket = io(API_BASE.replace('/api', ''), {
       path: "/socket.io",
       transports: ["websocket"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     })
 
     socket.on("connect", () => {
       console.log("Connected to content updates socket")
+    })
+
+    socket.on("connect_error", (err) => {
+      console.warn("Socket connection error:", err.message)
     })
 
     socket.on("content-updated", (event: { type: string, action: string, data: any }) => {
@@ -699,9 +700,17 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
   const saveAnnouncement = async (announcement: Announcement) => {
     try {
       const method = announcement.id ? "PUT" : "POST"
+      // Ensure media fields are sent as null if empty, rather than undefined or deleted
+      const payload = { ...announcement }
+      if (!payload.mediaUrl || payload.mediaUrl.trim() === "") {
+        payload.mediaUrl = null as any
+        payload.mediaType = null as any
+      }
+      if (payload.created_at === undefined) delete payload.created_at
+
       const data = await apiFetch<Announcement>("/api/admin/content/announcements", {
         method,
-        body: JSON.stringify(announcement),
+        body: JSON.stringify(payload),
       })
       if (announcement.id) {
         setAnnouncements(announcements.map((a) => (a.id === announcement.id ? data : a)))
@@ -2974,6 +2983,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       <DialogContent className="max-w-md max-h-[85vh] bg-card border-border overflow-auto">
         <DialogHeader>
           <DialogTitle>{editingAnnouncement?.id ? "Edit" : "Add"} Announcement</DialogTitle>
+          <DialogDescription>Create or update site announcements.</DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[calc(85vh-180px)] pr-4">
           {editingAnnouncement && (
@@ -3038,7 +3048,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
                   />
                 </div>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Media URL</Label>
                   <Input
@@ -3047,6 +3057,21 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
                     className="bg-input border-border"
                     placeholder="https://..."
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Media Type</Label>
+                  <Select
+                    value={editingAnnouncement.mediaType || "image"}
+                    onValueChange={(val) => setEditingAnnouncement({ ...editingAnnouncement, mediaType: val })}
+                  >
+                    <SelectTrigger className="bg-input border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="image">Image</SelectItem>
+                      <SelectItem value="video">Video</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Upload Media</Label>
@@ -3059,14 +3084,14 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
                       if (!file) return
                       try {
                         const resourceType = file.type.startsWith("video") ? "video" : "image"
-                        const res = await uploadToCloudinary(file, "announcements", resourceType)
+                        const url = await uploadImage(file)
                         setEditingAnnouncement({
                           ...editingAnnouncement,
-                          mediaUrl: res.secure_url,
+                          mediaUrl: url,
                           mediaType: resourceType
                         })
                       } catch (err) {
-                        toast({ title: "Upload failed", description: String(err), variant: "destructive" })
+                        console.error(err)
                       }
                     }}
                   />
@@ -3137,6 +3162,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       <DialogContent className="max-w-2xl max-h-[85vh] bg-card border-border">
         <DialogHeader>
           <DialogTitle>{editingPricingPlan?.id ? "Edit" : "Add"} Pricing Plan</DialogTitle>
+          <DialogDescription>Manage pricing plans and subscription options.</DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[calc(85vh-180px)] pr-4">
           {editingPricingPlan && (
@@ -3586,6 +3612,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
           <DialogTitle>
             {content?.id ? "Edit" : "Create"} {title}
           </DialogTitle>
+          <DialogDescription>Edit content details for {title}.</DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[calc(85vh-180px)] pr-4">
           {content && (

@@ -480,11 +480,12 @@ export default function EnhancedLiveSession({
               )}
               {showWhiteboard ? (
                   <Whiteboard 
-                      socket={socket}
-                      sessionId={sessionId}
-                      onClose={() => setShowWhiteboard(false)}
-                      isTutor={userRole === 'tutor'}
-                  />
+                    sessionId={sessionId}
+                    onClose={() => setShowWhiteboard(false)}
+                    isStudent={userRole !== 'tutor'}
+                    onToggleRecording={isRecording ? stopRecording : startRecording}
+                    isRecordingActive={isRecording}
+                />
               ) : (
                   <VideoGrid 
                       localStream={localStream} 

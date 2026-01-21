@@ -10,24 +10,30 @@ import {
   ZoomOut,
   FileText,
   Send,
-  GripVertical
+  SendToBack,
+  Layers,
+  Download,
 } from 'lucide-react';
-import { PDFDocument, CanvasDocument } from './types';
+import { PDFDocument } from './types';
 
 interface DocumentViewerProps {
   document: PDFDocument | null;
   onClose: () => void;
-  onSendToCanvas: (imageData: string) => void;
-  onSendDocument?: (doc: CanvasDocument) => void;
+  onSendPageToCanvas: (imageData: string) => void;
+  onSendFullDocumentToCanvas: (document: PDFDocument) => void;
+  onDownload: () => void;
   isOpen: boolean;
+  isStudent?: boolean;
 }
 
 export function DocumentViewer({ 
   document, 
   onClose, 
-  onSendToCanvas,
-  onSendDocument,
-  isOpen 
+  onSendPageToCanvas,
+  onSendFullDocumentToCanvas,
+  onDownload,
+  isOpen,
+  isStudent = false,
 }: DocumentViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(100);
@@ -50,29 +56,18 @@ export function DocumentViewer({
     setZoom(prev => Math.max(50, prev - 25));
   }, []);
 
-  const handleSendToCanvas = useCallback(() => {
+  const handleSendPageToCanvas = useCallback(() => {
     if (document && document.pageImages[currentPage - 1]) {
-      onSendToCanvas(document.pageImages[currentPage - 1]);
+      onSendPageToCanvas(document.pageImages[currentPage - 1]);
     }
-  }, [document, currentPage, onSendToCanvas]);
+  }, [document, currentPage, onSendPageToCanvas]);
 
   const handleSendFullDocument = useCallback(() => {
-    if (document && onSendDocument) {
-      const newDoc: CanvasDocument = {
-        id: crypto.randomUUID(),
-        x: 100,
-        y: 100,
-        width: 600,
-        height: 800,
-        title: document.name,
-        pages: document.pageImages,
-        currentPage: 0, // 0-indexed
-        fileUrl: document.fileUrl
-      };
-      onSendDocument(newDoc);
+    if (document) {
+      onSendFullDocumentToCanvas(document);
       onClose();
     }
-  }, [document, onSendDocument, onClose]);
+  }, [document, onSendFullDocumentToCanvas, onClose]);
 
   if (!isOpen || !document) {
     return null;
@@ -81,10 +76,10 @@ export function DocumentViewer({
   const currentPageImage = document.pageImages[currentPage - 1];
 
   return (
-    <div className="absolute left-0 top-0 bottom-0 w-[380px] z-40 flex flex-col bg-background/95 backdrop-blur-xl border-r border-border shadow-2xl">
+    <div className="absolute left-0 top-0 bottom-0 w-full sm:w-[380px] z-40 flex flex-col bg-background/95 backdrop-blur-xl border-r border-border shadow-2xl">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-card/50">
-        <FileText className="w-4 h-4 text-primary" />
+      <div className="flex items-center gap-2 px-3 sm:px-4 py-3 border-b border-border bg-card/50">
+        <FileText className="w-4 h-4 text-primary flex-shrink-0" />
         <span className="flex-1 text-sm font-medium truncate" title={document.name}>
           {document.name}
         </span>
@@ -99,7 +94,7 @@ export function DocumentViewer({
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/30">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 border-b border-border bg-muted/30">
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -110,7 +105,7 @@ export function DocumentViewer({
           >
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <span className="text-xs font-medium w-12 text-center">{zoom}%</span>
+          <span className="text-xs font-medium w-10 text-center">{zoom}%</span>
           <Button
             variant="ghost"
             size="icon"
@@ -121,31 +116,47 @@ export function DocumentViewer({
             <ZoomIn className="h-4 w-4" />
           </Button>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="gap-1.5 text-xs"
-          onClick={handleSendToCanvas}
-        >
-          <Send className="h-3.5 w-3.5" />
-          Send Page
-        </Button>
-        {onSendDocument && (
+        
+        {isStudent && (
           <Button
-            variant="default"
+            variant="outline"
             size="sm"
-            className="gap-1.5 text-xs ml-2"
-            onClick={handleSendFullDocument}
+            className="gap-1.5 text-xs h-8"
+            onClick={onDownload}
           >
-            <FileText className="h-3.5 w-3.5" />
-            Send Full Doc
+            <Download className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Download</span>
           </Button>
         )}
       </div>
 
+      {/* Action Buttons */}
+      <div className="flex gap-2 px-3 sm:px-4 py-2 border-b border-border bg-muted/20">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="flex-1 gap-1.5 text-xs"
+          onClick={handleSendPageToCanvas}
+        >
+          <Send className="h-3.5 w-3.5" />
+          <span className="hidden xs:inline">Send Page</span>
+          <span className="xs:hidden">Page</span>
+        </Button>
+        <Button
+          variant="default"
+          size="sm"
+          className="flex-1 gap-1.5 text-xs"
+          onClick={handleSendFullDocument}
+        >
+          <Layers className="h-3.5 w-3.5" />
+          <span className="hidden xs:inline">Full Document</span>
+          <span className="xs:hidden">Full Doc</span>
+        </Button>
+      </div>
+
       {/* Page View */}
       <ScrollArea className="flex-1">
-        <div className="p-4 flex items-center justify-center min-h-full">
+        <div className="p-3 sm:p-4 flex items-center justify-center min-h-full">
           {currentPageImage ? (
             <img
               src={currentPageImage}
@@ -166,28 +177,28 @@ export function DocumentViewer({
       </ScrollArea>
 
       {/* Page Navigation */}
-      <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-card/50">
+      <div className="flex items-center justify-between px-3 sm:px-4 py-3 border-t border-border bg-card/50">
         <Button
           variant="ghost"
           size="sm"
           onClick={handlePrevPage}
           disabled={currentPage <= 1}
-          className="gap-1"
+          className="gap-1 h-8 px-2 sm:px-3"
         >
           <ChevronLeft className="h-4 w-4" />
-          Prev
+          <span className="hidden sm:inline">Prev</span>
         </Button>
         <span className="text-sm font-medium">
-          Page {currentPage} of {document.pageCount}
+          {currentPage} / {document.pageCount}
         </span>
         <Button
           variant="ghost"
           size="sm"
           onClick={handleNextPage}
           disabled={currentPage >= document.pageCount}
-          className="gap-1"
+          className="gap-1 h-8 px-2 sm:px-3"
         >
-          Next
+          <span className="hidden sm:inline">Next</span>
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
@@ -195,14 +206,14 @@ export function DocumentViewer({
       {/* Page Thumbnails */}
       {document.pageCount > 1 && (
         <div className="border-t border-border">
-          <ScrollArea className="h-24">
-            <div className="flex gap-2 p-3">
+          <ScrollArea className="h-20 sm:h-24">
+            <div className="flex gap-2 p-2 sm:p-3">
               {document.pageImages.map((img, index) => (
                 <button
                   key={index}
                   onClick={() => setCurrentPage(index + 1)}
                   className={cn(
-                    'flex-shrink-0 w-14 h-18 rounded border-2 overflow-hidden transition-all',
+                    'flex-shrink-0 w-12 h-16 sm:w-14 sm:h-18 rounded border-2 overflow-hidden transition-all',
                     currentPage === index + 1
                       ? 'border-primary ring-2 ring-primary/30'
                       : 'border-border hover:border-muted-foreground'
