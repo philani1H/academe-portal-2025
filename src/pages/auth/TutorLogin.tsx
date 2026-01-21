@@ -22,16 +22,12 @@ const TutorLogin = () => {
 
     try {
       // Wait for login to complete and return user data
-      const result = await login(email, password, 'tutor');
+      await login(email, password, 'tutor');
       
-      // Verify the login was successful and token is stored
-      const token = localStorage.getItem('token');
+      // Verify user has appropriate role
+      // Note: We don't check for token in localStorage because we use HttpOnly cookies
       const storedUser = localStorage.getItem('user');
       
-      if (!token) {
-        throw new Error('Authentication token not received');
-      }
-
       if (!storedUser) {
         throw new Error('User data not received');
       }
@@ -45,7 +41,7 @@ const TutorLogin = () => {
           description: "Login successful.",
         });
         
-        // Small delay to ensure token is set before navigation
+        // Small delay to ensure state updates before navigation
         setTimeout(() => {
           navigate('/tutors-dashboard');
         }, 100);

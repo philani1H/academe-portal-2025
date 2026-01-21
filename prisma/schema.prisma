@@ -70,6 +70,7 @@ model LiveSession {
   whiteboardStates WhiteboardState[]
   whiteboardDocuments WhiteboardDocument[]
   chatMessages     LiveSessionChatMessage[]
+  flags            SessionFlag[]
   scheduledSession ScheduledSession?        @relation(fields: [scheduledId], references: [id], onDelete: SetNull)
 
   @@index([sessionId])
@@ -127,6 +128,20 @@ model LiveSessionChatMessage {
 
   @@index([liveSessionId, timestamp])
   @@map("live_session_chat_messages")
+}
+
+model SessionFlag {
+  id            String      @id @default(uuid())
+  liveSessionId String      @map("live_session_id")
+  type          String
+  description   String
+  flaggedBy     String      @map("flagged_by")
+  resolved      Boolean     @default(false)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  liveSession   LiveSession @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+
+  @@index([liveSessionId])
+  @@map("session_flags")
 }
 
 model AdminUser {

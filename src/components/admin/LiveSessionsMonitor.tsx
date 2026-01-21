@@ -110,8 +110,8 @@ export default function LiveSessionsMonitor() {
   const confirmJoinAsModerator = () => {
     if (!selectedSession) return
 
-    // Navigate to live session with moderator role
-    navigate(`/live/${selectedSession.sessionId}?role=moderator&courseId=${selectedSession.courseId}`)
+    // Navigate to live session with admin role
+    navigate(`/live-session/${selectedSession.sessionId}?role=admin&courseId=${selectedSession.courseId}`)
     setShowJoinDialog(false)
   }
 

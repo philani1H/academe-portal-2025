@@ -11,6 +11,17 @@ import { useWebRTC } from './useWebRTC'
 import { useRecording } from './useRecording'
 import { Whiteboard } from './whiteboard/Whiteboard'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
 
 export default function EnhancedLiveSession({ 
   sessionId, 
@@ -170,6 +181,41 @@ export default function EnhancedLiveSession({
   const [messages, setMessages] = useState<Message[]>([])
   const [chatInput, setChatInput] = useState('')
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([])
+  
+  const [showFlagDialog, setShowFlagDialog] = useState(false)
+  const [flagData, setFlagData] = useState({
+    type: 'inappropriate_content',
+    description: ''
+  })
+
+  const handleFlagSession = () => {
+    setFlagData({ type: 'inappropriate_content', description: '' })
+    setShowFlagDialog(true)
+  }
+
+  const submitFlag = async () => {
+    if (!flagData.description.trim()) {
+      toast.error('Please provide a description for the flag')
+      return
+    }
+
+    try {
+      await fetch('/api/admin/live-sessions/flag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          ...flagData
+        })
+      })
+
+      toast.success('Session flagged successfully')
+      setShowFlagDialog(false)
+    } catch (error) {
+      console.error('Error flagging session:', error)
+      toast.error('Failed to flag session')
+    }
+  }
 
   const handleGoLive = () => {
     setIsLive(true);
@@ -206,19 +252,19 @@ export default function EnhancedLiveSession({
   }, [isLive, userRole, sessionStartTime])
 
   const handleMuteParticipant = (targetSocketId: string | number) => {
-    if (userRole !== 'tutor') return;
+    if (userRole !== 'tutor' && userRole !== 'admin') return;
     socket?.emit('admin-action', { action: 'mute', targetId: targetSocketId, sessionId });
     toast.success("Mute command sent");
   };
 
   const handleKickParticipant = (targetSocketId: string | number) => {
-    if (userRole !== 'tutor') return;
+    if (userRole !== 'tutor' && userRole !== 'admin') return;
     socket?.emit('admin-action', { action: 'kick', targetId: targetSocketId, sessionId });
     toast.success("Participant removed");
   };
 
   const handleRequestUnmute = (targetSocketId: string | number) => {
-    if (userRole !== 'tutor') return;
+    if (userRole !== 'tutor' && userRole !== 'admin') return;
     socket?.emit('admin-action', { action: 'request-unmute', targetId: targetSocketId, sessionId });
     toast.success("Unmute request sent");
   };
@@ -290,13 +336,23 @@ export default function EnhancedLiveSession({
                 toast.info(`New file: ${file.name}`);
              }
           });
+
+          socket.on('session-flagged', (data: any) => {
+              if (userRole === 'admin' || userRole === 'tutor') {
+                  toast.error(`Session Flagged: ${data.type}`, {
+                      description: `${data.description} (by ${data.flaggedBy})`,
+                      duration: 8000,
+                  });
+              }
+          });
       }
       return () => {
           socket?.off('chat-history');
           socket?.off('chat-message');
           socket?.off('file-shared');
+          socket?.off('session-flagged');
       }
-  }, [socket, activeTab, user]);
+  }, [socket, activeTab, user, userRole]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -538,6 +594,7 @@ export default function EnhancedLiveSession({
                   onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
                   onToggleLayout={() => setLayout(prev => prev === 'focus' ? 'grid' : 'focus')}
                   onLeave={onLeave}
+                  onFlagSession={handleFlagSession}
               />
             </div>
           </div>
@@ -597,53 +654,96 @@ export default function EnhancedLiveSession({
         )}
       </div>
 
-      {/* Share Dialog - Mobile Optimized */}
-      {showShareDialog && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-gray-900 rounded-xl border border-gray-700 p-4 max-w-md w-full">
-            <h3 className="text-lg font-bold text-white mb-3">Share Link</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Emails (comma-separated)</label>
-                <input
-                  type="text"
-                  value={shareEmails}
-                  onChange={(e) => setShareEmails(e.target.value)}
-                  placeholder="student1@email.com"
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Message (optional)</label>
-                <textarea
-                  value={shareMessage}
-                  onChange={(e) => setShareMessage(e.target.value)}
-                  placeholder="Add a message..."
-                  rows={2}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none text-sm"
-                />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowShareDialog(false)}
-                  disabled={isSharing}
-                  className="border-gray-600 text-gray-300 hover:bg-gray-800 text-sm"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleShareLink}
-                  disabled={isSharing}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm"
-                >
-                  {isSharing ? 'Sending...' : 'Send'}
-                </Button>
-              </div>
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent className="sm:max-w-md bg-slate-900 border-indigo-500/30 text-white">
+          <DialogHeader>
+            <DialogTitle>Share Session</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Invite students to join this live session.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Email Addresses</label>
+              <Textarea 
+                placeholder="student1@example.com, student2@example.com" 
+                value={shareEmails}
+                onChange={(e) => setShareEmails(e.target.value)}
+                className="bg-slate-800 border-slate-700 min-h-[80px]"
+              />
+              <p className="text-xs text-slate-500">Separate multiple emails with commas</p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Personal Message (Optional)</label>
+              <Textarea 
+                placeholder="Join me for a live session on..." 
+                value={shareMessage}
+                onChange={(e) => setShareMessage(e.target.value)}
+                className="bg-slate-800 border-slate-700"
+              />
             </div>
           </div>
-        </div>
-      )}
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setShowShareDialog(false)} className="bg-transparent border-slate-700 hover:bg-slate-800 text-white">
+              Cancel
+            </Button>
+            <Button onClick={handleShareLink} disabled={isSharing} className="bg-indigo-600 hover:bg-indigo-700">
+              {isSharing ? 'Sending...' : 'Send Invites'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showFlagDialog} onOpenChange={setShowFlagDialog}>
+        <DialogContent className="sm:max-w-md bg-slate-900 border-red-500/30 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <span className="text-xl">🚩</span>
+              Flag Session
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Report this session for inappropriate content or technical issues.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="flag-type">Reason</Label>
+              <Select
+                value={flagData.type}
+                onValueChange={(val) => setFlagData(prev => ({ ...prev, type: val }))}
+              >
+                <SelectTrigger id="flag-type" className="bg-slate-800 border-slate-700 text-white">
+                  <SelectValue placeholder="Select a reason" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                  <SelectItem value="inappropriate_content">Inappropriate Content</SelectItem>
+                  <SelectItem value="harassment">Harassment</SelectItem>
+                  <SelectItem value="technical_issue">Technical Issue</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="flag-desc">Description</Label>
+              <Textarea
+                id="flag-desc"
+                placeholder="Please describe the issue..."
+                value={flagData.description}
+                onChange={(e) => setFlagData(prev => ({ ...prev, description: e.target.value }))}
+                className="bg-slate-800 border-slate-700 min-h-[100px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowFlagDialog(false)} className="hover:bg-slate-800 text-white">
+              Cancel
+            </Button>
+            <Button onClick={submitFlag} variant="destructive" className="bg-red-600 hover:bg-red-700">
+              Submit Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

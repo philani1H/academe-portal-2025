@@ -5,7 +5,7 @@ import { Hand, Mic, MicOff, Video, VideoOff, Check, XCircle, User } from 'lucide
 
 interface ParticipantsTabProps {
   participants: Participant[]
-  userRole: 'tutor' | 'student'
+  userRole: 'tutor' | 'student' | 'admin'
   currentUserId?: string
   onGrantShare: (uid: string | number) => void
   onRevokeShare: (uid: string | number) => void
@@ -43,7 +43,7 @@ export function ParticipantsTab({
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <p className="text-white text-sm font-bold">
-                    {currentUser.name || (currentUser.role === 'tutor' ? 'You (Tutor)' : 'You (Student)')}
+                    {currentUser.name || (currentUser.role === 'tutor' ? 'You (Tutor)' : currentUser.role === 'admin' ? 'You (Admin)' : 'You (Student)')}
                   </p>
                   <span className="bg-indigo-600/80 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                     YOU
@@ -124,7 +124,7 @@ export function ParticipantsTab({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white text-sm font-medium truncate">
-                  {participant.name || (participant.role === 'tutor' ? 'Tutor' : `Student`)}
+                  {participant.name || (participant.role === 'tutor' ? 'Tutor' : participant.role === 'admin' ? 'Admin' : 'Student')}
                 </p>
                 <p className="text-indigo-300/50 text-xs capitalize">{participant.role}</p>
               </div>
@@ -151,7 +151,7 @@ export function ParticipantsTab({
           </div>
 
           {/* Tutor Controls */}
-          {userRole === 'tutor' && participant.role === 'student' && (
+          {(userRole === 'tutor' || userRole === 'admin') && participant.role === 'student' && (
             <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-indigo-500/10">
               <div className="flex gap-2">
                 {participant.canShare ? (

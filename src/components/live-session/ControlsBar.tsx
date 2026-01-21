@@ -11,7 +11,8 @@ import {
   PhoneOff,
   MessageSquare,
   MoreVertical,
-  Circle
+  Circle,
+  Flag
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -21,7 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 interface ControlsBarProps {
-  userRole: 'tutor' | 'student'
+  userRole: 'tutor' | 'student' | 'admin'
   isAudioOn: boolean
   isVideoOn: boolean
   isScreenSharing: boolean
@@ -40,6 +41,7 @@ interface ControlsBarProps {
   onToggleSidebar: () => void
   onToggleLayout?: () => void
   onLeave: () => void
+  onFlagSession?: () => void
 }
 
 export function ControlsBar({
@@ -97,7 +99,7 @@ export function ControlsBar({
 
         {/* Center Controls - Mode Specific */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 sm:gap-3 flex-shrink-0">
-          {userRole === 'tutor' ? (
+          {userRole === 'tutor' || userRole === 'admin' ? (
             <>
               <Button
                 size="sm"
@@ -137,6 +139,17 @@ export function ControlsBar({
               >
                 <Pencil className="h-5 w-5 sm:h-6 sm:w-6" />
               </Button>
+
+              {userRole === 'admin' && (
+                <Button
+                  size="sm"
+                  onClick={onFlagSession}
+                  className="rounded-full w-11 h-11 sm:w-14 sm:h-14 p-0 hidden sm:flex transition-all duration-200 shadow-lg bg-red-500 hover:bg-red-600 text-white"
+                  title="Flag Session"
+                >
+                  <Flag className="h-5 w-5 sm:h-6 sm:w-6" />
+                </Button>
+              )}
             </>
           ) : (
             <Button
@@ -187,7 +200,7 @@ export function ControlsBar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 bg-slate-900 border-indigo-500/30">
-              {userRole === 'tutor' && (
+              {(userRole === 'tutor' || userRole === 'admin') && (
                 <>
                   <DropdownMenuItem onClick={onToggleScreenShare} className="flex items-center gap-2 cursor-pointer text-indigo-200 focus:bg-indigo-500/20 focus:text-white">
                     <MonitorUp className="h-4 w-4" />
@@ -201,6 +214,12 @@ export function ControlsBar({
                     <Pencil className="h-4 w-4" />
                     {showWhiteboard ? 'Hide Whiteboard' : 'Show Whiteboard'}
                   </DropdownMenuItem>
+                  {userRole === 'admin' && (
+                    <DropdownMenuItem onClick={onFlagSession} className="flex items-center gap-2 cursor-pointer text-red-400 focus:bg-red-500/20 focus:text-red-200">
+                      <Flag className="h-4 w-4" />
+                      Flag Session
+                    </DropdownMenuItem>
+                  )}
                 </>
               )}
               <DropdownMenuItem onClick={onToggleSidebar} className="flex items-center gap-2 cursor-pointer text-indigo-200 focus:bg-indigo-500/20 focus:text-white">

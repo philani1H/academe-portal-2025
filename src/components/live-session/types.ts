@@ -3,7 +3,7 @@ import { Instance as PeerInstance } from 'simple-peer';
 export interface LiveSessionProps {
   sessionId: string
   sessionName: string
-  userRole: 'tutor' | 'student'
+  userRole: 'tutor' | 'student' | 'admin'
   onLeave: () => void
   courseId?: string
   courseName?: string
@@ -22,7 +22,7 @@ export interface Message {
 
 export interface Participant {
   uid: string | number
-  role: 'tutor' | 'student'
+  role: 'tutor' | 'student' | 'admin'
   isVideoOn: boolean
   isAudioOn: boolean
   isHandRaised: boolean
@@ -44,7 +44,7 @@ export interface PeerData {
   peerId: string;
   peer: PeerInstance;
   stream?: MediaStream;
-  userRole: 'tutor' | 'student';
+  userRole: 'tutor' | 'student' | 'admin';
   isVideoOn: boolean;
   isAudioOn: boolean;
   isHandRaised?: boolean;

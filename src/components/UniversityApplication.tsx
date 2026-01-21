@@ -137,6 +137,21 @@ const UniversityApplication = () => {
 
   return (
     <div className="container mx-auto py-8 px-4 min-h-screen backdrop-blur-md bg-blue-900/80 text-white">
+      <SEO 
+        title="University Application Assistance"
+        description="Get expert help with your university applications for UCT, Wits, UJ, UP, UNISA, and more. We guide you through the process to ensure success."
+        keywords={[
+          "university application south africa",
+          "apply to wits",
+          "apply to uj",
+          "apply to uct",
+          "apply to unisa",
+          "university application services",
+          "central application office",
+          "cao application",
+          "nsfas application"
+        ]}
+      />
       <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">University Application</h1>
       
       <div className="grid md:grid-cols-2 gap-6 mb-8">
@@ -320,8 +335,19 @@ const UniversityApplication = () => {
               {loading ? "Submitting..." : "Submit Application"}
             </Button>
           </form>
+          <p className="mt-6 text-blue-200 text-sm text-center">
+            Whether you are applying for Medicine, Engineering, Law, or Humanities, our team ensures your application meets all requirements and deadlines. We also assist with <strong>NSFAS funding applications</strong> and residence placement.
+          </p>
         </CardContent>
       </Card>
+
+      <div className="max-w-2xl mx-auto">
+        <SocialShare 
+          title="Applying to University? Get Help!" 
+          description="I'm using Excellence Academia for my university applications. Check them out!" 
+          className="bg-blue-900/40 border-white/10 text-white"
+        />
+      </div>
     </div>
   );
 };

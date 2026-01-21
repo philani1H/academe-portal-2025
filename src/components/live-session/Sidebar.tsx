@@ -16,7 +16,7 @@ interface SidebarProps {
   setChatInput: (val: string) => void
   onSendMessage: (e: React.FormEvent) => void
   participants: Participant[]
-  userRole: 'tutor' | 'student'
+  userRole: 'tutor' | 'student' | 'admin'
   onGrantShare?: (uid: string | number) => void
   onRevokeShare?: (uid: string | number) => void
   onMuteParticipant?: (uid: string | number) => void

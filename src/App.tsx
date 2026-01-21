@@ -21,6 +21,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import ContentManagement from "./pages/admin/ContentManagement";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -188,15 +189,17 @@ const AppInner = () => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <ErrorBoundary>
-      <TooltipProvider>
-        <AuthProvider>
-          <BrowserRouter>
-            <AppInner />
-          </BrowserRouter>
-        </AuthProvider>
-      </TooltipProvider>
-    </ErrorBoundary>
+    <HelmetProvider>
+      <ErrorBoundary>
+        <TooltipProvider>
+          <AuthProvider>
+            <BrowserRouter>
+              <AppInner />
+            </BrowserRouter>
+          </AuthProvider>
+        </TooltipProvider>
+      </ErrorBoundary>
+    </HelmetProvider>
   </QueryClientProvider>
 );
 

@@ -1198,6 +1198,41 @@ export default function StudentPortal() {
                 </motion.div>
               </div>
 
+              {/* Refer & Earn Banner */}
+              <Card className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white overflow-hidden relative">
+                <div className="absolute top-0 right-0 -mt-4 -mr-4 bg-white/10 rounded-full h-32 w-32 blur-2xl"></div>
+                <div className="absolute bottom-0 left-0 -mb-4 -ml-4 bg-black/10 rounded-full h-32 w-32 blur-2xl"></div>
+                <CardContent className="p-6 relative z-10">
+                  <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="space-y-2 text-center md:text-left">
+                      <h2 className="text-2xl font-bold flex items-center justify-center md:justify-start gap-2">
+                        <Share2 className="h-6 w-6" />
+                        Invite Friends & Earn Rewards
+                      </h2>
+                      <p className="text-indigo-100 max-w-xl">
+                        Share Excellence Academia with your friends. When they sign up using your link, 
+                        you both get <span className="font-bold text-white">10% off</span> your next month's tuition!
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                      <div className="flex items-center bg-white/10 backdrop-blur-sm rounded-md border border-white/20 px-3 py-2 text-sm text-indigo-50 font-mono">
+                        <span className="truncate max-w-[200px]">excellence.co.za/join?ref={user.name.toLowerCase().replace(/\s+/g, '')}</span>
+                      </div>
+                      <Button 
+                        className="bg-white text-indigo-600 hover:bg-indigo-50 font-semibold"
+                        onClick={() => {
+                          navigator.clipboard.writeText(`https://www.excellenceakademie.co.za/join?ref=${user.name.toLowerCase().replace(/\s+/g, '')}`);
+                          toast.success("Referral link copied to clipboard!");
+                        }}
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copy Link
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Upcoming Tests */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">

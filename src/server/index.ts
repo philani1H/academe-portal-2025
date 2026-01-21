@@ -29,6 +29,8 @@ import { v2 as cloudinary } from "cloudinary"
 import crypto from "crypto"
 import multer from "multer"
 import { createRequire } from "module"
+import trendRoutes from "./routes/trends.js"
+import { TrendService } from "./services/TrendService.js"
 
 // Configure Cloudinary
 if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
@@ -414,6 +416,9 @@ app.use((req, res, next) => {
   
   next()
 })
+
+// Trends API
+app.use('/api/trends', trendRoutes);
 
 // Timetable API
 // Remove file-based storage references
@@ -1204,6 +1209,17 @@ io.on("connection", (socket) => {
       const department = (course as any)?.category
       const tutorId = course?.tutorId
 
+      // Check for trends
+      const trends = TrendService.getInstance().getCurrentTrends()
+      const isTrending = trends.keywords.some(k => 
+        courseName.toLowerCase().includes(k.toLowerCase()) || 
+        (department && department.toLowerCase().includes(k.toLowerCase()))
+      )
+      
+      const message = isTrending 
+        ? `🔥 Trending: ${tutorName} started a live session for ${courseName}!` 
+        : `${tutorName} started a live session for ${courseName}!`
+
       const startTime = Date.now();
 
       activeSessions.set(String(cId), {
@@ -1212,7 +1228,7 @@ io.on("connection", (socket) => {
         tutorName,
         courseName,
         department,
-        message: `${tutorName} started a live session for ${courseName}!`,
+        message,
         startTime,
       })
 
@@ -1248,7 +1264,7 @@ io.on("connection", (socket) => {
         tutorName,
         courseName,
         department,
-        message: `${tutorName} started a live session for ${courseName}!`,
+        message,
         startTime,
       })
 
@@ -3710,7 +3726,7 @@ app.get("/api/health", async (req: Request, res: Response) => {
       }
     })
   }
-}))
+})
 
 // Tests API
 app.get("/api/tests", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
@@ -4148,10 +4164,15 @@ app.post(
             recipientEmail = student.email
           }
 
+          const trends = TrendService.getInstance().getCurrentTrends()
+          const trendingKeyword = trends.keywords[0] || "Education"
+          const trendingHashtags = trends.hashtags.map(t => `#${t}`).join(" ")
+
           const personalizedSubject = subject
             .replace(/\[Student Name\]/g, student.name)
             .replace(/\[Course Name\]/g, student.course || "Your Course")
             .replace(/\[Tutor Name\]/g, sender.name)
+            .replace(/\[Trending Keyword\]/g, trendingKeyword)
 
           const personalizedBody = body
             .replace(/\[Student Name\]/g, student.name)
@@ -4159,6 +4180,8 @@ app.post(
             .replace(/\[Tutor Name\]/g, sender.name)
             .replace(/\[Date\]/g, new Date().toLocaleDateString())
             .replace(/\[Time\]/g, new Date().toLocaleTimeString())
+            .replace(/\[Trending Keyword\]/g, trendingKeyword)
+            .replace(/\[Trending Hashtags\]/g, trendingHashtags)
 
           if (shouldSendExternal) {
             const htmlContent = renderBrandedEmail({
@@ -4944,7 +4967,7 @@ app.post(
       try {
         const emails: string[] = []
         if (courseId && String(courseId).trim().length > 0) {
-          const owns = await db.get("SELECT 1 FROM courses WHERE id = ? AND tutor_id = ?", [courseId, tutorId])
+          const owns = await db.get("SELECT 1 FROM courses WHERE id = ? AND tutor_id = ?", [Number.parseInt(String(courseId)), Number.parseInt(tutorId)])
           if (!owns)
             return res.status(403).json({ success: false, error: "Forbidden: course does not belong to tutor" })
           const rows = await db.all(
@@ -4953,7 +4976,7 @@ app.post(
            JOIN course_enrollments e ON e.user_id = u.id 
            WHERE e.course_id = ? 
              AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
-            [courseId],
+            [Number.parseInt(String(courseId))],
           )
           emails.push(...rows.map((r: any) => String(r.email)))
         } else {
@@ -4964,7 +4987,7 @@ app.post(
            JOIN courses c ON c.id = e.course_id 
            WHERE c.tutor_id = ? 
              AND u.email IS NOT NULL AND TRIM(u.email) <> ''`,
-            [tutorId],
+            [Number.parseInt(tutorId)],
           )
           emails.push(...rows.map((r: any) => String(r.email)))
         }
@@ -5520,7 +5543,7 @@ app.get("/api/users/:id", async (req: Request, res: Response) => {
     }
 
     const db = await getConnection()
-    const user = await db.get("SELECT * FROM users WHERE id = ?", [id])
+    const user = await db.get("SELECT * FROM users WHERE id = ?", [Number.parseInt(id)])
     await db.close()
 
     if (user) {
@@ -5550,7 +5573,7 @@ app.put("/api/users/:id", async (req: Request, res: Response) => {
     }
 
     const db = await getConnection()
-    const existing = await db.get("SELECT * FROM users WHERE id = ?", [id])
+    const existing = await db.get("SELECT * FROM users WHERE id = ?", [Number.parseInt(id)])
     if (!existing) {
       await db.close()
       return res.status(404).json({ success: false, error: "User not found" })
@@ -5559,14 +5582,14 @@ app.put("/api/users/:id", async (req: Request, res: Response) => {
     const nextName = name !== undefined ? name : existing.name
     const nextEmail = email !== undefined ? email : existing.email
     const nextStatus = status !== undefined ? status : existing.status
-    await db.run("UPDATE users SET name = ?, email = ?, status = ?, updated_at = ? WHERE id = ?", [
+    await db.run("UPDATE users SET name = ?, email = ?, status = ?, updated_at = ? WHERE id = ?::integer", [
       nextName,
       nextEmail,
       nextStatus,
       new Date().toISOString(),
-      id,
+      Number.parseInt(id),
     ])
-    const updated = await db.get("SELECT * FROM users WHERE id = ?", [id])
+    const updated = await db.get("SELECT * FROM users WHERE id = ?", [Number.parseInt(id)])
     await db.close()
     return res.json({ success: true, data: updated })
   } catch (error) {
@@ -5582,7 +5605,7 @@ app.delete("/api/users/:id", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: "User ID is required" })
     }
     const db = await getConnection()
-    const result = await db.run("UPDATE users SET status = ? WHERE id = ?", ["inactive", id])
+    const result = await db.run("UPDATE users SET status = ? WHERE id = ?::integer", ["inactive", Number.parseInt(id)])
     await db.close()
     if (result.changes === 0) {
       return res.status(404).json({ success: false, error: "User not found" })
@@ -5787,7 +5810,7 @@ app.get("/api/courses/:id", async (req: Request, res: Response) => {
     }
 
     const db = await getConnection()
-    const course = await db.get("SELECT * FROM courses WHERE id = ?", [id])
+    const course = await db.get("SELECT * FROM courses WHERE id = ?", [Number.parseInt(id)])
     await db.close()
 
     if (course) {
@@ -6159,11 +6182,18 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
         })).catch(() => null),
-      subjects: () =>
-        safeQuery(() => prisma.subject.findMany({
+      subjects: async () => {
+        const subjects = await safeQuery(() => prisma.subject.findMany({
           where: { isActive: true },
           orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-        })).catch(() => []),
+        })).catch(() => [])
+        
+        const trends = TrendService.getInstance().getCurrentTrends()
+        return subjects.map((s: any) => ({
+          ...s,
+          isTrending: trends.keywords.some(k => s.name.toLowerCase().includes(k.toLowerCase()))
+        }))
+      },
       navigation: () =>
         safeQuery(() => prisma.navigationItem.findMany({
           where: { isActive: true },
@@ -6175,11 +6205,22 @@ app.get("/api/admin/content/:type", async (req: Request, res: Response) => {
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
         })).catch(() => null),
-      "university-application": () =>
-        safeQuery(() => prisma.universityApplicationContent.findFirst({
+      "university-application": async () => {
+        const content = await safeQuery(() => prisma.universityApplicationContent.findFirst({
           where: { isActive: true },
           orderBy: { updatedAt: "desc" },
-        })).catch(() => null),
+        })).catch(() => null)
+
+        if (content) {
+          const trends = TrendService.getInstance().getCurrentTrends()
+          return {
+            ...content,
+            trendingKeywords: trends.keywords,
+            trendingHashtags: trends.hashtags
+          }
+        }
+        return content
+      },
       "contact-us": () =>
         safeQuery(() => prisma.contactUsContent.findFirst({
           where: { isActive: true },
@@ -8744,8 +8785,30 @@ app.post("/api/admin/live-sessions/flag", authenticateJWT as RequestHandler, aut
       return res.status(400).json({ success: false, error: 'Missing required fields' })
     }
 
-    // Store flag in database (you can create a SessionFlag model)
-    // For now, we'll just log it and notify via socket
+    // Find the live session
+    const liveSession = await prisma.liveSession.findUnique({
+      where: { sessionId }
+    })
+
+    if (liveSession) {
+      // Store flag in database
+      try {
+        await prisma.sessionFlag.create({
+          data: {
+            liveSessionId: liveSession.id,
+            type,
+            description,
+            flaggedBy: req.user?.name || 'Admin',
+          }
+        })
+        console.log(`[ADMIN] Session ${sessionId} flagged in DB: ${type}`)
+      } catch (dbError) {
+        console.error(`[ADMIN] Failed to persist flag for session ${sessionId}:`, dbError)
+      }
+    } else {
+      console.warn(`[ADMIN] Flagging session ${sessionId} but DB record not found (in-memory only?)`)
+    }
+
     console.log(`[ADMIN] Session ${sessionId} flagged: ${type} - ${description}`)
 
     // Notify moderators and admins in the session

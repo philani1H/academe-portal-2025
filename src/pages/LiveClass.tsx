@@ -11,7 +11,7 @@ export default function LiveClass() {
     const { sessionId } = useParams();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
-    const [userRole, setUserRole] = useState<'tutor' | 'student'>('student');
+    const [userRole, setUserRole] = useState<'tutor' | 'student' | 'admin'>('student');
     const [loading, setLoading] = useState(true);
     const [showJoinScreen, setShowJoinScreen] = useState(false);
     const [displayName, setDisplayName] = useState('');
@@ -23,6 +23,7 @@ export default function LiveClass() {
     const tutorName = searchParams.get('tutorName') || undefined;
     const fromStudent = searchParams.get('fromStudent') === 'true';
     const fromTutor = searchParams.get('fromTutor') === 'true';
+    const urlRole = searchParams.get('role');
     
     // Store entry point for proper navigation on leave
     const [entryPoint, setEntryPoint] = useState<string>('');
@@ -34,6 +35,8 @@ export default function LiveClass() {
         } else if (fromStudent) {
             // Came from share link - store the current URL to return to join screen
             setEntryPoint('share-link');
+        } else if (urlRole === 'admin') {
+            setEntryPoint('/admin');
         } else if (user?.role === 'tutor' || user?.role === 'admin') {
             setEntryPoint('/tutors-dashboard');
         } else if (user?.role === 'student') {
@@ -41,9 +44,16 @@ export default function LiveClass() {
         } else {
             setEntryPoint('/');
         }
-    }, [fromStudent, fromTutor, user]);
+    }, [fromStudent, fromTutor, user, urlRole]);
 
     useEffect(() => {
+        // If joining from admin dashboard
+        if (urlRole === 'admin') {
+            setUserRole('admin');
+            setLoading(false);
+            return;
+        }
+
         // If joining from tutor dashboard, always be a tutor
         if (fromTutor) {
             setUserRole('tutor');
