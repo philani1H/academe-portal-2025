@@ -310,7 +310,19 @@ export function useCanvas({
 
     ctx.globalAlpha = 1;
     clearOverlay();
-  }, [color, lineWidth, opacity, selectedShape, clearOverlay]);
+    
+    onDraw?.({ 
+      type: 'shape', 
+      shapeType: selectedShape, 
+      startX: start.x, 
+      startY: start.y, 
+      endX: end.x, 
+      endY: end.y,
+      color,
+      lineWidth,
+      opacity
+    });
+  }, [color, lineWidth, opacity, selectedShape, clearOverlay, onDraw]);
 
   // Draw methods
   const startDrawing = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -373,7 +385,16 @@ export function useCanvas({
     ctx.moveTo(point.x, point.y);
 
     setLastPoint(point);
-    onDraw?.({ type: 'draw', x: point.x, y: point.y, tool, color, lineWidth });
+    onDraw?.({ 
+      type: 'draw', 
+      x: point.x, 
+      y: point.y, 
+      prevX: lastPoint.x, 
+      prevY: lastPoint.y, 
+      tool, 
+      color, 
+      lineWidth 
+    });
   }, [isDrawing, tool, color, lineWidth, opacity, lastPoint, startPoint, getPoint, onDraw, drawShapePreview]);
 
   const stopDrawing = useCallback(() => {
@@ -409,9 +430,25 @@ export function useCanvas({
     if (isDrawing && tool === 'shape' && startPoint) {
       const point = getPoint(e);
       finalizeShape(startPoint, point);
+      
+      // Cleanup manually to avoid double-finalization in stopDrawing
+      setIsDrawing(false);
+      setLastPoint(null);
+      setStartPoint(null);
+      saveToHistory();
+      
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      if (ctx) {
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      
+      onDraw?.({ type: 'end' });
+    } else {
+      stopDrawing();
     }
-    stopDrawing();
-  }, [isDrawing, tool, startPoint, getPoint, finalizeShape, stopDrawing]);
+  }, [isDrawing, tool, startPoint, getPoint, finalizeShape, stopDrawing, saveToHistory, onDraw]);
 
   // Clear canvas
   const clearCanvas = useCallback(() => {
@@ -472,7 +509,8 @@ export function useCanvas({
     
     ctx.globalAlpha = 1;
     saveToHistory();
-  }, [color, opacity, saveToHistory]);
+    onDraw?.({ type: 'text', text, x, y, fontSize, color, opacity });
+  }, [color, opacity, saveToHistory, onDraw]);
 
   // Export canvas
   const exportCanvas = useCallback((format: 'png' | 'jpeg' = 'png') => {
@@ -495,6 +533,116 @@ export function useCanvas({
     setOffset({ x: 0, y: 0 });
   }, []);
 
+  const drawRemoteAction = useCallback((action: any) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+
+    if (action.type === 'draw' && action.prevX !== undefined && action.prevY !== undefined) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      if (action.tool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.strokeStyle = 'rgba(0,0,0,1)';
+        ctx.lineWidth = action.lineWidth * 3;
+      } else if (action.tool === 'highlighter') {
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.strokeStyle = action.color;
+        ctx.lineWidth = action.lineWidth * 4;
+        ctx.globalAlpha = 0.3;
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = action.color;
+        ctx.lineWidth = action.lineWidth;
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(action.prevX, action.prevY);
+      ctx.lineTo(action.x, action.y);
+      ctx.stroke();
+      
+      // Reset
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    } else if (action.type === 'clear') {
+      const dpr = window.devicePixelRatio || 1;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    } else if (action.type === 'image') {
+       addImage(action.src, action.x, action.y);
+    } else if (action.type === 'text') {
+       const { text, x, y, fontSize, color, opacity } = action;
+       ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+       ctx.fillStyle = color;
+       ctx.globalAlpha = opacity;
+       const lines = text.split('\n');
+       lines.forEach((line: string, index: number) => {
+         ctx.fillText(line, x, y + (index * fontSize * 1.4));
+       });
+       ctx.globalAlpha = 1;
+    } else if (action.type === 'shape') {
+       const { shapeType, startX, startY, endX, endY, color, lineWidth, opacity } = action;
+       ctx.strokeStyle = color;
+       ctx.lineWidth = lineWidth;
+       ctx.lineCap = 'round';
+       ctx.lineJoin = 'round';
+       ctx.globalAlpha = opacity;
+
+       const width = endX - startX;
+       const height = endY - startY;
+
+       ctx.beginPath();
+
+       switch (shapeType) {
+         case 'rectangle':
+           ctx.strokeRect(startX, startY, width, height);
+           break;
+         case 'circle':
+           const radius = Math.sqrt(width * width + height * height) / 2;
+           const centerX = startX + width / 2;
+           const centerY = startY + height / 2;
+           ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+           ctx.stroke();
+           break;
+         case 'line':
+           ctx.moveTo(startX, startY);
+           ctx.lineTo(endX, endY);
+           ctx.stroke();
+           break;
+         case 'arrow':
+           ctx.moveTo(startX, startY);
+           ctx.lineTo(endX, endY);
+           ctx.stroke();
+           const angle = Math.atan2(endY - startY, endX - startX);
+           const headLength = 15;
+           ctx.beginPath();
+           ctx.moveTo(endX, endY);
+           ctx.lineTo(
+             endX - headLength * Math.cos(angle - Math.PI / 6),
+             endY - headLength * Math.sin(angle - Math.PI / 6)
+           );
+           ctx.moveTo(endX, endY);
+           ctx.lineTo(
+             endX - headLength * Math.cos(angle + Math.PI / 6),
+             endY - headLength * Math.sin(angle + Math.PI / 6)
+           );
+           ctx.stroke();
+           break;
+         case 'triangle':
+           const midX = startX + width / 2;
+           ctx.moveTo(midX, startY);
+           ctx.lineTo(startX, endY);
+           ctx.lineTo(endX, endY);
+           ctx.closePath();
+           ctx.stroke();
+           break;
+       }
+       ctx.globalAlpha = 1;
+    }
+  }, [addImage]);
+
   return {
     canvasRef,
     overlayCanvasRef,
@@ -513,6 +661,7 @@ export function useCanvas({
     clearCanvas,
     addImage,
     drawText,
+    drawRemoteAction,
     undo,
     redo,
     exportCanvas,

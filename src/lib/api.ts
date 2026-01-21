@@ -87,6 +87,10 @@ class APICache {
 
 const cache = new APICache();
 
+export function clearApiCache(pattern?: string) {
+  cache.invalidate(pattern);
+}
+
 function getAuthToken(): string | null {
   try {
     return localStorage.getItem('auth_token');

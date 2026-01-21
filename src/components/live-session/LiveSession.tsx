@@ -250,6 +250,21 @@ export default function EnhancedLiveSession({
 
   useEffect(() => {
       if(socket) {
+          // Request chat history
+          socket.emit('get-chat-history', { sessionId });
+
+          socket.on('chat-history', (history: any[]) => {
+              const mapped = history.map(m => ({
+                  id: m.id,
+                  userId: String(m.userId || '0'),
+                  userName: m.userName,
+                  text: m.content,
+                  timestamp: new Date(m.timestamp),
+                  type: 'text'
+              }));
+              setMessages(mapped);
+          });
+
           socket.on('chat-message', (msg: Message) => {
               setMessages(prev => [...prev, msg]);
 
@@ -277,6 +292,7 @@ export default function EnhancedLiveSession({
           });
       }
       return () => {
+          socket?.off('chat-history');
           socket?.off('chat-message');
           socket?.off('file-shared');
       }
@@ -485,6 +501,7 @@ export default function EnhancedLiveSession({
                     isStudent={userRole !== 'tutor'}
                     onToggleRecording={isRecording ? stopRecording : startRecording}
                     isRecordingActive={isRecording}
+                    socket={socket}
                 />
               ) : (
                   <VideoGrid 

@@ -69,6 +69,7 @@ model LiveSession {
   participants     LiveSessionParticipant[]
   whiteboardStates WhiteboardState[]
   whiteboardDocuments WhiteboardDocument[]
+  chatMessages     LiveSessionChatMessage[]
   scheduledSession ScheduledSession?        @relation(fields: [scheduledId], references: [id], onDelete: SetNull)
 
   @@index([sessionId])
@@ -113,6 +114,19 @@ model WhiteboardDocument {
 
   @@index([liveSessionId])
   @@map("whiteboard_documents")
+}
+
+model LiveSessionChatMessage {
+  id            String      @id @default(uuid())
+  liveSessionId String      @map("live_session_id")
+  userId        Int?        @map("user_id")
+  userName      String      @map("user_name")
+  message       String
+  timestamp     DateTime    @default(now())
+  liveSession   LiveSession @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+
+  @@index([liveSessionId, timestamp])
+  @@map("live_session_chat_messages")
 }
 
 model AdminUser {

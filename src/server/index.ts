@@ -5,6 +5,7 @@ import { createServer } from "http"
 import { Server } from "socket.io"
 import { getConnection } from "../lib/db.js"
 import prisma from "../lib/prisma.js"
+import { dbHealth, withRetry, safeQuery as safeDatabaseQuery } from "../lib/dbHealth.js"
 import fs from "fs/promises"
 import path from "path"
 import { fileURLToPath } from "url"
@@ -111,32 +112,14 @@ const whiteboardDocuments = new Map<string, any[]>()
 const sessionUsers = new Map<string, Map<string, { userId: string, userRole: string, userName: string, isVideoOn: boolean, isAudioOn: boolean, isHandRaised: boolean }>>();
 
 
-// Helper for safe database queries with retry logic
+// Helper for safe database queries with retry logic (improved version)
 const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
-  let retries = 5
-  let delay = 1000
-  while (retries > 0) {
-    try {
-      return await fn()
-    } catch (e: any) {
-      if (
-        e?.code === 'P1001' || // Can't reach database server
-        e?.code === 'P2024' || // Timed out fetching a new connection
-        e?.name === 'PrismaClientInitializationError' ||
-        e?.message?.includes('Can\'t reach database server') ||
-        e?.message?.includes('connection closed')
-      ) {
-        console.warn(`Database query retry (${retries} left) in ${delay}ms...`)
-        retries--
-        await new Promise(r => setTimeout(r, delay))
-        delay *= 1.5 // Exponential backoff (gentler)
-        continue
-      }
-      throw e
-    }
+  try {
+    return await withRetry(fn, 5, 1000);
+  } catch (error: any) {
+    console.error("Database query failed after all retries:", error.message);
+    return null; // Return null instead of throwing to prevent crash
   }
-  console.error("Database connection failed after retries")
-  return null // Return null instead of throwing to prevent crash
 }
 
 // Helper to save whiteboard state
@@ -160,6 +143,32 @@ const saveWhiteboardState = async (sessionId: string, action: any) => {
     }
   } catch (error) {
     // Suppress errors to avoid log spam if DB is busy or not ready
+  }
+};
+
+// Helper to save chat message
+const saveChatMessage = async (sessionId: string, message: any) => {
+  try {
+    const anyPrisma = prisma as any;
+    if (!anyPrisma.liveSessionChatMessage) return;
+
+    const liveSession = await prisma.liveSession.findUnique({
+      where: { sessionId }
+    });
+    
+    if (liveSession) {
+      await anyPrisma.liveSessionChatMessage.create({
+        data: {
+          liveSessionId: liveSession.id,
+          userId: message.userId ? Number(message.userId) : null,
+          userName: message.userName || "Unknown",
+          message: message.content || "",
+          timestamp: new Date()
+        }
+      });
+    }
+  } catch (error) {
+    // console.error('Failed to save chat message:', error);
   }
 };
 
@@ -1517,7 +1526,35 @@ io.on("connection", (socket) => {
 
   socket.on("chat-message", ({ sessionId, message }) => {
     socket.to(sessionId).emit("chat-message", message)
+    saveChatMessage(sessionId, message);
   })
+
+  socket.on("get-chat-history", async ({ sessionId }) => {
+    try {
+        const anyPrisma = prisma as any;
+        if (!anyPrisma.liveSessionChatMessage) return;
+        
+        const liveSession = await prisma.liveSession.findUnique({ where: { sessionId } });
+        if (liveSession) {
+            const messages = await anyPrisma.liveSessionChatMessage.findMany({
+                where: { liveSessionId: liveSession.id },
+                orderBy: { timestamp: 'asc' }
+            });
+            
+            const formattedMessages = messages.map((m: any) => ({
+                id: m.id,
+                userId: m.userId,
+                userName: m.userName,
+                content: m.message,
+                timestamp: m.timestamp.toISOString()
+            }));
+            
+            socket.emit("chat-history", formattedMessages);
+        }
+    } catch (e) {
+        console.error("Error fetching chat history:", e);
+    }
+  });
 
   socket.on("file-shared", ({ sessionId, file }) => {
     socket.to(sessionId).emit("file-shared", file)
@@ -1536,6 +1573,36 @@ io.on("connection", (socket) => {
     console.log(`Admin action: ${action} on ${targetId} in session ${sessionId}`)
     io.to(targetId).emit("admin-command", { action, sessionId })
   })
+
+  // Whiteboard
+  socket.on("whiteboard-action", ({ sessionId, action }) => {
+    // Broadcast to others in the session
+    socket.to(sessionId).emit("whiteboard-action", { action });
+
+    // Store in history
+    if (!whiteboardHistory.has(sessionId)) {
+      whiteboardHistory.set(sessionId, []);
+    }
+    const history = whiteboardHistory.get(sessionId)!;
+    
+    // Optimize history
+    if (action.type === 'clear') {
+       // Clear history if board is cleared
+       whiteboardHistory.set(sessionId, [action]);
+    } else {
+       history.push(action);
+    }
+    
+    // Limit history size to prevent memory leaks
+    if (history.length > 5000) {
+       history.shift(); // Remove oldest
+    }
+  });
+
+  socket.on("whiteboard-request-history", ({ sessionId }) => {
+    const history = whiteboardHistory.get(sessionId) || [];
+    socket.emit("whiteboard-history", history);
+  });
 
   socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id)
@@ -1947,16 +2014,20 @@ app.post(
           tempPassword = crypto.randomBytes(4).toString("hex") + Math.floor(Math.random() * 100)
 
           const name = clean.split("@")[0]
+          const bcryptHash = await bcrypt.hash(tempPassword, 10)
+          
           user = await prisma.user.create({
             data: {
               email: clean,
               name: name,
               role: "tutor",
               department_id: department || null,
+              password_hash: bcryptHash, // Store bcrypt hash in User table
             },
           })
 
-          const hash = await hashPassword(tempPassword)
+          // Also store in credentials table for backward compatibility
+          const scryptHash = await hashPassword(tempPassword)
           const db = await getConnection()
           try {
             const now = new Date().toISOString()
@@ -1964,7 +2035,7 @@ app.post(
             `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?)
              ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, user_id=excluded.user_id, updated_at=excluded.updated_at RETURNING email`,
-            [clean, user.id, hash, now, now],
+            [clean, user.id, scryptHash, now, now],
           )
           } finally {
             await db.close()
@@ -2068,9 +2139,15 @@ app.post(
 
           // Generate password using the same method as PDF export
           const tempPassword = generatePasswordFromName(tutor.name)
-          const hash = await hashPassword(tempPassword)
+          const bcryptHash = await bcrypt.hash(tempPassword, 10)
+          const scryptHash = await hashPassword(tempPassword)
 
-          // Update password in database (still use system email for login)
+          // Update password in both User table and credentials table
+          await prisma.user.update({
+            where: { id: tutor.id },
+            data: { password_hash: bcryptHash }
+          })
+
           const db = await getConnection()
           try {
             const now = new Date().toISOString()
@@ -2078,7 +2155,7 @@ app.post(
               `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
                VALUES (?, ?, ?, ?::timestamp, ?::timestamp)
                ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, updated_at=excluded.updated_at RETURNING email`,
-              [tutor.email, tutor.id, hash, now, now]
+              [tutor.email, tutor.id, scryptHash, now, now]
             )
           } finally {
             await db.close()
@@ -2425,9 +2502,15 @@ app.post(
 
           // Generate password using the same method as PDF export
           const tempPassword = generatePasswordFromName(student.name)
-          const hash = await hashPassword(tempPassword)
+          const bcryptHash = await bcrypt.hash(tempPassword, 10)
+          const scryptHash = await hashPassword(tempPassword)
 
-          // Update password in database (still use system email for login)
+          // Update password in both User table and credentials table
+          await prisma.user.update({
+            where: { id: student.id },
+            data: { password_hash: bcryptHash }
+          })
+
           const db = await getConnection()
           try {
             const now = new Date().toISOString()
@@ -2435,11 +2518,13 @@ app.post(
               `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
                VALUES (?, ?, ?, ?::timestamp, ?::timestamp)
                ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, updated_at=excluded.updated_at RETURNING email`,
-              [student.email, student.id, hash, now, now]
+              [student.email, student.id, scryptHash, now, now]
             )
           } finally {
             await db.close()
           }
+
+
 
           // Get student's courses and departments
           const studentCourses = student.courseEnrollments?.map(enrollment => enrollment.course) || []
@@ -2611,7 +2696,7 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     
     const userEmail = String(email).toLowerCase()
     
-    // 1. Check Prisma User table (bcrypt) - Primary for seeded/new users
+    // 1. Check Prisma User table (bcrypt) - Primary for all users
     let user = await prisma.user.findUnique({ where: { email: userEmail } })
     let isAuthenticated = false
 
@@ -2619,11 +2704,29 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       // Check if it's a bcrypt hash (starts with $2)
       if (user.password_hash.startsWith('$2')) {
         isAuthenticated = await bcrypt.compare(String(password), user.password_hash)
+      } else {
+        // If it's not bcrypt, try scrypt format (legacy)
+        const parts = String(user.password_hash).split(":")
+        if (parts.length === 3 && parts[0] === "scrypt") {
+          const [scheme, salt, stored] = parts
+          const derived = await new Promise<string>((resolve, reject) => {
+            crypto.scrypt(String(password), salt, 64, (err, dk) => (err ? reject(err) : resolve(dk.toString("hex"))))
+          })
+          if (derived === stored) {
+            isAuthenticated = true
+            // Upgrade to bcrypt for better security
+            const bcryptHash = await bcrypt.hash(String(password), 10)
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { password_hash: bcryptHash }
+            })
+          }
+        }
       }
     }
 
-    // 2. Fallback: Check user_credentials table (scrypt) - For legacy/specific tool users
-    if (!isAuthenticated) {
+    // 2. Fallback: Check user_credentials table (scrypt) - For legacy users only
+    if (!isAuthenticated && user) {
       await ensureCredentialsTable()
       const db = await getConnection()
       try {
@@ -2637,11 +2740,12 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
             })
             if (derived === stored) {
               isAuthenticated = true
-              // If user wasn't found in Prisma but exists in credentials, we might need to handle that
-              // But usually they should exist in Prisma too if they are in credentials
-              if (!user) {
-                 user = await prisma.user.findUnique({ where: { email: userEmail } })
-              }
+              // Upgrade to bcrypt in User table for future logins
+              const bcryptHash = await bcrypt.hash(String(password), 10)
+              await prisma.user.update({
+                where: { id: user.id },
+                data: { password_hash: bcryptHash }
+              })
             }
           }
         }
@@ -2652,6 +2756,12 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
 
     if (!isAuthenticated || !user) {
       return res.status(401).json({ success: false, error: "Invalid credentials" })
+    }
+
+    // Ensure user has a valid role
+    if (!user.role || !["student", "tutor", "admin"].includes(user.role)) {
+      console.error(`User ${user.email} has invalid role: ${user.role}`)
+      return res.status(403).json({ success: false, error: "Invalid user role" })
     }
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" })
@@ -3554,24 +3664,53 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // Health check
 app.get("/api/health", async (req: Request, res: Response) => {
   try {
-    await prisma.$queryRaw`SELECT 1`
+    const startTime = Date.now();
+    await prisma.$queryRaw`SELECT 1`;
+    const dbLatency = Date.now() - startTime;
+    
+    const lastHealthCheck = dbHealth.getLastHealthCheck();
 
     res.json({
       status: "healthy",
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version || "1.0.0",
       environment: process.env.NODE_ENV || "development",
-      database: "connected",
+      database: {
+        status: "connected",
+        latency: `${dbLatency}ms`,
+        lastHealthCheck: lastHealthCheck ? {
+          timestamp: lastHealthCheck.timestamp,
+          latency: `${lastHealthCheck.latency}ms`,
+          isHealthy: lastHealthCheck.isHealthy
+        } : null
+      },
+      server: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        pid: process.pid
+      }
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error("Health check failed:", error)
+    const lastHealthCheck = dbHealth.getLastHealthCheck();
+    
     res.status(503).json({
       status: "unhealthy",
       timestamp: new Date().toISOString(),
       error: "Database connection failed",
+      details: error.message,
+      database: {
+        status: "disconnected",
+        lastHealthCheck: lastHealthCheck ? {
+          timestamp: lastHealthCheck.timestamp,
+          latency: `${lastHealthCheck.latency}ms`,
+          isHealthy: lastHealthCheck.isHealthy,
+          error: lastHealthCheck.error
+        } : null
+      }
     })
   }
-})
+}))
 
 // Tests API
 app.get("/api/tests", authenticateJWT as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
@@ -8759,9 +8898,16 @@ app.post("/api/admin/live-sessions/:sessionId/kick/:participantId", authenticate
 
     // Mark server as ready
     isServerReady = true
+    
+    // Start database health monitoring
+    console.log("🏥 Starting database health monitoring...")
+    await dbHealth.checkHealth();
+    dbHealth.startMonitoring(30000); // Check every 30 seconds
+    
     console.log(`✓ Socket.IO: Enabled`)
     console.log(`✓ Health check: http://localhost:${port}/api/health`)
     console.log(`✓ Tutors API: http://localhost:${port}/api/tutors`)
+    console.log(`✓ Database health monitoring: Active`)
     console.log(`✓ Ready for connections!`)
 
   } catch (error) {

@@ -21,17 +21,39 @@ const TutorLogin = () => {
     setLoading(true);
 
     try {
-      await login(email, password, 'tutor');
+      // Wait for login to complete and return user data
+      const result = await login(email, password, 'tutor');
       
-      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+      // Verify the login was successful and token is stored
+      const token = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
       
-      if (storedUser.role === 'tutor' || storedUser.role === 'admin') {
+      if (!token) {
+        throw new Error('Authentication token not received');
+      }
+
+      if (!storedUser) {
+        throw new Error('User data not received');
+      }
+
+      const userData = JSON.parse(storedUser);
+      
+      // Verify user has appropriate role
+      if (userData.role === 'tutor' || userData.role === 'admin') {
         toast({
           title: "Welcome back!",
           description: "Login successful.",
         });
-        navigate('/tutors-dashboard');
+        
+        // Small delay to ensure token is set before navigation
+        setTimeout(() => {
+          navigate('/tutors-dashboard');
+        }, 100);
       } else {
+        // Clear invalid credentials
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
         toast({
           title: "Access Denied",
           description: "This account does not have tutor privileges.",
@@ -39,11 +61,17 @@ const TutorLogin = () => {
         });
       }
     } catch (error: any) {
+      // Clear any partial auth data on error
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      
       toast({
         title: "Login Failed",
-        description: error.message || "Invalid credentials",
+        description: error.message || "Invalid credentials. Please try again.",
         variant: "destructive",
       });
+      
+      console.error('Login error:', error);
     } finally {
       setLoading(false);
     }

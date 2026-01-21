@@ -17,6 +17,7 @@ import katex from 'katex';
 import html2canvas from 'html2canvas';
 import { pdfjs } from 'react-pdf';
 import 'katex/dist/katex.min.css';
+import { Socket } from 'socket.io-client';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -27,6 +28,7 @@ interface WhiteboardProps {
   isStudent?: boolean;
   onToggleRecording?: () => void;
   isRecordingActive?: boolean;
+  socket?: Socket;
 }
 
 export function Whiteboard({ 
@@ -35,7 +37,8 @@ export function Whiteboard({
   className, 
   isStudent = false,
   onToggleRecording,
-  isRecordingActive 
+  isRecordingActive,
+  socket
 }: WhiteboardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tool, setTool] = useState<DrawTool>('pen');
@@ -75,6 +78,12 @@ export function Whiteboard({
     }
   };
 
+  const handleDraw = useCallback((action: any) => {
+    if (socket && sessionId) {
+      socket.emit('whiteboard-action', { sessionId, action });
+    }
+  }, [socket, sessionId]);
+
   const {
     canvasRef,
     overlayCanvasRef,
@@ -88,6 +97,7 @@ export function Whiteboard({
     clearCanvas,
     addImage,
     drawText,
+    drawRemoteAction,
     undo,
     redo,
     exportCanvas,
@@ -100,7 +110,71 @@ export function Whiteboard({
     lineWidth,
     opacity,
     selectedShape,
+    onDraw: handleDraw
   });
+
+  const handleStickyUpdate = useCallback((id: string, updates: Partial<StickyNoteType>) => {
+    setStickyNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n));
+    handleDraw({ type: 'sticky-update', id, updates });
+  }, [handleDraw]);
+
+  const handleStickyDelete = useCallback((id: string) => {
+    setStickyNotes(prev => prev.filter(n => n.id !== id));
+    handleDraw({ type: 'sticky-delete', id });
+  }, [handleDraw]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const onWhiteboardAction = (data: { action: any }) => {
+      const { action } = data;
+      switch (action.type) {
+        case 'sticky-add':
+          setStickyNotes(prev => [...prev, action.note]);
+          break;
+        case 'sticky-update':
+          setStickyNotes(prev => prev.map(n => n.id === action.id ? { ...n, ...action.updates } : n));
+          break;
+        case 'sticky-delete':
+          setStickyNotes(prev => prev.filter(n => n.id !== action.id));
+          break;
+        case 'doc-add':
+          setCanvasDocuments(prev => [...prev, action.doc]);
+          break;
+        case 'doc-remove':
+          setCanvasDocuments(prev => prev.filter(d => d.id !== action.id));
+          break;
+        case 'clear':
+          drawRemoteAction(action);
+          setStickyNotes([]);
+          setCanvasDocuments([]);
+          setDocumentCounter(0);
+          break;
+        default:
+          drawRemoteAction(action);
+      }
+    };
+
+    socket.on('whiteboard-action', onWhiteboardAction);
+    
+    // Request history
+    socket.emit('whiteboard-request-history', { sessionId });
+
+    const onHistory = (history: any[]) => {
+       if (Array.isArray(history)) {
+         history.forEach(action => {
+            // Re-use the same logic
+            onWhiteboardAction({ action });
+         });
+       }
+    };
+    socket.on('whiteboard-history', onHistory);
+
+    return () => {
+      socket.off('whiteboard-action', onWhiteboardAction);
+      socket.off('whiteboard-history', onHistory);
+    };
+  }, [socket, drawRemoteAction, sessionId]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -202,16 +276,24 @@ export function Whiteboard({
     const offset = documentCounter * 30;
     setDocumentCounter(prev => prev + 1);
     
-    setCanvasDocuments(prev => [...prev, { 
+    const newDoc = { 
       ...doc, 
       id: crypto.randomUUID(),
-    }]);
+    };
+
+    setCanvasDocuments(prev => [...prev, newDoc]);
+    
+    // Omit originalFile for socket
+    const { originalFile, ...docToSend } = newDoc;
+    handleDraw({ type: 'doc-add', doc: docToSend });
+
     toast.success('Document added - drag header to move, corner to resize, double-click for fullscreen');
-  }, [documentCounter]);
+  }, [documentCounter, handleDraw]);
 
   const handleRemoveCanvasDocument = useCallback((docId: string) => {
     setCanvasDocuments(prev => prev.filter(d => d.id !== docId));
-  }, []);
+    handleDraw({ type: 'doc-remove', id: docId });
+  }, [handleDraw]);
 
   const handleDownloadDocument = useCallback(() => {
     if (currentDocument?.originalFile) {
@@ -267,8 +349,9 @@ export function Whiteboard({
       };
       setStickyNotes(prev => [...prev, newNote]);
       setSelectedNoteId(newNote.id);
+      handleDraw({ type: 'sticky-add', note: newNote });
     }
-  }, [tool]);
+  }, [tool, handleDraw]);
 
   const handleTextSubmit = useCallback((text: string, x: number, y: number) => {
     drawText(text, x, y, 18);
@@ -444,8 +527,9 @@ export function Whiteboard({
               note={note}
               isSelected={selectedNoteId === note.id}
               onSelect={setSelectedNoteId}
-              onUpdate={(id, updates) => setStickyNotes(prev => prev.map(n => n.id === id ? { ...n, ...updates } : n))}
-              onDelete={(id) => setStickyNotes(prev => prev.filter(n => n.id !== id))}
+              onUpdate={handleStickyUpdate}
+              onDelete={handleStickyDelete}
+              readOnly={isStudent}
             />
           ))}
 

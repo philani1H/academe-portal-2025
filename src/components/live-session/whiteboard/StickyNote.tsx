@@ -9,6 +9,7 @@ interface StickyNoteProps {
   onDelete: (id: string) => void;
   isSelected: boolean;
   onSelect: (id: string) => void;
+  readOnly?: boolean;
 }
 
 export function StickyNote({ 
@@ -16,7 +17,8 @@ export function StickyNote({
   onUpdate, 
   onDelete, 
   isSelected, 
-  onSelect 
+  onSelect,
+  readOnly = false
 }: StickyNoteProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -32,6 +34,7 @@ export function StickyNote({
   }, [isEditing]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (readOnly) return;
     if (e.target === textareaRef.current) return;
     
     e.preventDefault();
@@ -49,7 +52,7 @@ export function StickyNote({
   };
 
   useEffect(() => {
-    if (!isDragging) return;
+    if (!isDragging || readOnly) return;
 
     const handleMouseMove = (e: MouseEvent) => {
       const parent = noteRef.current?.parentElement;
@@ -75,9 +78,10 @@ export function StickyNote({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragOffset, note.id, note.width, note.height, onUpdate]);
+  }, [isDragging, dragOffset, note.id, note.width, note.height, onUpdate, readOnly]);
 
   const handleDoubleClick = (e: React.MouseEvent) => {
+    if (readOnly) return;
     e.stopPropagation();
     setIsEditing(true);
   };
@@ -87,6 +91,7 @@ export function StickyNote({
   };
 
   const handleColorChange = (color: string) => {
+    if (readOnly) return;
     onUpdate(note.id, { color });
   };
 
@@ -94,7 +99,8 @@ export function StickyNote({
     <div
       ref={noteRef}
       className={cn(
-        'absolute rounded-lg shadow-lg transition-shadow cursor-move select-none',
+        'absolute rounded-lg shadow-lg transition-shadow select-none',
+        !readOnly && 'cursor-move',
         isDragging && 'shadow-2xl scale-105',
         isSelected && 'ring-2 ring-primary ring-offset-2'
       )}
@@ -110,6 +116,7 @@ export function StickyNote({
       onDoubleClick={handleDoubleClick}
     >
       {/* Header */}
+      {!readOnly && (
       <div className="flex items-center justify-between px-2 py-1 cursor-move">
         <GripHorizontal className="w-4 h-4 text-gray-500/50" />
         <button
@@ -122,9 +129,10 @@ export function StickyNote({
           <X className="w-3.5 h-3.5 text-gray-500" />
         </button>
       </div>
+      )}
 
       {/* Content */}
-      <div className="px-3 pb-3">
+      <div className={cn("px-3 pb-3", readOnly && "pt-3")}>
         {isEditing ? (
           <textarea
             ref={textareaRef}
@@ -142,8 +150,8 @@ export function StickyNote({
         )}
       </div>
 
-      {/* Color Picker (visible when selected) */}
-      {isSelected && (
+      {/* Color Picker (visible when selected and not readOnly) */}
+      {isSelected && !readOnly && (
         <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex gap-1 p-1.5 bg-white rounded-lg shadow-lg border border-gray-200">
           {STICKY_COLORS.map((color) => (
             <button

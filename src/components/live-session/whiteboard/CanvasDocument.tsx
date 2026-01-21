@@ -284,15 +284,17 @@ export function CanvasDocument({
               <Maximize2 className="h-4 w-4" />
             )}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
-            onClick={(e) => { e.stopPropagation(); onClose(); }}
-            title="Close Document"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          {!isStudent && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive"
+              onClick={(e) => { e.stopPropagation(); onClose(); }}
+              title="Close Document"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 

@@ -30,6 +30,9 @@
     "test:smtp": "tsx simple-smtp-test.ts",
     "test:tutor": "tsx tutor-template-test.ts"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
     "@fortawesome/free-brands-svg-icons": "^6.7.2",

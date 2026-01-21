@@ -182,6 +182,11 @@ export default function TutorDashboard() {
       try {
         const me = await apiFetch<any>('/api/auth/me')
         
+        // If API returns empty/null (due to error), treat as auth failure to trigger fallback
+        if (!me || (!me.user && !me.role)) {
+           throw new Error("Auth check returned invalid response");
+        }
+        
         const role = (me?.user?.role || me?.role || '').toString().toLowerCase()
         
         if (role !== 'tutor' && role !== 'admin') {
@@ -212,6 +217,10 @@ export default function TutorDashboard() {
       }
       const data = await apiFetch<any>(`/api/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
       
+      if (!data || (!data.tutor && !data.statistics)) {
+          throw new Error("Unable to load dashboard data. Please check your connection or try logging in again.");
+      }
+
       // Normalize
       const stats: Analytics = {
         totalStudents: data?.statistics?.totalStudents ?? 0,
@@ -462,12 +471,24 @@ export default function TutorDashboard() {
           </CardHeader>
           <CardContent>
             <p className="text-sm font-medium mb-4">{error}</p>
-            <div className="flex gap-2">
-              <Button onClick={() => window.location.reload()} variant="outline" className="w-full">
-                Retry
-              </Button>
-              <Button onClick={() => window.location.href = '/'} variant="default" className="w-full">
-                Go Home
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <Button onClick={() => window.location.reload()} variant="outline" className="w-full">
+                  Retry
+                </Button>
+                <Button onClick={() => window.location.href = '/'} variant="default" className="w-full">
+                  Go Home
+                </Button>
+              </div>
+              <Button 
+                  onClick={async () => {
+                      await logout();
+                      window.location.href = '/login';
+                  }} 
+                  variant="secondary" 
+                  className="w-full"
+              >
+                  Logout & Reset
               </Button>
             </div>
           </CardContent>

@@ -161,20 +161,20 @@ const AppInner = () => {
             <Route path="/admin-login" element={<AdminLogin />} />
             
             {/* Dashboard Routes */}
-            <Route path="/students" element={<StudentPortal />} />
-            <Route path="/students/*" element={<StudentPortal />} />
-            <Route path="/student-portal" element={<StudentPortal />} />
-            <Route path="/student/dashboard" element={<StudentPortal />} />
-            <Route path="/admin" element={<AdminWrapper><AdminDashboard /></AdminWrapper>} />
-            <Route path="/admin/content" element={<AdminWrapper><ContentManagement /></AdminWrapper>} />
-            <Route path="/admin/*" element={<AdminWrapper><AdminDashboard /></AdminWrapper>} />
-            <Route path="/tutors-dashboard" element={<TutorDashboard />} />
-            <Route path="/tutors-dashboard/*" element={<TutorDashboard />} />
+            <Route path="/students" element={<ProtectedRoute allowedRoles={['student', 'admin']}><StudentPortal /></ProtectedRoute>} />
+            <Route path="/students/*" element={<ProtectedRoute allowedRoles={['student', 'admin']}><StudentPortal /></ProtectedRoute>} />
+            <Route path="/student-portal" element={<ProtectedRoute allowedRoles={['student', 'admin']}><StudentPortal /></ProtectedRoute>} />
+            <Route path="/student/dashboard" element={<ProtectedRoute allowedRoles={['student', 'admin']}><StudentPortal /></ProtectedRoute>} />
+            <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminWrapper><AdminDashboard /></AdminWrapper></ProtectedRoute>} />
+            <Route path="/admin/content" element={<ProtectedRoute allowedRoles={['admin']}><AdminWrapper><ContentManagement /></AdminWrapper></ProtectedRoute>} />
+            <Route path="/admin/*" element={<ProtectedRoute allowedRoles={['admin']}><AdminWrapper><AdminDashboard /></AdminWrapper></ProtectedRoute>} />
+            <Route path="/tutors-dashboard" element={<ProtectedRoute allowedRoles={['tutor', 'admin']}><TutorDashboard /></ProtectedRoute>} />
+            <Route path="/tutors-dashboard/*" element={<ProtectedRoute allowedRoles={['tutor', 'admin']}><TutorDashboard /></ProtectedRoute>} />
             <Route path="/live-session/:sessionId" element={<LiveClass />} />
             
             {/* Department Routes */}
-            <Route path="/financemanagement" element={<AdminWrapper><FinanceDashboard /></AdminWrapper>} />
-            <Route path="/IT management" element={<AdminWrapper><ITDashboard /></AdminWrapper>} />
+            <Route path="/financemanagement" element={<ProtectedRoute allowedRoles={['admin']}><AdminWrapper><FinanceDashboard /></AdminWrapper></ProtectedRoute>} />
+            <Route path="/IT management" element={<ProtectedRoute allowedRoles={['admin']}><AdminWrapper><ITDashboard /></AdminWrapper></ProtectedRoute>} />
             
             <Route path="*" element={<NotFound />} />
           </Routes>

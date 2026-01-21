@@ -33,14 +33,19 @@ const getClient = (): PrismaClient => {
 
   const url = new URL(databaseUrl);
 
+  // Optimized connection parameters for Neon
   if (!url.searchParams.has('connection_limit')) {
-    url.searchParams.set('connection_limit', '20');
+    url.searchParams.set('connection_limit', '10'); // Reduced for better stability
   }
   if (!url.searchParams.has('pool_timeout')) {
-    url.searchParams.set('pool_timeout', '60');
+    url.searchParams.set('pool_timeout', '30'); // Reduced timeout
   }
   if (!url.searchParams.has('connect_timeout')) {
-    url.searchParams.set('connect_timeout', '60');
+    url.searchParams.set('connect_timeout', '30'); // Reduced timeout
+  }
+  // Add statement timeout to prevent long-running queries
+  if (!url.searchParams.has('statement_timeout')) {
+    url.searchParams.set('statement_timeout', '30000'); // 30 seconds
   }
 
   console.log(`🔌 Connecting to database: ${url.host}`);
@@ -52,6 +57,7 @@ const getClient = (): PrismaClient => {
       },
     },
     log: isProd ? ['error'] : ['error', 'warn'],
+    errorFormat: 'pretty',
   });
 };
 
