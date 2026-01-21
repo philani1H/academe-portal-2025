@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { LiveSessionHeader } from './LiveSessionHeader'
 import { VideoGrid } from './VideoGrid'
@@ -9,18 +9,23 @@ import { ControlsBar } from './ControlsBar'
 import { LiveSessionProps, Message, Participant, SharedFile } from './types'
 import { useWebRTC } from './useWebRTC'
 import { useRecording } from './useRecording'
-import { Whiteboard } from './Whiteboard'
+import { Whiteboard } from './whiteboard/Whiteboard'
 import { Button } from '@/components/ui/button'
 
-export default function EnhancedLiveSession({ sessionId, sessionName, userRole, onLeave, courseId, courseName, category, tutorName: propTutorName }: LiveSessionProps) {
-  // User info
+export default function EnhancedLiveSession({ 
+  sessionId, 
+  sessionName, 
+  userRole, 
+  onLeave, 
+  courseId, 
+  courseName, 
+  category, 
+  tutorName: propTutorName 
+}: LiveSessionProps) {
   const [user, setUser] = useState<{id: string, name: string} | null>(null);
-  
-  // Removed old useRecording call
 
   useEffect(() => {
     const initUser = async () => {
-        // 1. Try local storage first (fastest)
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
             try {
@@ -34,14 +39,12 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
             }
         }
 
-        // 2. Try fetching from API (reliable)
         try {
             const res = await fetch('/api/auth/me');
             if (res.ok) {
                 const data = await res.json();
                 if (data.user && data.user.name) {
                     setUser({ id: String(data.user.id), name: data.user.name });
-                    // Update local storage to keep it fresh
                     localStorage.setItem('user', JSON.stringify({ ...data.user, id: String(data.user.id) }));
                     return;
                 }
@@ -50,7 +53,6 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
             console.error("Failed to fetch user session", e);
         }
 
-        // 3. Use propTutorName if this is a tutor
         if (userRole === 'tutor' && propTutorName) {
             setUser({
                 id: `tutor-${Date.now()}`,
@@ -59,8 +61,6 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
             return;
         }
 
-        // 4. Fallback (if everything fails) - DON'T set generic names, wait for user input
-        // This should rarely happen as LiveClass.tsx handles the join screen
         setUser({
             id: `${userRole}-${Date.now()}`,
             name: userRole === 'tutor' ? (propTutorName || 'Instructor') : 'Student'
@@ -69,9 +69,6 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
 
     initUser();
   }, [userRole, propTutorName]);
-
-  // Only initialize WebRTC once we have valid user info
-  const isUserReady = user !== null && user.id && user.name;
 
   const {
       localStream,
@@ -87,7 +84,9 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
       isScreenSharing,
       isHandRaised,
       connectionStatus,
-      sessionStartTime
+      sessionStartTime,
+      reconnectAttempt,
+      manualReconnect
   } = useWebRTC({
       sessionId,
       userId: user?.id || '',
@@ -100,13 +99,11 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
 
   const { isRecording, isUploading, startRecording, stopRecording } = useRecording(courseId, localStream, isScreenSharing);
 
-  // Share session link
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [shareEmails, setShareEmails] = useState('');
   const [shareMessage, setShareMessage] = useState('');
   const [isSharing, setIsSharing] = useState(false);
 
-  // Get the actual tutor name - either from props or from current user if tutor
   const activeTutorName = propTutorName || (userRole === 'tutor' ? user?.name : undefined);
 
   const getSessionLink = () => {
@@ -161,54 +158,33 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
   const copySessionLink = () => {
     const link = getSessionLink();
     navigator.clipboard.writeText(link);
-    toast.success('Session link copied to clipboard!');
+    toast.success('Session link copied!');
   };
 
-  useEffect(() => {
-    console.log(`[LiveSession] Current Session ID: ${sessionId}`);
-    console.log(`[LiveSession] User Role: ${userRole}`);
-    console.log(`[LiveSession] Course ID: ${courseId}`);
-  }, [sessionId, userRole, courseId]);
-
-  // UI states
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
-
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'chat' | 'participants' | 'files' | 'notes'>('chat')
   const [showWhiteboard, setShowWhiteboard] = useState(false)
   const [layout, setLayout] = useState<'focus' | 'grid'>('focus')
   const [isLive, setIsLive] = useState(false)
-  
-  // Session data
   const [sessionTime, setSessionTime] = useState(0)
   const [messages, setMessages] = useState<Message[]>([])
   const [chatInput, setChatInput] = useState('')
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([])
 
-  // Handle Go Live
   const handleGoLive = () => {
     setIsLive(true);
     if (socket && user) {
-        console.log('[LiveSession] Go Live clicked', {
-            sessionId,
-            courseId,
-            courseName,
-            tutorId: user.id,
-            tutorName: user.name,
-            userRole
-        });
         socket.emit('session-started', {
             sessionId,
             courseId,
             tutorName: user.name,
             students: []
         });
-        toast.success("You are live! Students have been notified.");
+        toast.success("You are live! 🎉");
     }
   };
 
-  // Timer effect
   useEffect(() => {
-    // If we have a server-provided start time, use it to calculate elapsed time
     if (sessionStartTime) {
       const updateTime = () => {
         const now = Date.now();
@@ -216,12 +192,11 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
         setSessionTime(elapsed > 0 ? elapsed : 0);
       };
       
-      updateTime(); // Update immediately
+      updateTime();
       const timer = setInterval(updateTime, 1000);
       return () => clearInterval(timer);
     }
     
-    // Fallback to local timer if no server time (e.g. tutor before going live)
     if (!isLive && userRole === 'tutor') return; 
     
     const timer = setInterval(() => {
@@ -230,37 +205,35 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
     return () => clearInterval(timer)
   }, [isLive, userRole, sessionStartTime])
 
-  // Admin actions
   const handleMuteParticipant = (targetSocketId: string | number) => {
     if (userRole !== 'tutor') return;
     socket?.emit('admin-action', { action: 'mute', targetId: targetSocketId, sessionId });
-    toast.success("Mute command sent.");
+    toast.success("Mute command sent");
   };
 
   const handleKickParticipant = (targetSocketId: string | number) => {
     if (userRole !== 'tutor') return;
     socket?.emit('admin-action', { action: 'kick', targetId: targetSocketId, sessionId });
-    toast.success("Participant removed.");
+    toast.success("Participant removed");
   };
 
   const handleRequestUnmute = (targetSocketId: string | number) => {
     if (userRole !== 'tutor') return;
     socket?.emit('admin-action', { action: 'request-unmute', targetId: targetSocketId, sessionId });
-    toast.success("Unmute request sent.");
+    toast.success("Unmute request sent");
   };
 
-  // Socket event listeners for admin actions
   useEffect(() => {
     if (socket) {
         socket.on('admin-command', ({ action }) => {
             if (action === 'mute') {
                 muteAudio();
-                toast.warning("You have been muted by the tutor.");
+                toast.warning("You have been muted");
             } else if (action === 'kick') {
-                toast.error("You have been removed from the session.");
+                toast.error("You have been removed");
                 onLeave();
             } else if (action === 'request-unmute') {
-                toast("The tutor is asking you to unmute your microphone", {
+                toast("Please unmute your microphone", {
                     action: {
                         label: "Unmute",
                         onClick: () => toggleAudio()
@@ -275,21 +248,18 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
     }
   }, [socket, muteAudio, onLeave, toggleAudio]);
 
-  // Socket event listeners for chat
   useEffect(() => {
       if(socket) {
           socket.on('chat-message', (msg: Message) => {
-              console.log('[LiveSession] Received chat message:', msg);
               setMessages(prev => [...prev, msg]);
 
-              // Show notification if not viewing chat and message is from someone else
               if (activeTab !== 'chat' && msg.userId !== user?.id) {
                 const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBDGH0fPTgjMGHm7A7+OZURE');
                 audio.volume = 0.2;
                 audio.play().catch(() => {});
 
-                toast.info(`${msg.userName}: ${msg.text.substring(0, 50)}${msg.text.length > 50 ? '...' : ''}`, {
-                  duration: 4000,
+                toast.info(`${msg.userName}: ${msg.text.substring(0, 30)}...`, {
+                  duration: 3000,
                   icon: '💬',
                   action: {
                     label: 'View',
@@ -298,16 +268,73 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
                 });
               }
           });
+
+          socket.on('file-shared', (file: SharedFile) => {
+             setSharedFiles(prev => [...prev, file]);
+             if (activeTab !== 'files') {
+                toast.info(`New file: ${file.name}`);
+             }
+          });
       }
       return () => {
           socket?.off('chat-message');
+          socket?.off('file-shared');
       }
   }, [socket, activeTab, user]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
-      e.preventDefault();
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    if (!socket || !socket.connected) {
+        toast.error("Cannot upload: No connection");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const toastId = toast.loading('Uploading...');
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: formData
+      });
+
+      if (!res.ok) throw new Error('Upload failed');
+
+      const data = await res.json();
+      
+      const sharedFile: SharedFile = {
+        id: Date.now().toString(),
+        name: file.name,
+        url: data.url,
+        size: (file.size / 1024).toFixed(1) + ' KB',
+        uploadedBy: user.name,
+        uploadedAt: new Date()
+      };
+
+      setSharedFiles(prev => [...prev, sharedFile]);
+      socket.emit('file-shared', { sessionId, file: sharedFile });
+      toast.success('File shared', { id: toastId });
+    } catch (error) {
+      toast.error('Upload failed', { id: toastId });
+    }
+  };
+
+  const handleSendMessage = (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
       if(!chatInput.trim() || !user) return;
       
+      if (!socket || !socket.connected) {
+          toast.error("Cannot send: No connection");
+          return;
+      }
+
       const msg: Message = {
           id: Date.now().toString(),
           userId: user.id,
@@ -317,10 +344,14 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
           type: 'text'
       };
       
-      // Optimistic update
       setMessages(prev => [...prev, msg]);
-      socket?.emit('chat-message', { sessionId, message: msg });
-      setChatInput('');
+      
+      try {
+        socket.emit('chat-message', { sessionId, message: msg });
+        setChatInput('');
+      } catch (error) {
+        toast.error("Failed to send message");
+      }
   };
 
   const participantsList: Participant[] = peers.map(p => ({
@@ -333,7 +364,6 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
       name: p.name
   }));
   
-  // Add self to participants
   if (user) {
       participantsList.push({
           uid: user.id,
@@ -346,40 +376,57 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
       });
   }
 
+  // Loading states - Mobile optimized
   if (!user) return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-4">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
-      <p className="text-gray-400">Setting up your session...</p>
+    <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-3 p-4">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500"></div>
+      <p className="text-gray-400 text-sm">Setting up...</p>
     </div>
   );
   
-  // Show media setup status
   if (!localStream && connectionStatus === 'connecting') {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
-        <p className="text-xl font-semibold">Setting up camera and microphone...</p>
-        <p className="text-gray-400 text-sm">Please allow access when prompted</p>
+      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-3 p-4 text-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500"></div>
+        <p className="text-base font-semibold">Setting up media...</p>
+        <p className="text-gray-400 text-xs">Allow camera & mic access</p>
       </div>
     );
   }
   
-  // Show connection status
   if (connectionStatus === 'disconnected') {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-4">
-        <div className="text-red-500 text-6xl mb-4">⚠️</div>
-        <p className="text-xl font-semibold">Connection Lost</p>
-        <p className="text-gray-400">Trying to reconnect...</p>
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mt-4"></div>
+      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-3 p-4">
+        <div className="text-red-500 text-5xl mb-2">⚠️</div>
+        <p className="text-base font-semibold">Connection Lost</p>
+        <p className="text-gray-400 text-sm">Reconnecting...</p>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mt-2"></div>
+      </div>
+    );
+  }
+
+  // Reconnecting state
+  if (connectionStatus === 'reconnecting') {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white gap-3 p-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-yellow-500"></div>
+        <p className="text-base font-semibold">Reconnecting...</p>
+        <p className="text-gray-400 text-sm">Attempt {reconnectAttempt}/5</p>
+        <Button 
+          onClick={manualReconnect}
+          className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2"
+        >
+          Reconnect Now
+        </Button>
       </div>
     );
   }
 
   return (
     <>
-      <div className="flex h-screen bg-gray-900 text-white overflow-hidden flex-col sm:flex-row">
-        <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex h-screen bg-gray-900 text-white overflow-hidden flex-col">
+        {/* Header */}
+        <div className="flex-none">
           <LiveSessionHeader
             sessionName={sessionName}
             sessionTime={sessionTime}
@@ -398,26 +445,31 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
             onShareLink={() => setShowShareDialog(true)}
             connectionStatus={connectionStatus}
           />
+        </div>
           
-          <div className="flex-1 relative bg-black overflow-hidden flex flex-col">
+        {/* Main Content Row */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Video + Controls Column */}
+          <div className="flex-1 flex flex-col relative min-w-0">
+            {/* Video Area */}
+            <div className="flex-1 relative bg-black overflow-hidden flex flex-col min-h-0">
               {userRole === 'tutor' && !isLive && (
-                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-                      <div className="bg-gray-900 p-6 sm:p-8 rounded-xl border border-gray-700 text-center max-w-md mx-4">
-                          <h2 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4">Ready to Start?</h2>
-                          <p className="text-sm sm:text-base text-gray-400 mb-4 sm:mb-6">
-                              You are about to start the live session for <span className="text-indigo-400">{courseName || 'this class'}</span>.
-                              Students will be notified once you go live.
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                      <div className="bg-gray-900 p-4 rounded-xl border border-gray-700 text-center max-w-sm">
+                          <h2 className="text-lg font-bold text-white mb-2">Ready to Start?</h2>
+                          <p className="text-sm text-gray-400 mb-4">
+                              Start live session for <span className="text-indigo-400">{courseName || 'this class'}</span>
                           </p>
-                          <div className="flex gap-3 sm:gap-4 justify-center">
+                          <div className="flex gap-2 justify-center">
                               <Button 
                                   variant="outline" 
                                   onClick={onLeave}
-                                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                                  className="border-gray-600 text-gray-300 hover:bg-gray-800 text-sm"
                               >
                                   Cancel
                               </Button>
                               <Button 
-                                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm"
                                   onClick={handleGoLive}
                               >
                                   Go Live
@@ -440,11 +492,14 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
                       userRole={userRole}
                       isLocalVideoOn={isVideoOn}
                       layout={layout}
+                      onMuteStudent={handleMuteParticipant}
+                      onUnmuteStudent={handleRequestUnmute}
                   />
               )}
-          </div>
+            </div>
 
-          <div className="flex-none z-50 relative">
+            {/* Controls Bar */}
+            <div className="flex-none z-50">
               <ControlsBar
                   userRole={userRole}
                   isAudioOn={isAudioOn}
@@ -461,76 +516,110 @@ export default function EnhancedLiveSession({ sessionId, sessionName, userRole, 
                   onToggleRecording={isRecording ? stopRecording : startRecording}
                   onToggleWhiteboard={() => setShowWhiteboard(!showWhiteboard)}
                   onToggleHandRaise={toggleHandRaise}
-                  onRequestScreenShare={() => toast.info("Request screen share not implemented yet")}
+                  onRequestScreenShare={() => toast.info("Request not implemented")}
                   onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
                   onToggleLayout={() => setLayout(prev => prev === 'focus' ? 'grid' : 'focus')}
                   onLeave={onLeave}
               />
+            </div>
           </div>
+
+          {/* Sidebar - Desktop */}
+          {isSidebarOpen && (
+            <div className="w-80 border-l border-gray-800 bg-gray-900 flex-none hidden md:block h-full">
+              <Sidebar
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                messages={messages}
+                participants={participantsList}
+                sharedFiles={sharedFiles}
+                onFileUpload={handleFileUpload}
+                onSendMessage={handleSendMessage}
+                chatInput={chatInput}
+                setChatInput={setChatInput}
+                currentUserId={user.id}
+                currentUserName={user.name}
+                userRole={userRole}
+                socket={socket}
+                sessionId={sessionId}
+                onMuteParticipant={handleMuteParticipant}
+                onKickParticipant={handleKickParticipant}
+                onRequestUnmute={handleRequestUnmute}
+              />
+            </div>
+          )}
         </div>
 
+        {/* Sidebar - Mobile Overlay */}
         {isSidebarOpen && (
-            <Sidebar
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              messages={messages}
-              participants={participantsList}
-              sharedFiles={sharedFiles}
-              onSendMessage={handleSendMessage}
-              chatInput={chatInput}
-              setChatInput={setChatInput}
-              currentUserId={user.id}
-              userRole={userRole}
-              socket={socket}
-              sessionId={sessionId}
-              onMuteParticipant={handleMuteParticipant}
-              onKickParticipant={handleKickParticipant}
-              onRequestUnmute={handleRequestUnmute}
-            />
+            <div className="fixed inset-0 z-[60] md:hidden">
+              <div className="absolute inset-0 bg-black/50" onClick={() => setIsSidebarOpen(false)}></div>
+              <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-gray-900">
+                <Sidebar
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  messages={messages}
+                  participants={participantsList}
+                  sharedFiles={sharedFiles}
+                  onFileUpload={handleFileUpload}
+                  onSendMessage={handleSendMessage}
+                  chatInput={chatInput}
+                  setChatInput={setChatInput}
+                  currentUserId={user.id}
+                  currentUserName={user.name}
+                  userRole={userRole}
+                  socket={socket}
+                  sessionId={sessionId}
+                  onMuteParticipant={handleMuteParticipant}
+                  onKickParticipant={handleKickParticipant}
+                  onRequestUnmute={handleRequestUnmute}
+                />
+              </div>
+            </div>
         )}
       </div>
 
-      {/* Share Dialog */}
+      {/* Share Dialog - Mobile Optimized */}
       {showShareDialog && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-gray-900 rounded-xl border border-gray-700 p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-white mb-4">Share Session Link</h3>
-            <div className="space-y-4">
+          <div className="bg-gray-900 rounded-xl border border-gray-700 p-4 max-w-md w-full">
+            <h3 className="text-lg font-bold text-white mb-3">Share Link</h3>
+            <div className="space-y-3">
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Email Addresses (comma-separated)</label>
+                <label className="text-xs text-gray-400 mb-1 block">Emails (comma-separated)</label>
                 <input
                   type="text"
                   value={shareEmails}
                   onChange={(e) => setShareEmails(e.target.value)}
-                  placeholder="student1@email.com, student2@email.com"
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="student1@email.com"
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                 />
               </div>
               <div>
-                <label className="text-sm text-gray-400 mb-2 block">Personal Message (optional)</label>
+                <label className="text-xs text-gray-400 mb-1 block">Message (optional)</label>
                 <textarea
                   value={shareMessage}
                   onChange={(e) => setShareMessage(e.target.value)}
-                  placeholder="Add a personal message..."
-                  rows={3}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  placeholder="Add a message..."
+                  rows={2}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none text-sm"
                 />
               </div>
-              <div className="flex gap-3 justify-end">
+              <div className="flex gap-2 justify-end">
                 <Button
                   variant="outline"
                   onClick={() => setShowShareDialog(false)}
                   disabled={isSharing}
-                  className="border-gray-600 text-gray-300 hover:bg-gray-800"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-800 text-sm"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleShareLink}
                   disabled={isSharing}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm"
                 >
-                  {isSharing ? 'Sending...' : 'Send Invites'}
+                  {isSharing ? 'Sending...' : 'Send'}
                 </Button>
               </div>
             </div>

@@ -58,6 +58,7 @@ interface User {
   id: string
   name: string
   email: string
+  personalEmail?: string
   role: "admin" | "tutor" | "student"
   status: "active" | "pending" | "inactive" | "rejected"
   createdAt: string
@@ -252,6 +253,122 @@ export default function AdminDashboard() {
   const [inviteTutorName, setInviteTutorName] = useState('')
   const [inviteDepartment, setInviteDepartment] = useState('')
   const [inviteSubmitting, setInviteSubmitting] = useState(false)
+  
+  // Tutor credentials dialog state
+  const [selectedTutors, setSelectedTutors] = useState<string[]>([])
+  const [showTutorCredentialsDialog, setShowTutorCredentialsDialog] = useState(false)
+  const [credentialsEmailSubject, setCredentialsEmailSubject] = useState("Your Tutor Account Credentials - Excellence Academia")
+  const [credentialsEmailMessage, setCredentialsEmailMessage] = useState("")
+  const [sendingCredentials, setSendingCredentials] = useState(false)
+  
+  // Student credentials dialog state
+  const [showStudentCredentialsDialog, setShowStudentCredentialsDialog] = useState(false)
+  const [studentCredentialsEmailSubject, setStudentCredentialsEmailSubject] = useState("Your Student Account Credentials - Excellence Academia")
+  const [studentCredentialsEmailMessage, setStudentCredentialsEmailMessage] = useState("")
+  const [sendingStudentCredentials, setSendingStudentCredentials] = useState(false)
+  const [studentCredentialResults, setStudentCredentialResults] = useState<any>(null)
+  const [tutorCredentialResults, setTutorCredentialResults] = useState<any>(null)
+  
+  // Admin credentials dialog state
+  const [selectedAdminIds, setSelectedAdminIds] = useState<string[]>([])
+  const [showAdminCredentialsDialog, setShowAdminCredentialsDialog] = useState(false)
+  const [adminCredentialsEmailSubject, setAdminCredentialsEmailSubject] = useState("Your Admin Account Credentials - Excellence Academia")
+  const [adminCredentialsEmailMessage, setAdminCredentialsEmailMessage] = useState("")
+  const [sendingAdminCredentials, setSendingAdminCredentials] = useState(false)
+  const [adminCredentialResults, setAdminCredentialResults] = useState<any>(null)
+  const [showAdminEmailPreview, setShowAdminEmailPreview] = useState(false)
+  const [adminEmailPreviewData, setAdminEmailPreviewData] = useState<any>(null)
+
+  const generateAdminCredentialsPreview = async () => {
+    if (selectedAdminIds.length === 0) return
+    
+    // Use the first selected admin for preview
+    const adminId = selectedAdminIds[0]
+    
+    try {
+      setPreviewLoading(true)
+      const res: any = await apiFetch("/api/admin/admins/credentials-preview", {
+        method: "POST",
+        body: JSON.stringify({
+          adminId,
+          subject: adminCredentialsEmailSubject,
+          message: adminCredentialsEmailMessage
+        })
+      })
+      
+      if (res.success && res.preview) {
+        setAdminEmailPreviewData(res.preview)
+      } else {
+        toast({
+          title: "Preview failed",
+          description: res.error || "Could not generate email preview",
+          variant: "destructive"
+        })
+      }
+    } catch (e: any) {
+      toast({
+        title: "Preview error",
+        description: e.message || "Failed to fetch preview",
+        variant: "destructive"
+      })
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [showEmailPreview, setShowEmailPreview] = useState(false)
+
+  const generateEmailPreview = () => {
+    const sampleTutor = tutors.find(t => selectedTutors.includes(t.id))
+    
+    if (sampleTutor) {
+      // Use same logic as PDF export to get real course data
+      const tutorCourses = courses
+        .filter((course) => course.tutorId && String(course.tutorId) === String(sampleTutor.id))
+        .map((course) => course.name)
+      
+      const courseDepartments = [...new Set(courses
+        .filter((course) => course.tutorId && String(course.tutorId) === String(sampleTutor.id))
+        .map((course) => course.department)
+        .filter(Boolean))]
+      
+      const primaryDepartment = sampleTutor.department || courseDepartments[0] || "General"
+      const allDepartments = [...new Set([
+        sampleTutor.department,
+        ...courseDepartments
+      ].filter(Boolean))]
+      
+      // Use same password generation as PDF export
+      const tempPassword = generatePasswordFromName(sampleTutor.name)
+      
+      return {
+        recipientName: sampleTutor.name,
+        tutorEmail: sampleTutor.email,
+        personalEmail: sampleTutor.personalEmail,
+        department: primaryDepartment,
+        allDepartments: allDepartments.join(", "),
+        courses: tutorCourses.join(", ") || "No courses assigned",
+        courseCount: tutorCourses.length,
+        tempPassword,
+        additionalMessage: credentialsEmailMessage
+      }
+    }
+    
+    // Fallback sample data
+    return {
+      recipientName: "John Smith",
+      tutorEmail: "john.smith@system.com",
+      personalEmail: "john.personal@gmail.com",
+      department: "Mathematics",
+      allDepartments: "Mathematics, Physics",
+      courses: "Calculus I, Algebra II",
+      courseCount: 2,
+      tempPassword: "johnsmith123",
+      additionalMessage: credentialsEmailMessage
+    }
+  }
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const [showCoursePlacementDialog, setShowCoursePlacementDialog] = useState(false)
@@ -555,7 +672,7 @@ export default function AdminDashboard() {
     } finally {
       localStorage.removeItem("user")
       localStorage.removeItem("auth_token")
-      navigate("/admin-login")
+      window.location.href = "/admin-login"
     }
   }
 
@@ -563,9 +680,15 @@ export default function AdminDashboard() {
   const fetchTutors = async () => {
     try {
       // Fetch system users with role="tutor" for admin management
-      const data = await apiFetch<any>(`/api/admin/users?role=tutor`)
+      // Add cache busting to ensure fresh data
+      const timestamp = Date.now()
+      const data = await apiFetch<any>(`/api/admin/users?role=tutor&_t=${timestamp}`)
       const rows = (data && (data as any).data) ? (data as any).data : data
       const tutorList = Array.isArray(rows) ? rows : []
+      
+      console.log('Raw tutor data from API:', tutorList.filter((t: any) => 
+        t.name?.toLowerCase().includes('roshan') || t.name?.toLowerCase().includes('rohan')
+      ))
       
       // Fetch all courses to count per tutor
       const coursesData = await apiFetch<any[]>(`/api/courses?all=true`)
@@ -579,6 +702,17 @@ export default function AdminDashboard() {
           return courseTutorId === tutorId
         })
         
+        // Debug log to see actual data
+        if (t.name?.toLowerCase().includes('roshan') || t.name?.toLowerCase().includes('rohan')) {
+          console.log('Tutor data from API:', {
+            id: t.id,
+            name: t.name,
+            email: t.email,
+            personalEmail: t.personalEmail,
+            department: t.department
+          })
+        }
+        
         return {
           ...t,
           id: tutorId,
@@ -589,6 +723,12 @@ export default function AdminDashboard() {
       })
       
       setTutors(tutorsWithStatus)
+      
+      // Log the final tutor data for debugging
+      console.log('Final tutors state:', tutorsWithStatus.filter((t: any) => 
+        t.name?.toLowerCase().includes('roshan') || t.name?.toLowerCase().includes('rohan')
+      ))
+      
     } catch (e) {
       console.error('Failed to fetch tutors:', e)
       setTutors([])
@@ -699,6 +839,145 @@ export default function AdminDashboard() {
     } catch (e) {
       console.error(e)
       toast({ title: "Error", description: "Failed to delete tutors", variant: "destructive" })
+    }
+  }
+
+  const handleSendStudentCredentials = async () => {
+    if (selectedStudentIds.length === 0) return
+    
+    setSendingStudentCredentials(true)
+    setStudentCredentialResults(null)
+    try {
+      const payload = {
+        studentIds: selectedStudentIds,
+        subject: studentCredentialsEmailSubject,
+        message: studentCredentialsEmailMessage
+      }
+      
+      const res: any = await apiFetch("/api/admin/students/send-credentials", { 
+        method: "POST", 
+        body: JSON.stringify(payload) 
+      })
+      
+      setStudentCredentialResults(res)
+      
+      const summary = res.summary || {}
+      const successCount = summary.successful || 0
+      
+      if (successCount > 0) {
+        toast({ 
+          title: "Processing Complete", 
+          description: `Processed credentials for ${selectedStudentIds.length} students` 
+        })
+      }
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Error", description: "Failed to send credentials", variant: "destructive" })
+    } finally {
+      setSendingStudentCredentials(false)
+    }
+  }
+
+  const handleSendTutorCredentials = async () => {
+    
+    setSendingCredentials(true)
+    setTutorCredentialResults(null)
+    try {
+      const selectedTutorData = tutors.filter(t => selectedTutors.includes(t.id))
+      
+      const payload = {
+        tutorIds: selectedTutors,
+        subject: credentialsEmailSubject,
+        message: credentialsEmailMessage
+      }
+      
+      const res: any = await apiFetch("/api/admin/tutors/send-credentials", { 
+        method: "POST", 
+        body: JSON.stringify(payload) 
+      })
+      
+      setTutorCredentialResults(res)
+      
+      const summary = res.summary || {}
+      const successCount = summary.successful || 0
+      
+      if (successCount > 0) {
+        toast({ 
+          title: "Processing Complete", 
+          description: `Processed credentials for ${selectedTutors.length} tutors` 
+        })
+      }
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Error", description: "Failed to send credentials", variant: "destructive" })
+    } finally {
+      setSendingCredentials(false)
+    }
+  }
+
+  const handleSendAdminCredentials = async () => {
+    
+    setSendingAdminCredentials(true)
+    setAdminCredentialResults(null)
+    try {
+      const payload = {
+        adminIds: selectedAdminIds,
+        subject: adminCredentialsEmailSubject,
+        message: adminCredentialsEmailMessage
+      }
+      
+      const res: any = await apiFetch("/api/admin/admins/send-credentials", { 
+        method: "POST", 
+        body: JSON.stringify(payload) 
+      })
+      
+      setAdminCredentialResults(res)
+      
+      const summary = res.summary || {}
+      const successCount = summary.successful || 0
+      
+      if (successCount > 0) {
+        toast({ 
+          title: "Processing Complete", 
+          description: `Processed credentials for ${selectedAdminIds.length} admins` 
+        })
+      }
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Error", description: "Failed to send credentials", variant: "destructive" })
+    } finally {
+      setSendingAdminCredentials(false)
+    }
+  }
+
+  const handlePreviewCredentialsEmail = async () => {
+    if (selectedTutors.length === 0) return
+    
+    setPreviewLoading(true)
+    try {
+      // Use the first selected tutor for preview
+      const firstTutorId = selectedTutors[0]
+      
+      const payload = {
+        tutorId: firstTutorId,
+        subject: credentialsEmailSubject,
+        message: credentialsEmailMessage
+      }
+      
+      const res = await apiFetch("/api/admin/tutors/credentials-preview", { 
+        method: "POST", 
+        body: JSON.stringify(payload) 
+      })
+      
+      if (res && (res as any).preview) {
+        setEmailPreviewHtml((res as any).preview.html)
+        setShowEmailPreview(true)
+      }
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Error", description: "Failed to generate preview", variant: "destructive" })
+    } finally {
+      setPreviewLoading(false)
     }
   }
 
@@ -2461,6 +2740,18 @@ export default function AdminDashboard() {
 
                 <button
                   onClick={() => {
+                    setActiveTab("live-sessions")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "live-sessions" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                    }`}
+                >
+                  <Video className="h-5 w-5 mr-2" />
+                  <span>Live Sessions</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setActiveTab("departments")
                     setMobileMenuOpen(false)
                   }}
@@ -2500,6 +2791,18 @@ export default function AdminDashboard() {
 
                 <button
                   onClick={() => {
+                    setActiveTab("content")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "content" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                    }`}
+                >
+                  <Layout className="h-5 w-5 mr-2" />
+                  <span>Content</span>
+                </button>
+
+                <button
+                  onClick={() => {
                     setActiveTab("finance")
                     setMobileMenuOpen(false)
                   }}
@@ -2532,6 +2835,18 @@ export default function AdminDashboard() {
                 >
                   <Settings className="h-5 w-5 mr-2" />
                   <span>Settings</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("admins")
+                    setMobileMenuOpen(false)
+                  }}
+                  className={`flex items-center justify-start w-full px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${activeTab === "admins" ? "bg-indigo-50 text-indigo-600 shadow-sm" : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                    }`}
+                >
+                  <Shield className="h-5 w-5 mr-2" />
+                  <span>Admins</span>
                 </button>
               </nav>
             </ScrollArea>
@@ -2775,13 +3090,13 @@ export default function AdminDashboard() {
           {activeTab === "dashboard" && (
             <div className="space-y-6">
               {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <Card className="border-l-4 border-indigo-500">
+                  <Card className="border-l-4 border-indigo-500 hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Total Users</CardTitle>
                       <Users className="h-4 w-4 text-indigo-500" />
@@ -2800,7 +3115,7 @@ export default function AdminDashboard() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.1 }}
                 >
-                  <Card className="border-l-4 border-blue-500">
+                  <Card className="border-l-4 border-blue-500 hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Active Subjects</CardTitle>
                       <BookOpen className="h-4 w-4 text-blue-500" />
@@ -2819,7 +3134,7 @@ export default function AdminDashboard() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.2 }}
                 >
-                  <Card className="border-l-4 border-green-500">
+                  <Card className="border-l-4 border-green-500 hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Active Students</CardTitle>
                       <GraduationCap className="h-4 w-4 text-green-500" />
@@ -2838,7 +3153,7 @@ export default function AdminDashboard() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: 0.3 }}
                 >
-                  <Card className="border-l-4 border-amber-500">
+                  <Card className="border-l-4 border-amber-500 hover:shadow-md transition-shadow">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                       <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
                       <AlertCircle className="h-4 w-4 text-amber-500" />
@@ -2853,42 +3168,85 @@ export default function AdminDashboard() {
                 </motion.div>
               </div>
 
-              {/* Department Overview */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle>Department Overview</CardTitle>
-                    <CardDescription>Statistics across all departments</CardDescription>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => setActiveTab("departments")}>
-                    View All
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {departments.map((department) => (
-                      <div key={department.id} className="flex items-center">
-                        <div className="h-3 w-3 rounded-full mr-3" style={{ backgroundColor: department.color }} />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex justify-between items-center mb-1">
-                            <p className="text-sm font-medium truncate">{department.name}</p>
-                            <p className="text-sm text-muted-foreground">{department.students} students</p>
-                          </div>
-                          <div className="flex justify-between items-center text-xs text-muted-foreground">
-                            <span>{department.courses} courses</span>
-                            <span>{department.tutors} tutors</span>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Department Overview */}
+                <Card className="h-full">
+                  <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0">
+                    <div>
+                      <CardTitle>Department Overview</CardTitle>
+                      <CardDescription>Statistics across all departments</CardDescription>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setActiveTab("departments")}>
+                      View All
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {departments.map((department) => (
+                        <div key={department.id} className="flex items-center">
+                          <div className="h-3 w-3 rounded-full mr-3" style={{ backgroundColor: department.color }} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex justify-between items-center mb-1">
+                              <p className="text-sm font-medium truncate">{department.name}</p>
+                              <p className="text-sm text-muted-foreground">{department.students} students</p>
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-muted-foreground">
+                              <span>{department.courses} courses</span>
+                              <span>{department.tutors} tutors</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Recent Notifications */}
+                <Card className="h-full">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle>Recent Notifications</CardTitle>
+                      <CardDescription>Latest system notifications and alerts</CardDescription>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setActiveTab("notifications")}>
+                      View All
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {notifications.slice(0, 5).map((notification) => (
+                        <div
+                          key={notification.id}
+                          className={`p-4 rounded-lg ${notification.read ? "bg-gray-50" : "bg-blue-50 border-l-4 border-blue-500"} cursor-pointer hover:bg-opacity-80 transition-colors`}
+                          onClick={() => handleMarkNotificationAsRead(notification.id)}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="font-medium">{notification.title}</h3>
+                              <p className="text-sm">{notification.message}</p>
+                            </div>
+                            <Badge variant={notification.read ? "outline" : "default"} className="ml-2">
+                              {notification.read ? "Read" : "New"}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                            <span>{new Date(notification.date).toLocaleDateString()}</span>
+                            <span>•</span>
+                            <Badge variant="outline" className="text-xs">
+                              {notification.type}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
 
               {/* Pending Approvals and Quick Actions */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 {/* Pending Approvals */}
-                <Card className="md:col-span-2">
+                <Card className="xl:col-span-1 h-full">
                   <CardHeader>
                     <CardTitle>Pending Approvals</CardTitle>
                     <CardDescription>Items waiting for your approval</CardDescription>
@@ -2901,21 +3259,19 @@ export default function AdminDashboard() {
                         {pendingTutors.slice(0, 2).map((tutor) => (
                           <div
                             key={tutor.id}
-                            className="flex items-center justify-between p-4 border rounded-lg bg-gray-50"
+                            className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-gray-50 gap-4 sm:gap-0"
                           >
-                            <div>
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline" className="bg-blue-100 text-blue-800 hover:bg-blue-100">Tutor</Badge>
                                 <h3 className="font-medium">{tutor.name}</h3>
                               </div>
                               <p className="text-sm text-muted-foreground">{tutor.email}</p>
-                              <div className="flex items-center gap-2 mt-1 text-sm">
+                              <div className="flex items-center gap-2 mt-1 text-sm flex-wrap">
                                 <span>{tutor.department}</span>
-                                <span>•</span>
-                                <span>{tutor.specialization}</span>
                               </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full sm:w-auto justify-end">
                               <Button size="sm" onClick={() => handleApproveTutor(tutor.id)}>
                                 <Check className="h-4 w-4 mr-1" />
                                 Approve
@@ -2931,19 +3287,16 @@ export default function AdminDashboard() {
                         {pendingStudents.slice(0, 2).map((student) => (
                           <div
                             key={student.id}
-                            className="flex items-center justify-between p-4 border rounded-lg bg-gray-50"
+                            className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-gray-50 gap-4 sm:gap-0"
                           >
-                            <div>
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline" className="bg-green-100 text-green-800 hover:bg-green-100">Student</Badge>
                                 <h3 className="font-medium">{student.name}</h3>
                               </div>
                               <p className="text-sm text-muted-foreground">{student.email}</p>
-                              <div className="flex items-center gap-2 mt-1 text-sm">
-                                <span>Registered: {new Date(student.createdAt).toLocaleDateString()}</span>
-                              </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full sm:w-auto justify-end [&>*]:flex-1 sm:[&>*]:flex-none">
                               <Button size="sm" onClick={() => handleApproveStudent(student.id)}>
                                 <Check className="h-4 w-4 mr-1" />
                                 Approve
@@ -2959,21 +3312,16 @@ export default function AdminDashboard() {
                         {pendingCourses.slice(0, 2).map((course) => (
                           <div
                             key={course.id}
-                            className="flex items-center justify-between p-4 border rounded-lg bg-gray-50"
+                            className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg bg-gray-50 gap-4 sm:gap-0"
                           >
-                            <div>
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline" className="bg-amber-100 text-amber-800 hover:bg-amber-100">Subject</Badge>
                                 <h3 className="font-medium">{course.name}</h3>
                               </div>
                               <p className="text-sm text-muted-foreground">{course.description}</p>
-                              <div className="flex items-center gap-2 mt-1 text-sm">
-                                <span>{course.department}</span>
-                                <span>•</span>
-                                <span>Tutor: {tutors.find(t => t.id === course.tutorId)?.name || "Unknown"}</span>
-                              </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full sm:w-auto sm:justify-end [&>*]:flex-1 sm:[&>*]:flex-none">
                               <Button size="sm" onClick={() => handleApproveCourse(course.id)}>
                                 <Check className="h-4 w-4 mr-1" />
                                 Approve
@@ -2997,420 +3345,421 @@ export default function AdminDashboard() {
                 </Card>
 
                 {/* Quick Actions */}
-                <Card>
+                <Card className="xl:col-span-2 h-full">
                   <CardHeader>
                     <CardTitle>Quick Actions</CardTitle>
                     <CardDescription>Common administrative tasks</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button className="w-full justify-start" variant="outline">
-                          <UserPlus className="h-4 w-4 mr-2" />
-                          Add New Tutor
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Add New Tutor</DialogTitle>
-                          <DialogDescription>
-                            Create a new tutor account. They will receive an email with login instructions.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="tutor-name">Full Name</Label>
-                            <Input
-                              id="tutor-name"
-                              placeholder="e.g., Dr. Jane Smith"
-                              value={newTutor.name}
-                              onChange={(e) => setNewTutor({ ...newTutor, name: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="tutor-email">Email</Label>
-                            <Input
-                              id="tutor-email"
-                              type="email"
-                              placeholder="e.g., jane.smith@university.edu"
-                              value={newTutor.email}
-                              onChange={(e) => setNewTutor({ ...newTutor, email: e.target.value })}
-                            />
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="tutor-department">Department</Label>
-                              <Select
-                                onValueChange={(value) => setNewTutor({ ...newTutor, department: value })}
-                                value={newTutor.department}
-                              >
-                                <SelectTrigger id="tutor-department">
-                                  <SelectValue placeholder="Select department" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {departments.map((dept) => (
-                                    <SelectItem key={dept.id} value={dept.name}>
-                                      {dept.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="tutor-specialization">Specialization</Label>
-                              <Input
-                                id="tutor-specialization"
-                                placeholder="e.g., Quantum Physics"
-                                value={newTutor.specialization}
-                                onChange={(e) => setNewTutor({ ...newTutor, specialization: e.target.value })}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button onClick={handleCreateTutor} disabled={isCreatingTutor || !newTutor.name.trim() || !newTutor.email.trim() || !newTutor.department || !newTutor.specialization.trim()}>
-                            {isCreatingTutor ? "Creating..." : "Create Tutor"}
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button className="w-full justify-start" variant="outline">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Create New Subject
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Create New Subject</DialogTitle>
-                          <DialogDescription>
-                            Create a new subject and assign it to a tutor.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="course-name">Subject Name</Label>
-                              <Input
-                                id="course-name"
-                                placeholder="e.g., Advanced Physics"
-                                value={newCourse.name}
-                                onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="course-section">Section / Group</Label>
-                              <Input
-                                id="course-section"
-                                placeholder="e.g., Group A, 2024-Q1"
-                                value={newCourse.section}
-                                onChange={(e) => setNewCourse({ ...newCourse, section: e.target.value })}
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="course-description">Description</Label>
-                            <Textarea
-                              id="course-description"
-                              placeholder="Brief description of the subject"
-                              rows={3}
-                              value={newCourse.description}
-                              onChange={(e) => setNewCourse({ ...newCourse, description: e.target.value })}
-                            />
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="course-department">Department</Label>
-                              <Select
-                                onValueChange={(value) => setNewCourse({ ...newCourse, department: value })}
-                                value={newCourse.department}
-                              >
-                                <SelectTrigger id="course-department">
-                                  <SelectValue placeholder="Select department" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {departments.map((dept) => (
-                                    <SelectItem key={dept.id} value={dept.name}>
-                                      {dept.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="course-tutor">Tutor</Label>
-                              <Select
-                                onValueChange={(value) => {
-                                  const tutor = tutors.find(t => t.id === value);
-                                  setNewCourse({
-                                    ...newCourse,
-                                    tutorId: value,
-                                    department: tutor?.department || newCourse.department
-                                  });
-                                }}
-                                value={newCourse.tutorId}
-                              >
-                                <SelectTrigger id="course-tutor">
-                                  <SelectValue placeholder="Select tutor" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {tutors
-                                    .filter((tutor) => tutor.status === "active" && (!newCourse.department || tutor.department === newCourse.department))
-                                    .map((tutor) => (
-                                      <SelectItem key={tutor.id} value={tutor.id}>
-                                        {tutor.name}
-                                      </SelectItem>
-                                    ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="course-start">Start Date</Label>
-                              <Input
-                                id="course-start"
-                                type="date"
-                                value={newCourse.startDate}
-                                onChange={(e) => setNewCourse({ ...newCourse, startDate: e.target.value })}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="course-end">End Date</Label>
-                              <Input
-                                id="course-end"
-                                type="date"
-                                value={newCourse.endDate}
-                                onChange={(e) => setNewCourse({ ...newCourse, endDate: e.target.value })}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button onClick={handleCreateCourse} disabled={isCreatingCourse || !newCourse.name.trim() || !newCourse.description.trim() || !newCourse.department || !newCourse.tutorId || !newCourse.startDate || !newCourse.endDate}>
-                            {isCreatingCourse ? "Creating..." : "Create Subject"}
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button className="w-full justify-start" variant="outline">
-                          <Send className="h-4 w-4 mr-2" />
-                          Send Notification
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Send Notification</DialogTitle>
-                          <DialogDescription>
-                            Send a notification to tutors, students, or specific users.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="notification-title">Title</Label>
-                            <Input
-                              id="notification-title"
-                              placeholder="e.g., System Maintenance"
-                              value={newNotification.title}
-                              onChange={(e) => setNewNotification({ ...newNotification, title: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="notification-message">Message</Label>
-                            <Textarea
-                              id="notification-message"
-                              placeholder="Enter your notification message"
-                              rows={4}
-                              value={newNotification.message}
-                              onChange={(e) => setNewNotification({ ...newNotification, message: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="notification-type">Type</Label>
-                            <Select
-                              onValueChange={(value) => setNewNotification({ ...newNotification, type: value })}
-                              value={newNotification.type}
-                            >
-                              <SelectTrigger id="notification-type">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="system">System</SelectItem>
-                                <SelectItem value="course">Subject</SelectItem>
-                                <SelectItem value="user">User</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Recipients</Label>
-                            <div className="flex flex-col gap-2">
-                              <div className="flex items-center space-x-2">
-                                <Checkbox
-                                  id="recipients-tutors"
-                                  checked={newNotification.recipients.tutors}
-                                  onCheckedChange={(checked) =>
-                                    setNewNotification({
-                                      ...newNotification,
-                                      recipients: {
-                                        ...newNotification.recipients,
-                                        tutors: checked as boolean,
-                                      },
-                                    })
-                                  }
-                                />
-                                <Label htmlFor="recipients-tutors">All Tutors</Label>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {/* User Management */}
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-muted-foreground border-b pb-1">User Management</h4>
+                        <div className="grid gap-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button className="w-full justify-start h-auto py-3" variant="outline">
+                                <div className="flex items-center">
+                                  <div className="bg-blue-100 p-2 rounded-full mr-3 text-blue-600">
+                                    <UserPlus className="h-4 w-4" />
+                                  </div>
+                                  <div className="text-left">
+                                    <div className="font-semibold">Add New Tutor</div>
+                                    <div className="text-xs text-muted-foreground">Create a tutor account</div>
+                                  </div>
+                                </div>
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Add New Tutor</DialogTitle>
+                                <DialogDescription>
+                                  Create a new tutor account. They will receive an email with login instructions.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="tutor-name">Full Name</Label>
+                                  <Input
+                                    id="tutor-name"
+                                    placeholder="e.g., Dr. Jane Smith"
+                                    value={newTutor.name}
+                                    onChange={(e) => setNewTutor({ ...newTutor, name: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="tutor-email">Email</Label>
+                                  <Input
+                                    id="tutor-email"
+                                    type="email"
+                                    placeholder="e.g., jane.smith@university.edu"
+                                    value={newTutor.email}
+                                    onChange={(e) => setNewTutor({ ...newTutor, email: e.target.value })}
+                                  />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="tutor-department">Department</Label>
+                                    <Select
+                                      onValueChange={(value) => setNewTutor({ ...newTutor, department: value })}
+                                      value={newTutor.department}
+                                    >
+                                      <SelectTrigger id="tutor-department">
+                                        <SelectValue placeholder="Select department" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {departments.map((dept) => (
+                                          <SelectItem key={dept.id} value={dept.name}>
+                                            {dept.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="tutor-specialization">Specialization</Label>
+                                    <Input
+                                      id="tutor-specialization"
+                                      placeholder="e.g., Quantum Physics"
+                                      value={newTutor.specialization}
+                                      onChange={(e) => setNewTutor({ ...newTutor, specialization: e.target.value })}
+                                    />
+                                  </div>
+                                </div>
                               </div>
-                              <div className="flex items-center space-x-2">
-                                <Checkbox
-                                  id="recipients-students"
-                                  checked={newNotification.recipients.students}
-                                  onCheckedChange={(checked) =>
-                                    setNewNotification({
-                                      ...newNotification,
-                                      recipients: {
-                                        ...newNotification.recipients,
-                                        students: checked as boolean,
-                                      },
-                                    })
-                                  }
-                                />
-                                <Label htmlFor="recipients-students">All Students</Label>
-                              </div>
-                            </div>
-                          </div>
+                              <DialogFooter>
+                                <Button onClick={handleCreateTutor} disabled={isCreatingTutor || !newTutor.name.trim() || !newTutor.email.trim() || !newTutor.department || !newTutor.specialization.trim()}>
+                                  {isCreatingTutor ? "Creating..." : "Create Tutor"}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
                         </div>
-                        <DialogFooter>
-                          <Button
-                            onClick={handleSendNotification}
-                            disabled={
-                              isSendingNotification ||
-                              !newNotification.title.trim() ||
-                              !newNotification.message.trim() ||
-                              (!newNotification.recipients.tutors && !newNotification.recipients.students && !newNotification.recipients.specific.length)
-                            }
-                          >
-                            {isSendingNotification ? "Sending..." : "Send Notification"}
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                      </div>
 
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button className="w-full justify-start" variant="outline">
-                          <Building className="h-4 w-4 mr-2" />
-                          Add Department
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Add New Department</DialogTitle>
-                          <DialogDescription>
-                            Create a new academic department.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="department-name">Department Name</Label>
-                            <Input
-                              id="department-name"
-                              placeholder="e.g., Computer Science"
-                              value={newDepartment.name}
-                              onChange={(e) => setNewDepartment({ ...newDepartment, name: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="department-color">Department Color</Label>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                id="department-color"
-                                type="color"
-                                className="w-12 h-8 p-1"
-                                value={newDepartment.color}
-                                onChange={(e) => setNewDepartment({ ...newDepartment, color: e.target.value })}
-                              />
-                              <div
-                                className="w-8 h-8 rounded-full"
-                                style={{ backgroundColor: newDepartment.color }}
-                              />
-                            </div>
-                          </div>
+                      {/* Academic Management */}
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-muted-foreground border-b pb-1">Academic Management</h4>
+                        <div className="grid gap-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button className="w-full justify-start h-auto py-3" variant="outline">
+                                <div className="flex items-center">
+                                  <div className="bg-indigo-100 p-2 rounded-full mr-3 text-indigo-600">
+                                    <BookOpen className="h-4 w-4" />
+                                  </div>
+                                  <div className="text-left">
+                                    <div className="font-semibold">Create Subject</div>
+                                    <div className="text-xs text-muted-foreground">Add a new course</div>
+                                  </div>
+                                </div>
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Create New Subject</DialogTitle>
+                                <DialogDescription>
+                                  Create a new subject and assign it to a tutor.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4 py-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="course-name">Subject Name</Label>
+                                    <Input
+                                      id="course-name"
+                                      placeholder="e.g., Advanced Physics"
+                                      value={newCourse.name}
+                                      onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="course-section">Section / Group</Label>
+                                    <Input
+                                      id="course-section"
+                                      placeholder="e.g., Group A, 2024-Q1"
+                                      value={newCourse.section}
+                                      onChange={(e) => setNewCourse({ ...newCourse, section: e.target.value })}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="course-description">Description</Label>
+                                  <Textarea
+                                    id="course-description"
+                                    placeholder="Brief description of the subject"
+                                    rows={3}
+                                    value={newCourse.description}
+                                    onChange={(e) => setNewCourse({ ...newCourse, description: e.target.value })}
+                                  />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="course-department">Department</Label>
+                                    <Select
+                                      onValueChange={(value) => setNewCourse({ ...newCourse, department: value })}
+                                      value={newCourse.department}
+                                    >
+                                      <SelectTrigger id="course-department">
+                                        <SelectValue placeholder="Select department" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {departments.map((dept) => (
+                                          <SelectItem key={dept.id} value={dept.name}>
+                                            {dept.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="course-tutor">Tutor</Label>
+                                    <Select
+                                      onValueChange={(value) => {
+                                        const tutor = tutors.find(t => t.id === value);
+                                        setNewCourse({
+                                          ...newCourse,
+                                          tutorId: value,
+                                          department: tutor?.department || newCourse.department
+                                        });
+                                      }}
+                                      value={newCourse.tutorId}
+                                    >
+                                      <SelectTrigger id="course-tutor">
+                                        <SelectValue placeholder="Select tutor" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {tutors
+                                          .filter((tutor) => tutor.status === "active" && (!newCourse.department || tutor.department === newCourse.department))
+                                          .map((tutor) => (
+                                            <SelectItem key={tutor.id} value={tutor.id}>
+                                              {tutor.name}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="course-start">Start Date</Label>
+                                    <Input
+                                      id="course-start"
+                                      type="date"
+                                      value={newCourse.startDate}
+                                      onChange={(e) => setNewCourse({ ...newCourse, startDate: e.target.value })}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="course-end">End Date</Label>
+                                    <Input
+                                      id="course-end"
+                                      type="date"
+                                      value={newCourse.endDate}
+                                      onChange={(e) => setNewCourse({ ...newCourse, endDate: e.target.value })}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                              <DialogFooter>
+                                <Button onClick={handleCreateCourse} disabled={isCreatingCourse || !newCourse.name.trim() || !newCourse.description.trim() || !newCourse.department || !newCourse.tutorId || !newCourse.startDate || !newCourse.endDate}>
+                                  {isCreatingCourse ? "Creating..." : "Create Subject"}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button className="w-full justify-start h-auto py-3" variant="outline">
+                                <div className="flex items-center">
+                                  <div className="bg-purple-100 p-2 rounded-full mr-3 text-purple-600">
+                                    <Building className="h-4 w-4" />
+                                  </div>
+                                  <div className="text-left">
+                                    <div className="font-semibold">Add Department</div>
+                                    <div className="text-xs text-muted-foreground">Create new department</div>
+                                  </div>
+                                </div>
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Add New Department</DialogTitle>
+                                <DialogDescription>
+                                  Create a new academic department.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="department-name">Department Name</Label>
+                                  <Input
+                                    id="department-name"
+                                    placeholder="e.g., Computer Science"
+                                    value={newDepartment.name}
+                                    onChange={(e) => setNewDepartment({ ...newDepartment, name: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="department-color">Department Color</Label>
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      id="department-color"
+                                      type="color"
+                                      className="w-12 h-8 p-1"
+                                      value={newDepartment.color}
+                                      onChange={(e) => setNewDepartment({ ...newDepartment, color: e.target.value })}
+                                    />
+                                    <div
+                                      className="w-8 h-8 rounded-full"
+                                      style={{ backgroundColor: newDepartment.color }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                              <DialogFooter>
+                                <Button onClick={handleCreateDepartment} disabled={isCreatingDepartment || !newDepartment.name.trim()}>
+                                  {isCreatingDepartment ? "Creating..." : "Create Department"}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
                         </div>
-                        <DialogFooter>
-                          <Button onClick={handleCreateDepartment} disabled={isCreatingDepartment || !newDepartment.name.trim()}>
-                            {isCreatingDepartment ? "Creating..." : "Create Department"}
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                      </div>
+
+                      {/* Communication */}
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium text-muted-foreground border-b pb-1">Communication</h4>
+                        <div className="grid gap-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button className="w-full justify-start h-auto py-3" variant="outline">
+                                <div className="flex items-center">
+                                  <div className="bg-amber-100 p-2 rounded-full mr-3 text-amber-600">
+                                    <Send className="h-4 w-4" />
+                                  </div>
+                                  <div className="text-left">
+                                    <div className="font-semibold">Send Notification</div>
+                                    <div className="text-xs text-muted-foreground">Broadcast to users</div>
+                                  </div>
+                                </div>
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Send Notification</DialogTitle>
+                                <DialogDescription>
+                                  Send a notification to tutors, students, or specific users.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="notification-title">Title</Label>
+                                  <Input
+                                    id="notification-title"
+                                    placeholder="e.g., System Maintenance"
+                                    value={newNotification.title}
+                                    onChange={(e) => setNewNotification({ ...newNotification, title: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="notification-message">Message</Label>
+                                  <Textarea
+                                    id="notification-message"
+                                    placeholder="Enter your notification message"
+                                    rows={4}
+                                    value={newNotification.message}
+                                    onChange={(e) => setNewNotification({ ...newNotification, message: e.target.value })}
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="notification-type">Type</Label>
+                                  <Select
+                                    onValueChange={(value) => setNewNotification({ ...newNotification, type: value })}
+                                    value={newNotification.type}
+                                  >
+                                    <SelectTrigger id="notification-type">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="system">System</SelectItem>
+                                      <SelectItem value="course">Subject</SelectItem>
+                                      <SelectItem value="user">User</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Recipients</Label>
+                                  <div className="flex flex-col gap-2">
+                                    <div className="flex items-center space-x-2">
+                                      <Checkbox
+                                        id="recipients-tutors"
+                                        checked={newNotification.recipients.tutors}
+                                        onCheckedChange={(checked) =>
+                                          setNewNotification({
+                                            ...newNotification,
+                                            recipients: {
+                                              ...newNotification.recipients,
+                                              tutors: checked as boolean,
+                                            },
+                                          })
+                                        }
+                                      />
+                                      <Label htmlFor="recipients-tutors">All Tutors</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                      <Checkbox
+                                        id="recipients-students"
+                                        checked={newNotification.recipients.students}
+                                        onCheckedChange={(checked) =>
+                                          setNewNotification({
+                                            ...newNotification,
+                                            recipients: {
+                                              ...newNotification.recipients,
+                                              students: checked as boolean,
+                                            },
+                                          })
+                                        }
+                                      />
+                                      <Label htmlFor="recipients-students">All Students</Label>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <DialogFooter>
+                                <Button
+                                  onClick={handleSendNotification}
+                                  disabled={
+                                    isSendingNotification ||
+                                    !newNotification.title.trim() ||
+                                    !newNotification.message.trim() ||
+                                    (!newNotification.recipients.tutors && !newNotification.recipients.students && !newNotification.recipients.specific.length)
+                                  }
+                                >
+                                  {isSendingNotification ? "Sending..." : "Send Notification"}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Recent Notifications */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle>Recent Notifications</CardTitle>
-                    <CardDescription>Latest system notifications and alerts</CardDescription>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => setActiveTab("notifications")}>
-                    View All
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {notifications.slice(0, 5).map((notification) => (
-                      <div
-                        key={notification.id}
-                        className={`p-4 rounded-lg ${notification.read ? "bg-gray-50" : "bg-blue-50 border-l-4 border-blue-500"}`}
-                        onClick={() => handleMarkNotificationAsRead(notification.id)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-medium">{notification.title}</h3>
-                            <p className="text-sm">{notification.message}</p>
-                          </div>
-                          <Badge variant={notification.read ? "outline" : "default"} className="ml-2">
-                            {notification.read ? "Read" : "New"}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                          <span>{new Date(notification.date).toLocaleDateString()}</span>
-                          <span>•</span>
-                          <Badge variant="outline" className="text-xs">
-                            {notification.type}
-                          </Badge>
-                          <span>•</span>
-                          <span>
-                            To: {notification.recipients.tutors && notification.recipients.students
-                              ? "All Users"
-                              : notification.recipients.tutors
-                                ? "All Tutors"
-                                : notification.recipients.students
-                                  ? "All Students"
-                                  : "Specific Users"}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           )}
 
           {/* Tutors Tab */}
           {activeTab === "tutors" && (
             <div className="space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <h2 className="text-2xl font-bold">Tutors Management</h2>
-                <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight">Tutors Management</h2>
+                  <p className="text-muted-foreground">Manage academic staff and assignments</p>
+                </div>
+                <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3">
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button>
@@ -3482,52 +3831,69 @@ export default function AdminDashboard() {
                     </DialogContent>
                   </Dialog>
 
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={handleExportTutorLoginsExcel}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Export Logins (Excel)
-                      </Button>
-                      <Button variant="outline" onClick={handleExportTutorLoginsPdf}>
-                        <FileText className="mr-2 h-4 w-4" />
-                        Export Logins (PDF)
-                      </Button>
-                    </div>
+                  <div className="h-8 w-px bg-border hidden sm:block" />
 
-                    <div className="flex gap-2">
-                      <Select onValueChange={(value) => setFilterDepartment(value === "all" ? null : value)}>
-                        <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder="Filter by department" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Departments</SelectItem>
-                          {departments.map((dept) => (
-                            <SelectItem key={dept.id} value={dept.name}>
-                              {dept.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
-                        <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder="Filter by status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Statuses</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <Button variant="destructive" onClick={handleDeleteAllTutors}>
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete All Tutors
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={handleExportTutorLoginsExcel}>
+                      <Download className="mr-2 h-4 w-4" /> Excel
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleExportTutorLoginsPdf}>
+                      <FileText className="mr-2 h-4 w-4" /> PDF
                     </Button>
                   </div>
+
+                  <Select onValueChange={(value) => setFilterDepartment(value === "all" ? null : value)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filter Department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      {departments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.name}>
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setShowTutorCredentialsDialog(true)}
+                    disabled={selectedTutors.length === 0}
+                    title="Send Credentials to Selected Tutors"
+                  >
+                    <Mail className="mr-2 h-4 w-4" />
+                    Send Credentials ({selectedTutors.length})
+                  </Button>
+
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      console.log('Manual refresh triggered')
+                      fetchTutors()
+                    }}
+                    title="Refresh Tutor Data"
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Refresh
+                  </Button>
+
+                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDeleteAllTutors} title="Delete All Tutors">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
 
@@ -3541,6 +3907,18 @@ export default function AdminDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-[50px]">
+                          <Checkbox
+                            checked={selectedTutors.length === filteredTutors.length && filteredTutors.length > 0}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedTutors(filteredTutors.map(t => t.id))
+                              } else {
+                                setSelectedTutors([])
+                              }
+                            }}
+                          />
+                        </TableHead>
                         <TableHead className="min-w-[150px]">Name</TableHead>
                         <TableHead className="min-w-[200px]">Email</TableHead>
                         <TableHead className="min-w-[150px]">Department</TableHead>
@@ -3553,6 +3931,18 @@ export default function AdminDashboard() {
                     <TableBody>
                       {filteredTutors.map((tutor) => (
                         <TableRow key={tutor.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedTutors.includes(tutor.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedTutors(prev => [...prev, tutor.id])
+                                } else {
+                                  setSelectedTutors(prev => prev.filter(id => id !== tutor.id))
+                                }
+                              }}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">
                             <div className="flex items-center gap-2">
                               <Avatar className="h-8 w-8">
@@ -3667,40 +4057,52 @@ export default function AdminDashboard() {
           {/* Students Tab */}
           {activeTab === "students" && (
             <div className="space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <h2 className="text-2xl font-bold">Students Management</h2>
-                <div className="flex flex-col md:flex-row gap-2">
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight">Students Management</h2>
+                  <p className="text-muted-foreground">Manage student enrollments and progress</p>
+                </div>
+                <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3">
+                  <Button onClick={() => setShowStudentPlacementDialog(true)}>
+                    <Upload className="mr-2 h-4 w-4" /> Bulk Upload
+                  </Button>
+
+                  <div className="h-8 w-px bg-border hidden sm:block" />
+
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowStudentPlacementDialog(true)}
-                      className="flex items-center gap-2"
+                    <Button variant="outline" size="sm" onClick={handleExportStudentLoginsExcel}>
+                      <Download className="mr-2 h-4 w-4" /> Excel
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleExportStudentLoginsPdf}>
+                      <FileText className="mr-2 h-4 w-4" /> PDF
+                    </Button>
+                  </div>
+
+                  <div className="h-8 w-px bg-border hidden sm:block" />
+
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setShowStudentCredentialsDialog(true)}
+                      disabled={selectedStudentIds.length === 0}
+                      title="Send Credentials to Selected Students"
                     >
-                      <Upload className="h-4 w-4" />
-                      Bulk Upload Students
-                    </Button>
-                    <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Filter by status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleExportStudentLoginsExcel}>
-                      <Download className="mr-2 h-4 w-4" />
-                      Export Logins (Excel)
-                    </Button>
-                    <Button variant="outline" onClick={handleExportStudentLoginsPdf}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      Export Logins (PDF)
+                      <Mail className="mr-2 h-4 w-4" />
+                      Send Credentials ({selectedStudentIds.length})
                     </Button>
                   </div>
+
+                  <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -3959,9 +4361,12 @@ export default function AdminDashboard() {
           {/* Courses Tab */}
           {activeTab === "courses" && (
             <div className="space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <h2 className="text-2xl font-bold">Courses Management</h2>
-                <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight">Courses Management</h2>
+                  <p className="text-muted-foreground">Manage subjects and curriculum</p>
+                </div>
+                <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3">
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button>
@@ -4064,42 +4469,41 @@ export default function AdminDashboard() {
                     </DialogContent>
                   </Dialog>
 
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setShowCoursePlacementDialog(true)}>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Bulk Place Tutors
-                    </Button>
-                    <Select onValueChange={(value) => setFilterDepartment(value === "all" ? null : value)}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Filter by department" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Departments</SelectItem>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.name}>
-                            {dept.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <Button variant="outline" onClick={() => setShowCoursePlacementDialog(true)}>
+                    <Upload className="mr-2 h-4 w-4" /> Bulk Upload
+                  </Button>
 
-                    <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Filter by status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Statuses</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="h-8 w-px bg-border hidden sm:block" />
 
-                    <Button variant="destructive" onClick={handleDeleteAllCourses}>
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete All Courses
-                    </Button>
-                  </div>
+                  <Select onValueChange={(value) => setFilterDepartment(value === "all" ? null : value)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filter Department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      {departments.map((dept) => (
+                        <SelectItem key={dept.id} value={dept.name}>
+                          {dept.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select onValueChange={(value) => setFilterStatus(value === "all" ? null : value)}>
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDeleteAllCourses} title="Delete All Courses">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
 
@@ -4288,6 +4692,14 @@ export default function AdminDashboard() {
                     Bulk Upload Admin Users
                   </Button>
                   <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setShowAdminCredentialsDialog(true)}
+                      disabled={selectedAdminIds.length === 0}
+                    >
+                      <Mail className="mr-2 h-4 w-4" />
+                      Send Credentials
+                    </Button>
                     <Button variant="outline" onClick={handleExportAdminLoginsExcel}>
                       <Download className="mr-2 h-4 w-4" />
                       Export Logins (Excel)
@@ -4312,6 +4724,18 @@ export default function AdminDashboard() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-[50px]">
+                          <Checkbox
+                            checked={selectedAdminIds.length === filteredAdmins.length && filteredAdmins.length > 0}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedAdminIds(filteredAdmins.map(a => a.id))
+                              } else {
+                                setSelectedAdminIds([])
+                              }
+                            }}
+                          />
+                        </TableHead>
                         <TableHead>Username</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Email</TableHead>
@@ -4323,6 +4747,18 @@ export default function AdminDashboard() {
                     <TableBody>
                       {filteredAdmins.map((admin) => (
                         <TableRow key={admin.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedAdminIds.includes(admin.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedAdminIds(prev => [...prev, admin.id])
+                                } else {
+                                  setSelectedAdminIds(prev => prev.filter(id => id !== admin.id))
+                                }
+                              }}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">{admin.username}</TableCell>
                           <TableCell>{admin.displayName || admin.username}</TableCell>
                           <TableCell>{admin.email || "-"}</TableCell>
@@ -4528,6 +4964,204 @@ export default function AdminDashboard() {
                       {changingPassword ? "Changing..." : "Change Password"}
                     </Button>
                   </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={showAdminCredentialsDialog} onOpenChange={(open) => {
+                setShowAdminCredentialsDialog(open)
+                if (!open) {
+                  setAdminCredentialResults(null)
+                  setShowAdminEmailPreview(false)
+                  setAdminEmailPreviewData(null)
+                  if (adminCredentialResults) {
+                    setSelectedAdminIds([])
+                    setAdminCredentialsEmailMessage("")
+                  }
+                }
+              }}>
+                <DialogContent className="max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                  {adminCredentialResults ? (
+                    <div className="space-y-6 py-4">
+                      <div className="flex flex-col items-center justify-center text-center space-y-4">
+                        <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center">
+                          <Check className="h-8 w-8 text-green-600" />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className="text-xl font-semibold text-gray-900">Processing Complete</h3>
+                          <p className="text-sm text-gray-500 max-w-xs mx-auto">
+                            The credential email process has finished. Here is the summary.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-600">Total Selected</span>
+                          <span className="text-sm font-bold text-gray-900">{selectedAdminIds.length}</span>
+                        </div>
+                        <div className="h-px bg-gray-200" />
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-green-600">Successfully Sent</span>
+                          <span className="text-sm font-bold text-green-600">{adminCredentialResults.summary?.successful || 0}</span>
+                        </div>
+                        {adminCredentialResults.summary?.noPersonalEmail > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-orange-600">Skipped (No Email)</span>
+                            <span className="text-sm font-bold text-orange-600">{adminCredentialResults.summary.noPersonalEmail}</span>
+                          </div>
+                        )}
+                        {adminCredentialResults.summary?.failed > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-red-600">Failed</span>
+                            <span className="text-sm font-bold text-red-600">{adminCredentialResults.summary.failed}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex justify-center pt-2">
+                        <Button onClick={() => setShowAdminCredentialsDialog(false)} className="min-w-[120px]">
+                          Close
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <DialogHeader>
+                        <DialogTitle>Send Admin Credentials</DialogTitle>
+                        <DialogDescription>
+                          Send login credentials to {selectedAdminIds.length} selected admin(s).
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="admin-cred-subject">Email Subject</Label>
+                          <Input
+                            id="admin-cred-subject"
+                            value={adminCredentialsEmailSubject}
+                            onChange={(e) => setAdminCredentialsEmailSubject(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="admin-cred-message">Additional Message</Label>
+                          <Textarea
+                            id="admin-cred-message"
+                            value={adminCredentialsEmailMessage}
+                            onChange={(e) => setAdminCredentialsEmailMessage(e.target.value)}
+                            placeholder="Optional message to include in the email..."
+                            rows={4}
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              if (showAdminEmailPreview) {
+                                setShowAdminEmailPreview(false)
+                              } else {
+                                setShowAdminEmailPreview(true)
+                                generateAdminCredentialsPreview()
+                              }
+                            }}
+                            className="flex-1"
+                          >
+                            <Eye className="mr-2 h-3 w-3" />
+                            {showAdminEmailPreview ? 'Hide Preview' : 'Preview Email'}
+                          </Button>
+                          {selectedAdminIds.length > 0 && (
+                            <div className="text-xs text-muted-foreground self-center">
+                              Preview uses: {filteredAdmins.find(a => selectedAdminIds.includes(a.id))?.displayName || 'Sample Admin'}
+                            </div>
+                          )}
+                        </div>
+
+                        {showAdminEmailPreview && (
+                          <div className="bg-gray-50 p-3 rounded-lg border max-h-48 overflow-y-auto">
+                            <h4 className="font-medium mb-2 text-sm">Email Preview</h4>
+                            {previewLoading ? (
+                              <div className="flex items-center justify-center py-8">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                              </div>
+                            ) : adminEmailPreviewData ? (
+                              <div className="bg-white p-3 rounded border text-xs">
+                                <div className="border-b pb-2 mb-2">
+                                  <p><strong>To:</strong> {adminEmailPreviewData.personalEmail || '[Personal Email Address]'}</p>
+                                  <p><strong>Subject:</strong> {adminEmailPreviewData.subject}</p>
+                                </div>
+                                <iframe 
+                                  title="email-preview" 
+                                  srcDoc={adminEmailPreviewData.html} 
+                                  className="w-full border-none h-60"
+                                  style={{ pointerEvents: 'none' }} // Prevent interaction
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-center py-4 text-muted-foreground text-xs">
+                                Could not load preview
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="bg-muted p-3 rounded-lg">
+                          <h4 className="font-medium mb-2 text-sm">Selected Admins ({selectedAdminIds.length})</h4>
+                          <div className="space-y-1 max-h-24 overflow-y-auto">
+                            {filteredAdmins
+                              .filter(a => selectedAdminIds.includes(a.id))
+                              .map(admin => {
+                                const hasPersonalEmail = admin.personalEmail && admin.personalEmail.trim() !== ""
+                                return (
+                                  <div key={admin.id} className="flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-1">
+                                      <span className="truncate max-w-[120px]">{admin.displayName || admin.username}</span>
+                                      {!hasPersonalEmail && (
+                                        <Badge variant="destructive" className="text-[10px] px-1 py-0">No Email</Badge>
+                                      )}
+                                    </div>
+                                    <span className="text-muted-foreground truncate max-w-[140px] text-[10px]">
+                                      {hasPersonalEmail ? admin.personalEmail : admin.email}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                          </div>
+                        </div>
+
+                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                          <div className="flex items-start gap-2">
+                            <Mail className="h-3 w-3 text-blue-600 mt-0.5 flex-shrink-0" />
+                            <div className="text-xs text-blue-800">
+                              <p className="font-medium">Sent to personal emails only:</p>
+                              <ul className="mt-1 space-y-0.5 text-[10px]">
+                                <li>• Login credentials & portal link</li>
+                                <li>• Admins without personal emails skipped</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowAdminCredentialsDialog(false)}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleSendAdminCredentials} disabled={sendingAdminCredentials}>
+                          {sendingAdminCredentials ? (
+                            <>
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2" />
+                              Sending...
+                            </>
+                          ) : (
+                            <>
+                              <Mail className="mr-2 h-3 w-3" />
+                              Send Credentials
+                            </>
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </>
+                  )}
                 </DialogContent>
               </Dialog>
             </div>
@@ -5951,6 +6585,412 @@ export default function AdminDashboard() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Tutor Credentials Dialog */}
+      <Dialog open={showTutorCredentialsDialog} onOpenChange={(open) => {
+        setShowTutorCredentialsDialog(open)
+        if (!open) {
+          setTutorCredentialResults(null)
+          if (tutorCredentialResults) {
+            setSelectedTutors([])
+            setCredentialsEmailMessage("")
+          }
+        }
+      }}>
+        <DialogContent className="max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          {tutorCredentialResults ? (
+            <div className="space-y-6 py-4">
+              <div className="flex flex-col items-center justify-center text-center space-y-4">
+                <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center">
+                  <Check className="h-8 w-8 text-green-600" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-semibold text-gray-900">Processing Complete</h3>
+                  <p className="text-sm text-gray-500 max-w-xs mx-auto">
+                    The credential email process has finished. Here is the summary.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600">Total Selected</span>
+                  <span className="text-sm font-bold text-gray-900">{selectedTutors.length}</span>
+                </div>
+                <div className="h-px bg-gray-200" />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-green-600">Successfully Sent</span>
+                  <span className="text-sm font-bold text-green-600">{tutorCredentialResults.summary?.successful || 0}</span>
+                </div>
+                {tutorCredentialResults.summary?.noPersonalEmail > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-orange-600">Skipped (No Email)</span>
+                    <span className="text-sm font-bold text-orange-600">{tutorCredentialResults.summary.noPersonalEmail}</span>
+                  </div>
+                )}
+                {tutorCredentialResults.summary?.failed > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-red-600">Failed</span>
+                    <span className="text-sm font-bold text-red-600">{tutorCredentialResults.summary.failed}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-center pt-2">
+                <Button onClick={() => setShowTutorCredentialsDialog(false)} className="min-w-[120px]">
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+          <DialogHeader>
+            <DialogTitle>Send Tutor Credentials</DialogTitle>
+            <DialogDescription>
+              Send login credentials to {selectedTutors.length} selected tutor{selectedTutors.length > 1 ? 's' : ''}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="credentials-subject">Email Subject</Label>
+              <Input
+                id="credentials-subject"
+                value={credentialsEmailSubject}
+                onChange={(e) => setCredentialsEmailSubject(e.target.value)}
+                placeholder="Email subject"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="credentials-message">Additional Message (Optional)</Label>
+              <Textarea
+                id="credentials-message"
+                value={credentialsEmailMessage}
+                onChange={(e) => setCredentialsEmailMessage(e.target.value)}
+                placeholder="Add a personal message..."
+                rows={3}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEmailPreview(!showEmailPreview)}
+                className="flex-1"
+              >
+                <Eye className="mr-2 h-3 w-3" />
+                {showEmailPreview ? 'Hide Preview' : 'Preview Email'}
+              </Button>
+              {selectedTutors.length > 0 && (
+                <div className="text-xs text-muted-foreground self-center">
+                  Preview uses: {tutors.find(t => selectedTutors.includes(t.id))?.name || 'Sample Tutor'}
+                </div>
+              )}
+            </div>
+
+            {showEmailPreview && (
+              <div className="bg-gray-50 p-3 rounded-lg border max-h-48 overflow-y-auto">
+                <h4 className="font-medium mb-2 text-sm">Email Preview</h4>
+                <div className="bg-white p-3 rounded border text-xs">
+                  {(() => {
+                    const preview = generateEmailPreview()
+                    return (
+                      <>
+                        <div className="border-b pb-2 mb-2">
+                          <p><strong>To:</strong> {preview.personalEmail || '[Personal Email Address]'}</p>
+                          <p><strong>Subject:</strong> {credentialsEmailSubject}</p>
+                        </div>
+                        <div className="space-y-2">
+                          <p>Hi <strong>{preview.recipientName}</strong>,</p>
+                          <p>Welcome to the <strong>Excellence Academia</strong> tutor portal! Your account credentials have been updated.</p>
+                          
+                          {preview.personalEmail && (
+                            <div className="bg-blue-50 p-2 rounded border-l-2 border-blue-400">
+                              <p className="font-medium text-blue-800 text-[10px]">📧 Note:</p>
+                              <p className="text-blue-700 text-[10px]">This email was sent to your personal email ({preview.personalEmail}) for security purposes. Please use your system email ({preview.tutorEmail}) to log in to the portal.</p>
+                            </div>
+                          )}
+                          
+                          {credentialsEmailMessage && (
+                            <div className="bg-gray-50 p-2 rounded border-l-2 border-gray-400">
+                              <p className="text-gray-800 text-[10px]">{credentialsEmailMessage}</p>
+                            </div>
+                          )}
+                          
+                          <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-2 rounded border">
+                            <p className="font-medium text-blue-800 text-[10px]">🔑 Your Login Credentials</p>
+                            <p className="text-[10px]"><strong>Login Email:</strong> {preview.tutorEmail}</p>
+                            <p className="text-[10px]"><strong>Password:</strong> {preview.tempPassword}</p>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-2 rounded border">
+                            <p className="font-medium text-purple-800 text-[10px]">📚 Your Teaching Assignments</p>
+                            <p className="text-[10px]"><strong>Primary Department:</strong> {preview.department}</p>
+                            {preview.allDepartments && preview.allDepartments !== preview.department && (
+                              <p className="text-[10px]"><strong>All Departments:</strong> {preview.allDepartments}</p>
+                            )}
+                            <p className="text-[10px]"><strong>Assigned Courses ({preview.courseCount}):</strong> {preview.courses}</p>
+                          </div>
+                          
+                          <div className="text-center py-2">
+                            <div className="inline-block bg-gradient-to-r from-blue-500 to-purple-500 text-white px-3 py-1 rounded text-[10px]">
+                              🎓 Access Tutor Portal
+                            </div>
+                          </div>
+                          
+                          <div className="bg-gray-100 p-2 rounded">
+                            <p className="font-medium text-gray-800 text-[10px]">📋 Next Steps:</p>
+                            <ul className="text-[9px] text-gray-700 mt-1 space-y-0.5 pl-3">
+                              <li>• Login using your system email ({preview.tutorEmail})</li>
+                              <li>• Review your {preview.courseCount} course assignment{preview.courseCount !== 1 ? 's' : ''} and student lists</li>
+                              <li>• Set up your tutor profile and preferences</li>
+                              <li>• Explore the teaching tools and resources available</li>
+                            </ul>
+                          </div>
+                          
+                          <div className="bg-yellow-50 p-2 rounded border border-yellow-200">
+                            <p className="font-medium text-yellow-800 text-[10px]">🔒 Security Notice:</p>
+                            <p className="text-yellow-700 text-[9px]">This password is generated from your name for consistency. You can change it after logging in if desired. Always use your system email address ({preview.tutorEmail}) to log in, not your personal email.</p>
+                          </div>
+                        </div>
+                      </>
+                    )
+                  })()}
+                </div>
+              </div>
+            )}
+            
+            <div className="bg-muted p-3 rounded-lg">
+              <h4 className="font-medium mb-2 text-sm">Selected Tutors ({selectedTutors.length})</h4>
+              <div className="space-y-1 max-h-24 overflow-y-auto">
+                {tutors
+                  .filter(t => selectedTutors.includes(t.id))
+                  .map(tutor => {
+                    const hasPersonalEmail = tutor.personalEmail && tutor.personalEmail.trim() !== ""
+                    return (
+                      <div key={tutor.id} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1">
+                          <span className="truncate max-w-[120px]">{tutor.name}</span>
+                          {!hasPersonalEmail && (
+                            <Badge variant="destructive" className="text-[10px] px-1 py-0">No Email</Badge>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground truncate max-w-[140px] text-[10px]">
+                          {hasPersonalEmail ? tutor.personalEmail : tutor.email}
+                        </span>
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <div className="flex items-start gap-2">
+                <Mail className="h-3 w-3 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-blue-800">
+                  <p className="font-medium">Sent to personal emails only:</p>
+                  <ul className="mt-1 space-y-0.5 text-[10px]">
+                    <li>• Login credentials & portal link</li>
+                    <li>• Course assignments & department info</li>
+                    <li>• Tutors without personal emails skipped</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowTutorCredentialsDialog(false)}
+              disabled={sendingCredentials}
+              size="sm"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSendTutorCredentials}
+              disabled={sendingCredentials || selectedTutors.length === 0}
+              size="sm"
+            >
+              {sendingCredentials ? (
+                <>
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Mail className="mr-2 h-3 w-3" />
+                  Send Credentials
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+          </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Student Credentials Dialog */}
+      <Dialog open={showStudentCredentialsDialog} onOpenChange={(open) => {
+        setShowStudentCredentialsDialog(open)
+        if (!open) {
+          setStudentCredentialResults(null)
+          if (studentCredentialResults) {
+            setSelectedStudentIds([])
+            setStudentCredentialsEmailMessage("")
+          }
+        }
+      }}>
+        <DialogContent className="max-w-md sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          {studentCredentialResults ? (
+            <div className="space-y-6 py-4">
+              <div className="flex flex-col items-center justify-center text-center space-y-4">
+                <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center">
+                  <Check className="h-8 w-8 text-green-600" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-semibold text-gray-900">Processing Complete</h3>
+                  <p className="text-sm text-gray-500 max-w-xs mx-auto">
+                    The credential email process has finished. Here is the summary.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600">Total Selected</span>
+                  <span className="text-sm font-bold text-gray-900">{selectedStudentIds.length}</span>
+                </div>
+                <div className="h-px bg-gray-200" />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-green-600">Successfully Sent</span>
+                  <span className="text-sm font-bold text-green-600">{studentCredentialResults.summary?.successful || 0}</span>
+                </div>
+                {studentCredentialResults.summary?.noPersonalEmail > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-orange-600">Skipped (No Email)</span>
+                    <span className="text-sm font-bold text-orange-600">{studentCredentialResults.summary.noPersonalEmail}</span>
+                  </div>
+                )}
+                {studentCredentialResults.summary?.failed > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-red-600">Failed</span>
+                    <span className="text-sm font-bold text-red-600">{studentCredentialResults.summary.failed}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-center pt-2">
+                <Button onClick={() => setShowStudentCredentialsDialog(false)} className="min-w-[120px]">
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+          <DialogHeader>
+            <DialogTitle>Send Student Credentials</DialogTitle>
+            <DialogDescription>
+              Send login credentials to {selectedStudentIds.length} selected student{selectedStudentIds.length > 1 ? 's' : ''}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="student-credentials-subject">Email Subject</Label>
+              <Input
+                id="student-credentials-subject"
+                value={studentCredentialsEmailSubject}
+                onChange={(e) => setStudentCredentialsEmailSubject(e.target.value)}
+                placeholder="Email subject"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="student-credentials-message">Additional Message (Optional)</Label>
+              <Textarea
+                id="student-credentials-message"
+                value={studentCredentialsEmailMessage}
+                onChange={(e) => setStudentCredentialsEmailMessage(e.target.value)}
+                placeholder="Add a personal message..."
+                rows={3}
+              />
+            </div>
+            
+            <div className="bg-muted p-3 rounded-lg">
+              <h4 className="font-medium mb-2 text-sm">Selected Students ({selectedStudentIds.length})</h4>
+              <div className="space-y-1 max-h-24 overflow-y-auto">
+                {students
+                  .filter(s => selectedStudentIds.includes(s.id))
+                  .map(student => {
+                    const hasPersonalEmail = student.personalEmail && student.personalEmail.trim() !== ""
+                    return (
+                      <div key={student.id} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1">
+                          <span className="truncate max-w-[120px]">{student.name}</span>
+                          {!hasPersonalEmail && (
+                            <Badge variant="destructive" className="text-[10px] px-1 py-0">No Email</Badge>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground truncate max-w-[140px] text-[10px]">
+                          {hasPersonalEmail ? student.personalEmail : student.email}
+                        </span>
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <div className="flex items-start gap-2">
+                <Mail className="h-3 w-3 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-blue-800">
+                  <p className="font-medium">Sent to personal emails only:</p>
+                  <ul className="mt-1 space-y-0.5 text-[10px]">
+                    <li>• Login credentials & student portal link</li>
+                    <li>• Course enrollments & department info</li>
+                    <li>• Students without personal emails skipped</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowStudentCredentialsDialog(false)}
+              disabled={sendingStudentCredentials}
+              size="sm"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSendStudentCredentials}
+              disabled={sendingStudentCredentials || selectedStudentIds.length === 0}
+              size="sm"
+            >
+              {sendingStudentCredentials ? (
+                <>
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Mail className="mr-2 h-3 w-3" />
+                  Send Credentials
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+          </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

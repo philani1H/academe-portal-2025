@@ -2,30 +2,32 @@ import React, { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import {
-  ChevronLeft,
-  ChevronRight,
-  X,
-  ZoomIn,
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  X, 
+  ZoomIn, 
   ZoomOut,
   FileText,
   Send,
   GripVertical
 } from 'lucide-react';
-import { PDFDocument } from './types';
+import { PDFDocument, CanvasDocument } from './types';
 
 interface DocumentViewerProps {
   document: PDFDocument | null;
   onClose: () => void;
   onSendToCanvas: (imageData: string) => void;
+  onSendDocument?: (doc: CanvasDocument) => void;
   isOpen: boolean;
 }
 
-export function DocumentViewer({
-  document,
-  onClose,
+export function DocumentViewer({ 
+  document, 
+  onClose, 
   onSendToCanvas,
-  isOpen
+  onSendDocument,
+  isOpen 
 }: DocumentViewerProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(100);
@@ -54,6 +56,24 @@ export function DocumentViewer({
     }
   }, [document, currentPage, onSendToCanvas]);
 
+  const handleSendFullDocument = useCallback(() => {
+    if (document && onSendDocument) {
+      const newDoc: CanvasDocument = {
+        id: crypto.randomUUID(),
+        x: 100,
+        y: 100,
+        width: 600,
+        height: 800,
+        title: document.name,
+        pages: document.pageImages,
+        currentPage: 0, // 0-indexed
+        fileUrl: document.fileUrl
+      };
+      onSendDocument(newDoc);
+      onClose();
+    }
+  }, [document, onSendDocument, onClose]);
+
   if (!isOpen || !document) {
     return null;
   }
@@ -68,7 +88,12 @@ export function DocumentViewer({
         <span className="flex-1 text-sm font-medium truncate" title={document.name}>
           {document.name}
         </span>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} >
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8"
+          onClick={onClose}
+        >
           <X className="h-4 w-4" />
         </Button>
       </div>
@@ -103,8 +128,19 @@ export function DocumentViewer({
           onClick={handleSendToCanvas}
         >
           <Send className="h-3.5 w-3.5" />
-          Send to Canvas
+          Send Page
         </Button>
+        {onSendDocument && (
+          <Button
+            variant="default"
+            size="sm"
+            className="gap-1.5 text-xs ml-2"
+            onClick={handleSendFullDocument}
+          >
+            <FileText className="h-3.5 w-3.5" />
+            Send Full Doc
+          </Button>
+        )}
       </div>
 
       {/* Page View */}

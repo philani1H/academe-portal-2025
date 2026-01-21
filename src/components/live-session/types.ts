@@ -33,9 +33,11 @@ export interface Participant {
 export interface SharedFile {
   id: string
   name: string
+  url: string
   size: string
   uploadedBy: string
-  timestamp: Date
+  timestamp?: Date
+  uploadedAt?: Date
 }
 
 export interface PeerData {

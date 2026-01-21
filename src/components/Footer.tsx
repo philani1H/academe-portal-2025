@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFacebook, faTwitter, faInstagram, faWhatsapp, faTiktok } from "@fortawesome/free-brands-svg-icons";
+import { faFacebook, faXTwitter, faInstagram, faWhatsapp, faTiktok } from "@fortawesome/free-brands-svg-icons";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";  // Import useAuth hook
 
@@ -50,6 +50,8 @@ export default function Footer() {
               <li><Link to="/exam-rewrite" className="text-gray-300 hover:text-white transition-colors">Exam Rewrite</Link></li>
               <li><Link to="/become-tutor" className="text-gray-300 hover:text-white transition-colors">Become a Tutor</Link></li>
               <li><Link to="/testimonials" className="text-gray-300 hover:text-white transition-colors">Testimonials</Link></li>
+              <li><Link to="/privacy-policy" className="text-gray-300 hover:text-white transition-colors">Privacy Policy</Link></li>
+              <li><Link to="/terms-of-service" className="text-gray-300 hover:text-white transition-colors">Terms of Service</Link></li>
             </ul>
           </div>
 
@@ -82,12 +84,12 @@ export default function Footer() {
                   <FontAwesomeIcon icon={faFacebook} size="2x" />
                 </a>
                 <a
-                  href="https://twitter.com"
+                  href="https://x.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:opacity-80 transition-opacity text-blue-100"
                 >
-                  <FontAwesomeIcon icon={faTwitter} size="2x" />
+                  <FontAwesomeIcon icon={faXTwitter} size="2x" />
                 </a>
                 <a
                   href="https://www.instagram.com/excellence.academia25?igsh=eHAxMjJ0ZGVzbzk1"

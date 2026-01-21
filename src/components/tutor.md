@@ -265,7 +265,7 @@
     ]
   },
   {
-    "name": "Simon",
+    "name": "Sir J",
     "subjects": [
       "Mathematics",
       "Physical Science"

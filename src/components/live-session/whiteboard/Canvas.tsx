@@ -17,15 +17,15 @@ interface CanvasProps {
 }
 
 export const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(
-  ({
-    tool,
-    scale = 1,
+  ({ 
+    tool, 
+    scale = 1, 
     offset = { x: 0, y: 0 },
-    onMouseDown,
-    onMouseMove,
-    onMouseUp,
-    onTouchStart,
-    onTouchMove,
+    onMouseDown, 
+    onMouseMove, 
+    onMouseUp, 
+    onTouchStart, 
+    onTouchMove, 
     onTouchEnd,
     onClick,
     overlayRef,

@@ -5,14 +5,28 @@ import { toast } from 'sonner';
 
 const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://academe-portal-2025.onrender.com' : 'http://localhost:3000');
 
-// Sound effects
+// Optimized sound effects with better quality
 const playJoinSound = () => {
+  const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBDGH0fPTgjMGHm7A7+OZURE');
+  audio.volume = 0.25;
+  audio.play().catch(() => {});
+};
+
+const playLeaveSound = () => {
+  const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBDGH0fPTgjMGHm7A7+OZURE');
+  audio.volume = 0.15;
+  audio.play().catch(() => {});
+};
+
+// Sound when YOU join the session
+const playYouJoinedSound = () => {
   const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBDGH0fPTgjMGHm7A7+OZURE');
   audio.volume = 0.3;
   audio.play().catch(() => {});
 };
 
-const playLeaveSound = () => {
+// Sound when YOU leave the session
+const playYouLeftSound = () => {
   const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBDGH0fPTgjMGHm7A7+OZURE');
   audio.volume = 0.2;
   audio.play().catch(() => {});
@@ -57,9 +71,10 @@ export const useWebRTC = ({
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'reconnecting'>('connecting');
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
   const socketRef = useRef<Socket | null>(null);
   const peersRef = useRef<Map<string, PeerInstance>>(new Map());
@@ -69,30 +84,18 @@ export const useWebRTC = ({
   const isMountedRef = useRef(true);
   const initializingRef = useRef(false);
 
-  // Use refs for values needed in callbacks to avoid stale closures
   const isScreenSharingRef = useRef(isScreenSharing);
   const isRecordingRef = useRef(isRecording);
   const isAudioOnRef = useRef(isAudioOn);
   const isVideoOnRef = useRef(isVideoOn);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isReconnectingRef = useRef(false);
 
-  // Keep refs in sync with state
-  useEffect(() => {
-    isScreenSharingRef.current = isScreenSharing;
-  }, [isScreenSharing]);
+  useEffect(() => { isScreenSharingRef.current = isScreenSharing; }, [isScreenSharing]);
+  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
+  useEffect(() => { isAudioOnRef.current = isAudioOn; }, [isAudioOn]);
+  useEffect(() => { isVideoOnRef.current = isVideoOn; }, [isVideoOn]);
 
-  useEffect(() => {
-    isRecordingRef.current = isRecording;
-  }, [isRecording]);
-
-  useEffect(() => {
-    isAudioOnRef.current = isAudioOn;
-  }, [isAudioOn]);
-
-  useEffect(() => {
-    isVideoOnRef.current = isVideoOn;
-  }, [isVideoOn]);
-
-  // Safe state setter that only updates if component is mounted
   const safeSetState = useCallback(<T,>(
     setter: React.Dispatch<React.SetStateAction<T>>,
     value: React.SetStateAction<T>
@@ -102,36 +105,152 @@ export const useWebRTC = ({
     }
   }, []);
 
-  // Keep user info updated
+  const checkSocketConnection = useCallback((): boolean => {
+    if (!socketRef.current?.connected) {
+      console.warn('[WebRTC] Socket not connected');
+      if (!isReconnectingRef.current) {
+        toast.error('Connection lost. Reconnecting...', { duration: 2000 });
+      }
+      return false;
+    }
+    return true;
+  }, []);
+
   useEffect(() => {
     userInfoRef.current = { userName, userId, userRole };
   }, [userName, userId, userRole]);
 
-  // Create initiator peer
+  // Smart reconnection handler
+  const handleReconnection = useCallback(async () => {
+    if (!socketRef.current || isReconnectingRef.current || !isMountedRef.current) return;
+    
+    isReconnectingRef.current = true;
+    safeSetState(setConnectionStatus, 'reconnecting');
+    
+    console.log('[WebRTC] Starting smart reconnection...');
+    toast.info('Reconnecting to session...', { duration: 2000 });
+
+    try {
+      // Wait for socket to be ready
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Reconnection timeout')), 10000);
+        
+        if (socketRef.current?.connected) {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          socketRef.current?.once('connect', () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        }
+      });
+
+      if (!isMountedRef.current) return;
+
+      // Rejoin session with preserved state
+      socketRef.current?.emit('join-session', {
+        sessionId,
+        userId,
+        userRole,
+        userName,
+        courseId,
+        courseName,
+        category,
+        isVideoOn: isVideoOnRef.current,
+        isAudioOn: isAudioOnRef.current,
+        isHandRaised: isHandRaised,
+        isScreenSharing: isScreenSharingRef.current,
+        isRecording: isRecordingRef.current
+      });
+
+      // Clear existing peers and reconnect
+      peersRef.current.forEach((peer) => {
+        try {
+          peer.destroy();
+        } catch (err) {
+          console.error('[WebRTC] Error destroying peer during reconnect:', err);
+        }
+      });
+      peersRef.current.clear();
+      safeSetState(setPeers, []);
+
+      // Request session users
+      setTimeout(() => {
+        if (isMountedRef.current && socketRef.current?.connected) {
+          socketRef.current.emit('get-session-users', { sessionId });
+        }
+      }, 300);
+
+      safeSetState(setConnectionStatus, 'connected');
+      safeSetState(setReconnectAttempt, 0);
+      isReconnectingRef.current = false;
+      
+      toast.success('Reconnected successfully! ✅', { duration: 2000 });
+      playYouJoinedSound();
+      
+      console.log('[WebRTC] Smart reconnection completed');
+
+    } catch (err) {
+      console.error('[WebRTC] Reconnection failed:', err);
+      
+      if (!isMountedRef.current) return;
+      
+      safeSetState(setReconnectAttempt, prev => prev + 1);
+      
+      // Retry with exponential backoff
+      const attempt = reconnectAttempt + 1;
+      if (attempt < 5) {
+        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+        toast.warning(`Reconnection failed. Retrying in ${delay/1000}s...`, { duration: delay });
+        
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (isMountedRef.current) {
+            handleReconnection();
+          }
+        }, delay);
+      } else {
+        safeSetState(setConnectionStatus, 'disconnected');
+        isReconnectingRef.current = false;
+        toast.error('Unable to reconnect. Please refresh the page.', { duration: 5000 });
+      }
+    }
+  }, [sessionId, userId, userRole, userName, courseId, courseName, category, reconnectAttempt, safeSetState]);
+
+  // OPTIMIZED: Enhanced peer configuration for better quality and lower latency
+  const getOptimizedPeerConfig = () => ({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' }
+    ],
+    sdpSemantics: 'unified-plan' as const,
+    iceTransportPolicy: 'all' as const,
+    bundlePolicy: 'max-bundle' as const,
+    rtcpMuxPolicy: 'require' as const,
+    iceCandidatePoolSize: 10
+  });
+
   const createPeer = useCallback((
     userToSignal: string,
     callerID: string,
-    stream: MediaStream
+    stream: MediaStream | null
   ): PeerInstance => {
-    console.log('[WebRTC] Creating initiator peer for:', userToSignal);
+    console.log('[WebRTC] Creating optimized initiator peer:', userToSignal);
 
     const peer = new SimplePeer({
       initiator: true,
-      trickle: true, // Enable trickle ICE for faster connections
-      stream,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' }
-        ]
+      trickle: true,
+      stream: stream || undefined,
+      config: getOptimizedPeerConfig(),
+      offerOptions: {
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true
       }
     });
 
     peer.on('signal', (signal) => {
-      console.log('[WebRTC] Sending signal to:', userToSignal, 'type:', signal.type || 'candidate');
       socketRef.current?.emit('signal', {
         to: userToSignal,
         signal,
@@ -147,60 +266,39 @@ export const useWebRTC = ({
 
     peer.on('stream', (remoteStream) => {
       if (!isMountedRef.current) return;
-      console.log('[WebRTC] Received stream from peer:', userToSignal, {
-        id: remoteStream.id,
-        video: remoteStream.getVideoTracks().length,
-        audio: remoteStream.getAudioTracks().length,
-        videoEnabled: remoteStream.getVideoTracks()[0]?.enabled,
-        audioEnabled: remoteStream.getAudioTracks()[0]?.enabled
-      });
+      console.log('[WebRTC] Stream received:', userToSignal);
+      
       safeSetState(setPeers, prev => prev.map(p =>
-        p.peerId === userToSignal
-          ? { ...p, stream: remoteStream }
-          : p
+        p.peerId === userToSignal ? { ...p, stream: remoteStream } : p
       ));
     });
 
-    peer.on('connect', () => {
-      console.log('[WebRTC] Peer connected:', userToSignal);
-    });
-
-    peer.on('error', (err) => {
-      console.error('[WebRTC] Peer error:', userToSignal, err.message);
-    });
-
-    peer.on('close', () => {
-      console.log('[WebRTC] Peer closed:', userToSignal);
-    });
+    peer.on('connect', () => console.log('[WebRTC] Peer connected:', userToSignal));
+    peer.on('error', (err) => console.error('[WebRTC] Peer error:', userToSignal, err.message));
+    peer.on('close', () => console.log('[WebRTC] Peer closed:', userToSignal));
 
     return peer;
   }, [safeSetState]);
 
-  // Create receiver peer
   const addPeer = useCallback((
     incomingSignal: SimplePeer.SignalData,
     callerID: string,
-    stream: MediaStream
+    stream: MediaStream | null
   ): PeerInstance => {
-    console.log('[WebRTC] Creating receiver peer for:', callerID);
+    console.log('[WebRTC] Creating optimized receiver peer:', callerID);
 
     const peer = new SimplePeer({
       initiator: false,
-      trickle: true, // Enable trickle ICE for faster connections
-      stream,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-          { urls: 'stun:stun4.l.google.com:19302' }
-        ]
+      trickle: true,
+      stream: stream || undefined,
+      config: getOptimizedPeerConfig(),
+      answerOptions: {
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true
       }
     });
 
     peer.on('signal', (signal) => {
-      console.log('[WebRTC] Sending answer signal to:', callerID, 'type:', signal.type || 'candidate');
       socketRef.current?.emit('signal', {
         to: callerID,
         signal,
@@ -216,45 +314,26 @@ export const useWebRTC = ({
 
     peer.on('stream', (remoteStream) => {
       if (!isMountedRef.current) return;
-      console.log('[WebRTC] Received stream from caller:', callerID, {
-        id: remoteStream.id,
-        video: remoteStream.getVideoTracks().length,
-        audio: remoteStream.getAudioTracks().length,
-        videoEnabled: remoteStream.getVideoTracks()[0]?.enabled,
-        audioEnabled: remoteStream.getAudioTracks()[0]?.enabled
-      });
+      console.log('[WebRTC] Stream received from caller:', callerID);
       safeSetState(setPeers, prev => prev.map(p =>
-        p.peerId === callerID
-          ? { ...p, stream: remoteStream }
-          : p
+        p.peerId === callerID ? { ...p, stream: remoteStream } : p
       ));
     });
 
-    peer.on('connect', () => {
-      console.log('[WebRTC] Peer connected:', callerID);
-    });
+    peer.on('connect', () => console.log('[WebRTC] Peer connected:', callerID));
+    peer.on('error', (err) => console.error('[WebRTC] Peer error:', callerID, err.message));
+    peer.on('close', () => console.log('[WebRTC] Peer closed:', callerID));
 
-    peer.on('error', (err) => {
-      console.error('[WebRTC] Peer error:', callerID, err.message);
-    });
-
-    peer.on('close', () => {
-      console.log('[WebRTC] Peer closed:', callerID);
-    });
-
-    // Signal the incoming offer
     try {
       peer.signal(incomingSignal);
     } catch (err) {
-      console.error('[WebRTC] Error signaling incoming peer:', err);
+      console.error('[WebRTC] Error signaling peer:', err);
     }
 
     return peer;
   }, [safeSetState]);
 
-  // Setup socket listeners
   const setupSocketListeners = useCallback((socket: Socket, stream: MediaStream | null) => {
-    // When another user joins
     socket.on('user-joined', (data: {
       socketId: string;
       userRole: string;
@@ -265,34 +344,15 @@ export const useWebRTC = ({
       isRecording: boolean;
       userName: string;
     }) => {
-      if (!isMountedRef.current) return;
-      console.log('[WebRTC] User joined:', data);
-
-      // Play sound and show notification
+      if (!isMountedRef.current || peersRef.current.has(data.socketId)) return;
+      console.log('[WebRTC] User joined:', data.userName);
+      
       playJoinSound();
-      toast.success(`${data.userName || 'Someone'} joined the session`, {
-        duration: 3000,
-        icon: '👋'
-      });
+      toast.success(`${data.userName || 'Someone'} joined`, { duration: 2000 });
 
-      // Avoid duplicate connections
-      if (peersRef.current.has(data.socketId)) {
-        console.log('[WebRTC] Peer already exists:', data.socketId);
-        return;
-      }
-
-      // CRITICAL FIX: Use consistent ID comparison to prevent duplicate connections
-      // Only the peer with the LARGER socket ID initiates the connection
-      // This prevents both peers from trying to initiate simultaneously
       if (socket.id! > data.socketId) {
-        console.log('[WebRTC] My ID is larger, initiating connection to:', data.socketId);
-
         const currentStream = localStreamRef.current || stream;
-        if (!currentStream) {
-          console.warn('[WebRTC] No local stream for new peer');
-          return;
-        }
-
+        
         const peer = createPeer(data.socketId, socket.id!, currentStream);
         peersRef.current.set(data.socketId, peer);
 
@@ -311,13 +371,11 @@ export const useWebRTC = ({
           }];
         });
       } else {
-        console.log('[WebRTC] My ID is smaller, waiting for connection from:', data.socketId);
-        // Add peer metadata even if not initiating, so we track them
         safeSetState(setPeers, prev => {
           if (prev.some(p => p.peerId === data.socketId)) return prev;
           return [...prev, {
             peerId: data.socketId,
-            peer: null as any, // Will be set when signal is received
+            peer: null as unknown as PeerInstance,
             userRole: data.userRole as 'tutor' | 'student',
             isVideoOn: data.isVideoOn,
             isAudioOn: data.isAudioOn,
@@ -330,16 +388,11 @@ export const useWebRTC = ({
       }
     });
 
-    // Session Info
     socket.on('session-info', (data: { startTime: number }) => {
       if (!isMountedRef.current) return;
-      console.log('[WebRTC] Received session info:', data);
-      if (data.startTime) {
-        safeSetState(setSessionStartTime, data.startTime);
-      }
+      if (data.startTime) safeSetState(setSessionStartTime, data.startTime);
     });
 
-    // Existing users in session
     socket.on('existing-users', (data: {
       users: Array<{
         socketId: string;
@@ -353,45 +406,55 @@ export const useWebRTC = ({
       }>
     }) => {
       if (!isMountedRef.current) return;
-      console.log('[WebRTC] Existing users:', data.users);
-
       const currentStream = localStreamRef.current || stream;
 
       data.users.forEach(user => {
-        if (user.socketId === socket.id) return;
-        if (peersRef.current.has(user.socketId)) return;
+        if (user.socketId === socket.id || peersRef.current.has(user.socketId)) return;
+        
+        // ID Comparison Strategy: Larger ID initiates
+        if (socket.id! > user.socketId) {
+          // Allow connection even without local stream (view-only mode)
+          // if (!currentStream) return; 
 
-        // CRITICAL FIX: Always initiate connections to existing users when joining
-        // This ensures students can see tutors and vice versa
-        // The existing ID comparison was causing connection failures
-        console.log('[WebRTC] Initiating connection to existing user:', user.socketId, user.userRole);
+          console.log('[WebRTC] Initiating connection to existing user (I am larger):', user.socketId);
+          const peer = createPeer(user.socketId, socket.id!, currentStream);
+          peersRef.current.set(user.socketId, peer);
 
-        if (!currentStream) {
-          console.warn('[WebRTC] No local stream for existing peer');
-          return;
+          safeSetState(setPeers, prev => {
+            if (prev.some(p => p.peerId === user.socketId)) return prev;
+            return [...prev, {
+              peerId: user.socketId,
+              peer,
+              userRole: user.userRole as 'tutor' | 'student',
+              isVideoOn: user.isVideoOn,
+              isAudioOn: user.isAudioOn,
+              isHandRaised: user.isHandRaised,
+              isScreenSharing: user.isScreenSharing,
+              isRecording: user.isRecording,
+              name: user.userName
+            }];
+          });
+        } else {
+          console.log('[WebRTC] Waiting for existing user to initiate (I am smaller):', user.socketId);
+          // Add placeholder peer to UI while waiting for connection
+          safeSetState(setPeers, prev => {
+            if (prev.some(p => p.peerId === user.socketId)) return prev;
+            return [...prev, {
+              peerId: user.socketId,
+              peer: null as unknown as PeerInstance,
+              userRole: user.userRole as 'tutor' | 'student',
+              isVideoOn: user.isVideoOn,
+              isAudioOn: user.isAudioOn,
+              isHandRaised: user.isHandRaised,
+              isScreenSharing: user.isScreenSharing,
+              isRecording: user.isRecording,
+              name: user.userName
+            }];
+          });
         }
-
-        const peer = createPeer(user.socketId, socket.id!, currentStream);
-        peersRef.current.set(user.socketId, peer);
-
-        safeSetState(setPeers, prev => {
-          if (prev.some(p => p.peerId === user.socketId)) return prev;
-          return [...prev, {
-            peerId: user.socketId,
-            peer,
-            userRole: user.userRole as 'tutor' | 'student',
-            isVideoOn: user.isVideoOn,
-            isAudioOn: user.isAudioOn,
-            isHandRaised: user.isHandRaised,
-            isScreenSharing: user.isScreenSharing,
-            isRecording: user.isRecording,
-            name: user.userName
-          }];
-        });
       });
     });
 
-    // Receive signal from peer
     socket.on('signal', (data: {
       signal: SimplePeer.SignalData;
       from: string;
@@ -404,16 +467,12 @@ export const useWebRTC = ({
       userName: string;
     }) => {
       if (!isMountedRef.current) return;
-      console.log('[WebRTC] Received signal from:', data.from, 'type:', data.signal.type || 'candidate');
 
       const existingPeer = peersRef.current.get(data.from);
 
       if (existingPeer) {
         try {
           existingPeer.signal(data.signal);
-          console.log('[WebRTC] Signaled existing peer:', data.from);
-
-          // Update peer metadata
           safeSetState(setPeers, prev => prev.map(p =>
             p.peerId === data.from
               ? {
@@ -431,20 +490,13 @@ export const useWebRTC = ({
         }
       } else {
         const currentStream = localStreamRef.current || stream;
-        if (!currentStream) {
-          console.warn('[WebRTC] No stream for incoming peer');
-          return;
-        }
 
-        console.log('[WebRTC] Creating new peer from signal:', data.from);
         const peer = addPeer(data.signal, data.from, currentStream);
         peersRef.current.set(data.from, peer);
 
-        // Update or add peer in state
         safeSetState(setPeers, prev => {
           const existingIndex = prev.findIndex(p => p.peerId === data.from);
           if (existingIndex >= 0) {
-            // Update existing peer entry with actual peer instance
             const updated = [...prev];
             updated[existingIndex] = {
               ...updated[existingIndex],
@@ -457,7 +509,6 @@ export const useWebRTC = ({
             };
             return updated;
           } else {
-            // Add new peer
             return [...prev, {
               peerId: data.from,
               peer,
@@ -474,7 +525,6 @@ export const useWebRTC = ({
       }
     });
 
-    // Stream state changes
     socket.on('stream-state-changed', (data: {
       socketId: string;
       isVideoOn: boolean;
@@ -483,7 +533,6 @@ export const useWebRTC = ({
       isRecording: boolean;
     }) => {
       if (!isMountedRef.current) return;
-      console.log('[WebRTC] Stream state changed:', data);
       safeSetState(setPeers, prev => prev.map(p =>
         p.peerId === data.socketId
           ? {
@@ -497,34 +546,24 @@ export const useWebRTC = ({
       ));
     });
 
-    // Hand raised changes
     socket.on('hand-raised-changed', (data: {
       socketId: string;
       isHandRaised: boolean;
     }) => {
       if (!isMountedRef.current) return;
-      console.log('[WebRTC] Hand raised changed:', data);
       safeSetState(setPeers, prev => prev.map(p =>
-        p.peerId === data.socketId
-          ? { ...p, isHandRaised: data.isHandRaised }
-          : p
+        p.peerId === data.socketId ? { ...p, isHandRaised: data.isHandRaised } : p
       ));
     });
 
-    // User left
     socket.on('user-left', (data: { socketId: string }) => {
       if (!isMountedRef.current) return;
-      console.log('[WebRTC] User left:', data.socketId);
-
-      // Get user name before removing
+      
       safeSetState(setPeers, prev => {
         const leavingPeer = prev.find(p => p.peerId === data.socketId);
         if (leavingPeer) {
           playLeaveSound();
-          toast.info(`${leavingPeer.name || 'Someone'} left the session`, {
-            duration: 3000,
-            icon: '👋'
-          });
+          toast.info(`${leavingPeer.name || 'Someone'} left`, { duration: 2000 });
         }
         return prev.filter(p => p.peerId !== data.socketId);
       });
@@ -537,47 +576,37 @@ export const useWebRTC = ({
     });
   }, [createPeer, addPeer, safeSetState]);
 
-  // Main initialization effect
   useEffect(() => {
     isMountedRef.current = true;
 
-    if (!userId || !userName || !sessionId) {
-      console.log('[WebRTC] Missing required info:', { userId, userName, sessionId });
-      return;
-    }
-
-    if (initializingRef.current) {
-      console.log('[WebRTC] Already initializing, skipping...');
-      return;
-    }
+    if (!userId || !userName || !sessionId || initializingRef.current) return;
 
     initializingRef.current = true;
 
     const initializeWebRTC = async () => {
-      console.log('[WebRTC] Initializing...', { sessionId, userId, userName, userRole });
+      console.log('[WebRTC] Initializing optimized connection...');
 
-      // Initialize socket
+      // OPTIMIZED: Faster socket connection
       const newSocket = io(SOCKET_SERVER_URL, {
         reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 20000,
-        transports: ['websocket', 'polling']
+        reconnectionAttempts: 5,
+        reconnectionDelay: 500,
+        reconnectionDelayMax: 3000,
+        timeout: 10000,
+        transports: ['websocket'],
+        upgrade: false,
+        forceNew: true
       });
 
       socketRef.current = newSocket;
       safeSetState(setSocket, newSocket);
 
-      // Connection status and promise
       const socketConnectPromise = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Socket connection timeout'));
-        }, 15000);
+        const timeout = setTimeout(() => reject(new Error('Socket timeout')), 10000);
 
         newSocket.on('connect', () => {
           clearTimeout(timeout);
-          console.log('[WebRTC] Socket connected, ID:', newSocket.id);
+          console.log('[WebRTC] Socket connected:', newSocket.id);
           safeSetState(setConnectionStatus, 'connected');
           resolve();
         });
@@ -589,7 +618,6 @@ export const useWebRTC = ({
 
         if (newSocket.connected) {
           clearTimeout(timeout);
-          console.log('[WebRTC] Socket already connected, ID:', newSocket.id);
           safeSetState(setConnectionStatus, 'connected');
           resolve();
         }
@@ -598,42 +626,76 @@ export const useWebRTC = ({
       newSocket.on('disconnect', (reason) => {
         console.log('[WebRTC] Socket disconnected:', reason);
         safeSetState(setConnectionStatus, 'disconnected');
+        
+        // Auto-reconnect for recoverable disconnections
+        if (reason === 'io server disconnect') {
+          // Server disconnected us, try to reconnect
+          toast.warning('Server disconnected. Reconnecting...', { duration: 2000 });
+        } else if (reason === 'transport close' || reason === 'transport error') {
+          // Network issue, will auto-reconnect
+          toast.info('Connection interrupted. Reconnecting...', { duration: 2000 });
+        }
+      });
+
+      newSocket.on('reconnect_attempt', (attemptNumber) => {
+        console.log('[WebRTC] Reconnection attempt:', attemptNumber);
+        safeSetState(setConnectionStatus, 'reconnecting');
+        safeSetState(setReconnectAttempt, attemptNumber);
+        
+        if (attemptNumber === 1) {
+          toast.loading('Reconnecting...', { duration: 2000 });
+        }
       });
 
       newSocket.on('reconnect', (attemptNumber) => {
         console.log('[WebRTC] Socket reconnected after', attemptNumber, 'attempts');
         safeSetState(setConnectionStatus, 'connected');
-
-        // Rejoin session after reconnect
-        newSocket.emit('join-session', {
-          sessionId,
-          userId,
-          userRole,
-          userName,
-          courseId,
-          courseName,
-          category,
-          isVideoOn: isVideoOnRef.current,
-          isAudioOn: isAudioOnRef.current,
-          isHandRaised: false,
-          isScreenSharing: isScreenSharingRef.current,
-          isRecording: isRecordingRef.current
-        });
+        
+        // Trigger smart reconnection
+        handleReconnection();
       });
 
-      // Get media devices
+      newSocket.on('reconnect_failed', () => {
+        console.error('[WebRTC] Reconnection failed after all attempts');
+        safeSetState(setConnectionStatus, 'disconnected');
+        toast.error('Connection failed. Please refresh the page.', { duration: 5000 });
+      });
+
+      newSocket.on('connect_error', (error) => {
+        console.error('[WebRTC] Connection error:', error.message);
+        
+        if (!isReconnectingRef.current) {
+          safeSetState(setConnectionStatus, 'disconnected');
+          toast.error('Connection error. Retrying...', { duration: 2000 });
+        }
+      });
+
+      // OPTIMIZED: High-quality, low-latency media constraints
       let stream: MediaStream | null = null;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 60 },
             facingMode: 'user'
           },
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
+            // Voice optimization: Mono is clearer for voice and reduces bandwidth
+            channelCount: { ideal: 1 },
+            // @ts-ignore - Advanced constraints for Chrome/Webkit
+            googEchoCancellation: true,
+            // @ts-ignore
+            googAutoGainControl: true,
+            // @ts-ignore
+            googNoiseSuppression: true,
+            // @ts-ignore
+            googHighpassFilter: true,
+            // @ts-ignore
+            googTypingNoiseDetection: true
           }
         });
 
@@ -642,16 +704,12 @@ export const useWebRTC = ({
           return;
         }
 
-        console.log('[WebRTC] Media acquired:', {
-          video: stream.getVideoTracks().length,
-          audio: stream.getAudioTracks().length
-        });
+        console.log('[WebRTC] High-quality media acquired');
 
         safeSetState(setLocalStream, stream);
         localStreamRef.current = stream;
         cameraStreamRef.current = stream;
 
-        // Load saved media preferences or use defaults
         const savedPrefs = localStorage.getItem('liveSessionMediaPrefs');
         let videoEnabled = true;
         let audioEnabled = true;
@@ -661,13 +719,11 @@ export const useWebRTC = ({
             const prefs = JSON.parse(savedPrefs);
             videoEnabled = prefs.videoEnabled ?? true;
             audioEnabled = prefs.audioEnabled ?? true;
-            console.log('[WebRTC] Loaded saved media preferences:', prefs);
           } catch (e) {
-            console.warn('[WebRTC] Failed to parse saved preferences');
+            console.warn('[WebRTC] Failed to parse preferences');
           }
         }
 
-        // Apply user's saved preferences
         stream.getVideoTracks().forEach(track => { track.enabled = videoEnabled; });
         stream.getAudioTracks().forEach(track => { track.enabled = audioEnabled; });
         safeSetState(setIsVideoOn, videoEnabled);
@@ -680,15 +736,11 @@ export const useWebRTC = ({
       }
 
       try {
-        // Wait for socket connection
         await socketConnectPromise;
-
         if (!isMountedRef.current) return;
 
-        // Setup socket listeners before joining
         setupSocketListeners(newSocket, stream);
 
-        // Join session
         newSocket.emit('join-session', {
           sessionId,
           userId,
@@ -704,18 +756,18 @@ export const useWebRTC = ({
           isRecording: false
         });
 
-        console.log('[WebRTC] Emitted join-session');
+        // Play sound and notify when YOU join
+        playYouJoinedSound();
+        toast.success("You joined the session! 🎉", { duration: 2000 });
 
-        // Request existing users after a short delay to ensure server has registered us
         setTimeout(() => {
           if (isMountedRef.current && newSocket.connected) {
             newSocket.emit('get-session-users', { sessionId });
-            console.log('[WebRTC] Requested existing users');
           }
-        }, 500);
+        }, 300);
 
       } catch (err) {
-        console.error('[WebRTC] Socket connection failed:', err);
+        console.error('[WebRTC] Connection failed:', err);
         safeSetState(setConnectionStatus, 'disconnected');
       }
     };
@@ -723,15 +775,22 @@ export const useWebRTC = ({
     initializeWebRTC();
 
     return () => {
-      console.log('[WebRTC] Cleaning up...');
+      console.log('[WebRTC] Cleanup...');
       isMountedRef.current = false;
       initializingRef.current = false;
+      isReconnectingRef.current = false;
+
+      // Clear reconnection timeout
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      // Play sound when YOU leave
+      playYouLeftSound();
 
       if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => {
-          track.stop();
-          console.log('[WebRTC] Stopped track:', track.kind);
-        });
+        localStreamRef.current.getTracks().forEach(track => track.stop());
         localStreamRef.current = null;
       }
 
@@ -740,8 +799,7 @@ export const useWebRTC = ({
         cameraStreamRef.current = null;
       }
 
-      peersRef.current.forEach((peer, id) => {
-        console.log('[WebRTC] Destroying peer:', id);
+      peersRef.current.forEach((peer) => {
         try {
           peer.destroy();
         } catch (err) {
@@ -756,41 +814,31 @@ export const useWebRTC = ({
           socketRef.current.removeAllListeners();
           socketRef.current.disconnect();
         } catch (err) {
-          console.error('[WebRTC] Error cleaning up socket:', err);
+          console.error('[WebRTC] Socket cleanup error:', err);
         }
         socketRef.current = null;
       }
     };
-  }, [sessionId, userId, userName, userRole, courseId, courseName, category, safeSetState, setupSocketListeners]);
+  }, [sessionId, userId, userName, userRole, courseId, courseName, category, safeSetState, setupSocketListeners, handleReconnection]);
 
   const toggleAudio = useCallback(() => {
-    if (!localStreamRef.current) {
-      console.warn('[WebRTC] No local stream');
-      return;
-    }
+    if (!localStreamRef.current) return;
 
     const audioTrack = localStreamRef.current.getAudioTracks()[0];
-    if (!audioTrack) {
-      console.warn('[WebRTC] No audio track');
-      return;
-    }
+    if (!audioTrack) return;
 
     audioTrack.enabled = !audioTrack.enabled;
     const newState = audioTrack.enabled;
     safeSetState(setIsAudioOn, newState);
 
-    // Save preference
     try {
       const currentPrefs = JSON.parse(localStorage.getItem('liveSessionMediaPrefs') || '{}');
       localStorage.setItem('liveSessionMediaPrefs', JSON.stringify({
         ...currentPrefs,
         audioEnabled: newState
       }));
-    } catch (e) {
-      console.warn('[WebRTC] Failed to save audio preference');
-    }
+    } catch (e) {}
 
-    console.log('[WebRTC] Audio toggled:', newState);
     socketRef.current?.emit('stream-state-change', {
       sessionId,
       isVideoOn: localStreamRef.current.getVideoTracks()[0]?.enabled ?? false,
@@ -801,33 +849,23 @@ export const useWebRTC = ({
   }, [sessionId, safeSetState]);
 
   const toggleVideo = useCallback(() => {
-    if (!localStreamRef.current) {
-      console.warn('[WebRTC] No local stream');
-      return;
-    }
+    if (!localStreamRef.current) return;
 
     const videoTrack = localStreamRef.current.getVideoTracks()[0];
-    if (!videoTrack) {
-      console.warn('[WebRTC] No video track');
-      return;
-    }
+    if (!videoTrack) return;
 
     videoTrack.enabled = !videoTrack.enabled;
     const newState = videoTrack.enabled;
     safeSetState(setIsVideoOn, newState);
 
-    // Save preference
     try {
       const currentPrefs = JSON.parse(localStorage.getItem('liveSessionMediaPrefs') || '{}');
       localStorage.setItem('liveSessionMediaPrefs', JSON.stringify({
         ...currentPrefs,
         videoEnabled: newState
       }));
-    } catch (e) {
-      console.warn('[WebRTC] Failed to save video preference');
-    }
+    } catch (e) {}
 
-    console.log('[WebRTC] Video toggled:', newState);
     socketRef.current?.emit('stream-state-change', {
       sessionId,
       isVideoOn: newState,
@@ -858,16 +896,14 @@ export const useWebRTC = ({
     if (!isMountedRef.current) return;
 
     if (isScreenSharingRef.current) {
-      // Stop screen sharing
       try {
-        console.log('[WebRTC] Stopping screen share, restoring camera...');
-
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            sampleRate: 48000
           }
         });
 
@@ -879,25 +915,20 @@ export const useWebRTC = ({
         const videoTrack = stream.getVideoTracks()[0];
         const audioTrack = stream.getAudioTracks()[0];
 
-        // Replace tracks in all peer connections
         const replacePromises: Promise<void>[] = [];
         peersRef.current.forEach((peer) => {
           try {
-            // @ts-ignore - accessing internal _pc
+            // @ts-ignore
             const senders = peer._pc?.getSenders() || [];
             const videoSender = senders.find((s: RTCRtpSender) => s.track?.kind === 'video');
             if (videoSender && videoTrack) {
-              console.log('[WebRTC] Replacing screen track with camera for peer');
               replacePromises.push(videoSender.replaceTrack(videoTrack));
             }
-          } catch (err) {
-            console.error('[WebRTC] Error replacing track for peer:', err);
-          }
+          } catch (err) {}
         });
 
         await Promise.all(replacePromises);
 
-        // Stop old video track
         localStreamRef.current?.getVideoTracks()[0]?.stop();
 
         safeSetState(setLocalStream, stream);
@@ -905,32 +936,30 @@ export const useWebRTC = ({
         cameraStreamRef.current = stream;
         safeSetState(setIsScreenSharing, false);
 
-        audioTrack.enabled = isAudioOnRef.current;
-        videoTrack.enabled = true;
+        if (audioTrack) audioTrack.enabled = isAudioOnRef.current;
+        if (videoTrack) videoTrack.enabled = true;
         safeSetState(setIsVideoOn, true);
 
-        console.log('[WebRTC] Screen share stopped, camera restored');
-
-        socketRef.current?.emit('stream-state-change', {
-          sessionId,
-          isVideoOn: true,
-          isAudioOn: isAudioOnRef.current,
-          isScreenSharing: false,
-          isRecording: isRecordingRef.current
-        });
+        if (checkSocketConnection()) {
+          socketRef.current?.emit('stream-state-change', {
+            sessionId,
+            isVideoOn: true,
+            isAudioOn: isAudioOnRef.current,
+            isScreenSharing: false,
+            isRecording: isRecordingRef.current
+          });
+        }
       } catch (err) {
         console.error('[WebRTC] Error stopping screen share:', err);
+        toast.error('Error stopping screen share');
       }
     } else {
-      // Start screen sharing
       try {
-        console.log('[WebRTC] Starting screen share...');
-
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
           video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30 }
+            width: { ideal: 1920, max: 3840 },
+            height: { ideal: 1080, max: 2160 },
+            frameRate: { ideal: 30, max: 60 }
           },
           audio: false
         });
@@ -943,38 +972,31 @@ export const useWebRTC = ({
         const screenTrack = screenStream.getVideoTracks()[0];
 
         screenTrack.onended = () => {
-          console.log('[WebRTC] Screen share ended by user');
           if (isMountedRef.current) {
-            toggleScreenShare();
+            toast.info("Screen sharing ended");
           }
         };
 
-        // Replace tracks in all peer connections
         const replacePromises: Promise<void>[] = [];
         peersRef.current.forEach((peer) => {
           try {
-            // @ts-ignore - accessing internal _pc
+            // @ts-ignore
             const senders = peer._pc?.getSenders() || [];
             const videoSender = senders.find((s: RTCRtpSender) => s.track?.kind === 'video');
             if (videoSender && screenTrack) {
-              console.log('[WebRTC] Replacing camera track with screen for peer');
               replacePromises.push(videoSender.replaceTrack(screenTrack));
             }
-          } catch (err) {
-            console.error('[WebRTC] Error replacing track for peer:', err);
-          }
+          } catch (err) {}
         });
 
         await Promise.all(replacePromises);
 
-        // Keep audio from original stream
         const audioTrack = localStreamRef.current?.getAudioTracks()[0];
         const newStream = new MediaStream([
           screenTrack,
           ...(audioTrack ? [audioTrack] : [])
         ]);
 
-        // Stop old camera video track
         localStreamRef.current?.getVideoTracks()[0]?.stop();
 
         safeSetState(setLocalStream, newStream);
@@ -982,26 +1004,26 @@ export const useWebRTC = ({
         safeSetState(setIsScreenSharing, true);
         safeSetState(setIsVideoOn, true);
 
-        console.log('[WebRTC] Screen share started successfully');
-
-        socketRef.current?.emit('stream-state-change', {
-          sessionId,
-          isVideoOn: true,
-          isAudioOn: isAudioOnRef.current,
-          isScreenSharing: true,
-          isRecording: isRecordingRef.current
-        });
+        if (checkSocketConnection()) {
+          socketRef.current?.emit('stream-state-change', {
+            sessionId,
+            isVideoOn: true,
+            isAudioOn: isAudioOnRef.current,
+            isScreenSharing: true,
+            isRecording: isRecordingRef.current
+          });
+        }
       } catch (err) {
-        console.error('[WebRTC] Error starting screen share:', err);
+        if ((err as Error).name !== 'NotAllowedError') {
+          toast.error('Failed to start screen share');
+        }
       }
     }
-  }, [sessionId, safeSetState]);
+  }, [sessionId, safeSetState, checkSocketConnection]);
 
   const toggleRecording = useCallback(() => {
     const newState = !isRecordingRef.current;
     safeSetState(setIsRecording, newState);
-
-    console.log('[WebRTC] Recording toggled:', newState);
 
     socketRef.current?.emit('stream-state-change', {
       sessionId,
@@ -1013,13 +1035,19 @@ export const useWebRTC = ({
   }, [sessionId, safeSetState]);
 
   const toggleHandRaise = useCallback(() => {
+    if (!checkSocketConnection()) return;
+
     const newState = !isHandRaised;
     safeSetState(setIsHandRaised, newState);
     socketRef.current?.emit('hand-raised-change', {
       sessionId,
       isHandRaised: newState
     });
-  }, [isHandRaised, sessionId, safeSetState]);
+
+    if (newState) {
+      toast.success("Hand raised ✋", { duration: 1500 });
+    }
+  }, [isHandRaised, sessionId, safeSetState, checkSocketConnection]);
 
   return {
     localStream,
@@ -1032,11 +1060,13 @@ export const useWebRTC = ({
     isHandRaised,
     connectionStatus,
     sessionStartTime,
+    reconnectAttempt,
     toggleAudio,
     toggleVideo,
     muteAudio,
     toggleScreenShare,
     toggleRecording,
-    toggleHandRaise
+    toggleHandRaise,
+    manualReconnect: handleReconnection
   };
 };

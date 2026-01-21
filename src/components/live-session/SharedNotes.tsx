@@ -5,9 +5,10 @@ import { StickyNote, Users, Sparkles } from 'lucide-react';
 interface SharedNotesProps {
     socket?: Socket;
     sessionId: string;
+    userName?: string;
 }
 
-export function SharedNotes({ socket, sessionId }: SharedNotesProps) {
+export function SharedNotes({ socket, sessionId, userName }: SharedNotesProps) {
     const [notes, setNotes] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const [lastTyper, setLastTyper] = useState<string | null>(null);
@@ -18,22 +19,28 @@ export function SharedNotes({ socket, sessionId }: SharedNotesProps) {
                 setNotes(updatedNotes);
             });
 
-            socket.on('notes-typing', (userName: string) => {
-                setLastTyper(userName);
-                setIsTyping(true);
-                setTimeout(() => setIsTyping(false), 2000);
+            socket.on('notes-typing', (typerName: string) => {
+                if (typerName !== userName) {
+                    setLastTyper(typerName);
+                    setIsTyping(true);
+                    setTimeout(() => setIsTyping(false), 2000);
+                }
             });
         }
         return () => {
             socket?.off('shared-notes-update');
             socket?.off('notes-typing');
         };
-    }, [socket]);
+    }, [socket, userName]);
 
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newNotes = e.target.value;
         setNotes(newNotes);
         socket?.emit('shared-notes-update', { sessionId, notes: newNotes });
+        
+        if (userName) {
+            socket?.emit('notes-typing', { sessionId, userName });
+        }
     };
 
     return (

@@ -1,11 +1,11 @@
-export type DrawTool =
-  | 'pen'
-  | 'eraser'
-  | 'highlighter'
-  | 'select'
-  | 'text'
-  | 'shape'
-  | 'laser'
+export type DrawTool = 
+  | 'pen' 
+  | 'eraser' 
+  | 'highlighter' 
+  | 'select' 
+  | 'text' 
+  | 'shape' 
+  | 'laser' 
   | 'sticky'
   | 'pan';
 
@@ -77,6 +77,19 @@ export interface PDFDocument {
   currentPage: number;
   pageImages: string[];
   originalFile?: File;
+  fileUrl?: string; // Added for download
+}
+
+export interface CanvasDocument {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  title: string;
+  pages: string[];
+  currentPage: number;
+  fileUrl?: string;
 }
 
 export const COLORS = [

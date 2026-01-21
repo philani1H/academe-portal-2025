@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { Calendar, Clock, User, Book, Plus, Trash2, Save, X, Download, Grid, Printer, AlertCircle, Wand2, Settings, Upload } from 'lucide-react';
+import { Calendar, Clock, User, Book, Plus, Trash2, Save, X, Download, Grid, Printer, AlertCircle, Wand2, Settings, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiFetch } from "@/lib/api";
 import io from "socket.io-client";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
 
 const TutorTimetableManager = ({ userRole = 'admin' }) => {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -22,13 +27,14 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
     fillUnplaced: true
   });
   const [newClass, setNewClass] = useState({
-    tutorId: '', tutorName: '', subject: '', courseName: '',
+    tutorId: '', tutorName: '', subject: '', courseName: '', courseId: '',
     grade: 'Grade 10', type: 'Group', students: '',
     startTime: '08:00', endTime: '09:00', day: ''
   });
 
   const [uploadLoading, setUploadLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeDay, setActiveDay] = useState(days[0]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -431,6 +437,7 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
           id: `auto-${Date.now()}-${courseIdx}`,
           tutorId: String(tutor.id),
           tutorName: tutor.name,
+          courseId: String(course.id),
           courseName: course.name,
           subject: subject,
           grade: grade,
@@ -874,7 +881,61 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
                 return null;
               })()}
             </div>
-            <div className="overflow-x-auto">
+            <div className="md:hidden p-2">
+               <Tabs defaultValue={days[0]} onValueChange={setActiveDay} className="w-full">
+                 <ScrollArea className="w-full whitespace-nowrap rounded-md border mb-4">
+                    <TabsList className="w-full justify-start p-1 h-auto bg-transparent">
+                        {days.map(day => <TabsTrigger key={day} value={day} className="flex-shrink-0 px-4 py-3 min-h-[44px] data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md transition-all">{day.substring(0, 3)}</TabsTrigger>)}
+                    </TabsList>
+                 </ScrollArea>
+                 {days.map(day => (
+                   <TabsContent key={day} value={day} className="space-y-4 mt-2 min-h-[50vh]">
+                      {timeSlots.map(time => {
+                        const classes = getClassesForSlot(day, time);
+                        if (classes.length === 0) return null;
+                        return (
+                          <div key={time} className="space-y-2">
+                             <div className="flex items-center gap-2">
+                                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-12">{time}</div>
+                                <div className="h-px bg-gray-200 flex-1"></div>
+                             </div>
+                             {classes.map(cls => (
+                               <div key={cls.id} className="bg-white rounded-lg border border-gray-200 shadow-sm p-3 relative overflow-hidden active:scale-[0.98] transition-transform">
+                                  <div className={`absolute left-0 top-0 bottom-0 w-1 ${cls.type === 'Group' ? 'bg-blue-500' : 'bg-green-500'}`}></div>
+                                  <div className="pl-3">
+                                     <div className="flex justify-between items-start">
+                                        <div className="font-bold text-indigo-700 text-sm">{cls.tutorName}</div>
+                                        <div className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${cls.type === 'Group' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>{cls.type}</div>
+                                     </div>
+                                     <div className="font-medium text-gray-900 text-sm mt-1">{cls.courseName}</div>
+                                     <div className="text-xs text-gray-500 mt-1 flex items-center">
+                                       <Clock className="w-3 h-3 mr-1" />
+                                       {cls.startTime} - {cls.endTime}
+                                     </div>
+                                     {canEdit && (
+                                       <div className="mt-2 flex justify-end">
+                                          <button onClick={() => deleteClass(cls.id)} className="text-red-500 bg-red-50 p-2 rounded-lg hover:bg-red-100 min-h-[32px] min-w-[32px] flex items-center justify-center">
+                                            <Trash2 className="w-4 h-4" />
+                                          </button>
+                                       </div>
+                                     )}
+                                  </div>
+                               </div>
+                             ))}
+                          </div>
+                        )
+                      })}
+                      {timeSlots.every(t => getClassesForSlot(day, t).length === 0) && (
+                         <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                           <Calendar className="w-12 h-12 mb-2 opacity-20" />
+                           <p>No classes scheduled</p>
+                         </div>
+                      )}
+                   </TabsContent>
+                 ))}
+               </Tabs>
+            </div>
+            <div className="overflow-x-auto hidden md:block">
                 <table className="w-full border-collapse table-fixed">
                   <thead>
                     <tr className="bg-indigo-500 text-white">
@@ -927,7 +988,7 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
                                     
                                     <select value={newClass.courseName} onChange={(e) => {
                                       const c = courses.find(x => x.name === e.target.value);
-                                      setNewClass({...newClass, courseName: e.target.value, subject: c?.subject || c?.department || ''});
+                                      setNewClass({...newClass, courseName: e.target.value, courseId: c?.id || '', subject: c?.subject || c?.department || ''});
                                     }} className="w-full px-2 py-1 text-xs border rounded">
                                       <option value="">Select Course</option>
                                       {courses
@@ -1032,7 +1093,7 @@ const TutorTimetableManager = ({ userRole = 'admin' }) => {
                                     )}
                                     <select value={newClass.courseName} onChange={(e) => {
                                       const c = courses.find(x => x.name === e.target.value);
-                                      setNewClass({...newClass, courseName: e.target.value, subject: c?.subject || c?.department || ''});
+                                      setNewClass({...newClass, courseName: e.target.value, courseId: c?.id || '', subject: c?.subject || c?.department || ''});
                                     }} className="w-full px-2 py-1 text-sm border rounded">
                                       <option value="">Select Course</option>
                                       {courses

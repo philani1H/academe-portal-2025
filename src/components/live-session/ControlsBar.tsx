@@ -67,7 +67,7 @@ export function ControlsBar({
     <div className="bg-gradient-to-r from-slate-900 via-indigo-950/50 to-slate-900 px-3 sm:px-6 py-3 sm:py-4 border-t border-indigo-500/20 relative z-[100] shadow-2xl shrink-0">
       <div className="flex justify-between items-center w-full max-w-full">
         {/* Left Controls - Basic Audio/Video */}
-        <div className="flex gap-2 sm:gap-3">
+        <div className="flex gap-2 sm:gap-3 flex-1 justify-start">
           <Button
             size="sm"
             onClick={onToggleAudio}
@@ -96,7 +96,7 @@ export function ControlsBar({
         </div>
 
         {/* Center Controls - Mode Specific */}
-        <div className="flex gap-2 sm:gap-3 flex-shrink-0">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 sm:gap-3 flex-shrink-0">
           {userRole === 'tutor' ? (
             <>
               <Button
@@ -155,7 +155,7 @@ export function ControlsBar({
         </div>
 
         {/* Right Controls - Sidebar, Menu & Leave */}
-        <div className="flex gap-2 sm:gap-3 items-center flex-shrink-0">
+        <div className="flex gap-2 sm:gap-3 items-center flex-shrink-0 flex-1 justify-end">
           <Button
             size="sm"
             variant="outline"

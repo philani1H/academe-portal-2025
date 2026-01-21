@@ -15,6 +15,8 @@ import {
   renderInvitationEmail,
   renderBrandedEmailPreview,
   renderStudentCredentialsEmail,
+  renderTutorCredentialsEmail,
+  renderAdminCredentialsEmail,
   renderLiveSessionStartedEmail,
   renderMaterialUploadedEmail,
   renderTestCreatedEmail,
@@ -41,6 +43,31 @@ cloudinary.config({
 const require = createRequire(import.meta.url)
 const pdfParse = require("pdf-parse")
 const bcrypt = require("bcryptjs")
+
+// Duplicate email prevention for server endpoints
+const recentCredentialsSent = new Map<string, number>();
+const CREDENTIALS_COOLDOWN = 300000; // 5 minutes cooldown
+
+function canSendCredentials(endpoint: string, userId: string): boolean {
+  const key = `${endpoint}:${userId}`;
+  const now = Date.now();
+  const lastSent = recentCredentialsSent.get(key);
+  
+  if (lastSent && (now - lastSent) < CREDENTIALS_COOLDOWN) {
+    return false;
+  }
+  
+  recentCredentialsSent.set(key, now);
+  
+  // Clean up old entries
+  for (const [k, timestamp] of recentCredentialsSent.entries()) {
+    if (now - timestamp > CREDENTIALS_COOLDOWN) {
+      recentCredentialsSent.delete(k);
+    }
+  }
+  
+  return true;
+}
 
 // Type declarations
 interface AuthenticatedRequest extends Request {
@@ -74,6 +101,12 @@ fs.mkdir(uploadsDir, { recursive: true }).catch(console.error)
 // Store active live sessions in memory (courseId -> sessionData)
 const activeSessions = new Map<string, SessionData>()
 
+// Store whiteboard history (sessionId -> action[])
+const whiteboardHistory = new Map<string, any[]>()
+
+// Store whiteboard documents (sessionId -> CanvasDocument[])
+const whiteboardDocuments = new Map<string, any[]>()
+
 // Track users in each session with their details (sessionId -> Map<socketId, UserData>)
 const sessionUsers = new Map<string, Map<string, { userId: string, userRole: string, userName: string, isVideoOn: boolean, isAudioOn: boolean, isHandRaised: boolean }>>();
 
@@ -106,6 +139,79 @@ const safeQuery = async <T>(fn: () => Promise<T>): Promise<T | null> => {
   return null // Return null instead of throwing to prevent crash
 }
 
+// Helper to save whiteboard state
+const saveWhiteboardState = async (sessionId: string, action: any) => {
+  try {
+    const anyPrisma = prisma as any;
+    if (!anyPrisma.whiteboardState) return; 
+
+    const liveSession = await prisma.liveSession.findUnique({
+      where: { sessionId }
+    });
+    
+    if (liveSession) {
+      await anyPrisma.whiteboardState.create({
+        data: {
+          liveSessionId: liveSession.id,
+          action: JSON.stringify(action),
+          timestamp: new Date()
+        }
+      });
+    }
+  } catch (error) {
+    // Suppress errors to avoid log spam if DB is busy or not ready
+  }
+};
+
+// Helper to save whiteboard document
+const saveWhiteboardDocument = async (sessionId: string, doc: any) => {
+  try {
+    const anyPrisma = prisma as any;
+    if (!anyPrisma.whiteboardDocument) return; 
+
+    const liveSession = await prisma.liveSession.findUnique({
+      where: { sessionId }
+    });
+    
+    if (liveSession) {
+      await anyPrisma.whiteboardDocument.create({
+        data: {
+          id: doc.id,
+          liveSessionId: liveSession.id,
+          data: JSON.stringify(doc)
+        }
+      });
+    }
+  } catch (error) {
+     // console.error('Failed to save whiteboard doc:', error);
+  }
+};
+
+const updateWhiteboardDocument = async (docId: string, updates: any) => {
+    try {
+        const anyPrisma = prisma as any;
+        if (!anyPrisma.whiteboardDocument) return;
+        
+        const doc = await anyPrisma.whiteboardDocument.findUnique({ where: { id: docId } });
+        if (doc) {
+            const currentData = JSON.parse(doc.data);
+            const newData = { ...currentData, ...updates };
+            await anyPrisma.whiteboardDocument.update({
+                where: { id: docId },
+                data: { data: JSON.stringify(newData) }
+            });
+        }
+    } catch (e) {}
+}
+
+const deleteWhiteboardDocument = async (docId: string) => {
+    try {
+        const anyPrisma = prisma as any;
+        if (!anyPrisma.whiteboardDocument) return;
+        await anyPrisma.whiteboardDocument.delete({ where: { id: docId } });
+    } catch (e) {}
+}
+
 // Scheduled session checker
 let scheduledSessionChecker: NodeJS.Timeout
 let isCheckerRunning = false
@@ -124,11 +230,12 @@ const startScheduledSessionChecker = (): void => {
   }
 
   const checkSessions = async () => {
+    let nextCheckDelay = 60000 // Default 1 minute
     try {
       const now = new Date()
       const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000)
 
-      const scheduledSessions = await safeQuery(() => anyPrisma.scheduledSession.findMany({
+      const queryResult = await safeQuery(() => anyPrisma.scheduledSession.findMany({
         where: {
           status: "scheduled",
           scheduledAt: {
@@ -140,7 +247,14 @@ const startScheduledSessionChecker = (): void => {
           course: true,
           tutor: true,
         },
-      })) || []
+      }))
+
+      if (queryResult === null) {
+         console.warn("⚠ Database unreachable for scheduled sessions. Backing off for 5 minutes.")
+         nextCheckDelay = 300000 // 5 minutes
+      }
+
+      const scheduledSessions = queryResult || []
 
       for (const session of scheduledSessions) {
         console.log(
@@ -238,7 +352,7 @@ const startScheduledSessionChecker = (): void => {
     }
     finally {
       if (isCheckerRunning) {
-        scheduledSessionChecker = setTimeout(checkSessions, 60000)
+        scheduledSessionChecker = setTimeout(checkSessions, nextCheckDelay)
       }
     }
   }
@@ -343,17 +457,39 @@ app.post("/api/timetable", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: "timetable must be an array" })
     }
 
-    // 1. Resolve names to IDs
+    // 1. Resolve names to IDs (prioritize IDs if available)
     const validEntries = []
     for (const entry of timetable) {
-      if (!entry.tutorName || !entry.courseName) continue
+      let user = null
+      let course = null
 
-      const user = await prisma.user.findFirst({
-        where: { name: entry.tutorName, role: "tutor" },
-      })
-      const course = await prisma.course.findFirst({
-        where: { name: entry.courseName },
-      })
+      // Try resolving Tutor by ID first
+      if (entry.tutorId) {
+        const tId = Number.parseInt(String(entry.tutorId))
+        if (!isNaN(tId)) {
+          user = await prisma.user.findUnique({ where: { id: tId } })
+        }
+      }
+      // Fallback to Tutor Name
+      if (!user && entry.tutorName) {
+        user = await prisma.user.findFirst({
+          where: { name: entry.tutorName, role: "tutor" },
+        })
+      }
+
+      // Try resolving Course by ID first
+      if (entry.courseId) {
+        const cId = Number.parseInt(String(entry.courseId))
+        if (!isNaN(cId)) {
+          course = await prisma.course.findUnique({ where: { id: cId } })
+        }
+      }
+      // Fallback to Course Name
+      if (!course && entry.courseName) {
+        course = await prisma.course.findFirst({
+          where: { name: entry.courseName },
+        })
+      }
 
       if (user && course) {
         validEntries.push({
@@ -824,6 +960,7 @@ app.post("/api/tests/save", authenticateJWT as RequestHandler, async (req: Authe
 
 // Socket.IO Setup
 const io = new Server(httpServer, {
+  maxHttpBufferSize: 1e8, // 100 MB
   cors: {
     origin: isProd ? undefined : "*",
     methods: ["GET", "POST"],
@@ -1189,6 +1326,19 @@ io.on("connection", (socket) => {
     io.to(to).emit("signal", { signal, from, userRole, userName, isVideoOn, isAudioOn })
   })
 
+  socket.on("whiteboard-action", ({ sessionId, action }) => {
+    if (!sessionId || !action) return;
+
+    const usersInSession = sessionUsers.get(sessionId);
+    const userData = usersInSession?.get(socket.id);
+
+    socket.to(sessionId).emit("whiteboard-action", {
+      action,
+      userId: userData?.userId || socket.id,
+      userName: userData?.userName || "Unknown"
+    });
+  });
+
   socket.on("whiteboard-draw", (payload: any) => {
     try {
       if (!payload) return
@@ -1200,6 +1350,21 @@ io.on("connection", (socket) => {
         return rest
       })()
 
+      // Store in history
+      if (!whiteboardHistory.has(sessionId)) {
+        whiteboardHistory.set(sessionId, [])
+      }
+
+      // Optimization: If clear, reset history
+      if (data.action && data.action.type === 'clear') {
+        whiteboardHistory.set(sessionId, [data])
+      } else {
+        whiteboardHistory.get(sessionId)!.push(data)
+      }
+
+      // Save to DB
+      saveWhiteboardState(sessionId, data);
+
       socket.to(sessionId).emit("whiteboard-draw", data)
     } catch (err) {
       console.error("Error handling whiteboard-draw event:", err)
@@ -1207,8 +1372,139 @@ io.on("connection", (socket) => {
   })
 
   socket.on("whiteboard-clear", ({ sessionId }) => {
+    // Clear history
+    if (sessionId) {
+      whiteboardHistory.set(sessionId, [])
+      whiteboardDocuments.set(sessionId, []) // Also clear documents? Probably yes if "Clear Canvas"
+      // Save clear action to DB
+      saveWhiteboardState(sessionId, { type: 'clear', id: Date.now().toString() });
+      
+      // Also delete all documents from DB for this session?
+      // Or we can just let them be orphan? No, cleaner to delete.
+      // But we don't have easy way to delete all docs for session without liveSessionId.
+      // We can fetch session first.
+      try {
+          const anyPrisma = prisma as any;
+          if (anyPrisma.whiteboardDocument) {
+             // We need liveSessionId. We can't get it easily without query.
+             // Async fire and forget
+             prisma.liveSession.findUnique({ where: { sessionId } }).then(ls => {
+                 if (ls) {
+                     anyPrisma.whiteboardDocument.deleteMany({ where: { liveSessionId: ls.id } }).catch(() => {});
+                 }
+             }).catch(() => {});
+          }
+      } catch (e) {}
+    }
     socket.to(sessionId).emit("whiteboard-clear")
+    // Also emit doc delete all? Client clears everything on 'whiteboard-clear' usually.
+    // Whiteboard.tsx:
+    // const handleClear = useCallback(() => { ... clearCanvas(); setStickyNotes([]); ... });
+    // It does NOT clear documents in setDocuments([])!
+    // We should probably emit a specific event or update Whiteboard.tsx to clear docs too.
+    // But for now let's leave it as is to match client behavior.
+    // Wait, if server clears docs but client doesn't, they will be out of sync.
+    // Let's check Whiteboard.tsx handleClear.
   })
+
+  socket.on("get-whiteboard-history", async ({ sessionId }) => {
+    let history = whiteboardHistory.get(sessionId) || []
+    let documents = whiteboardDocuments.get(sessionId) || []
+    
+    // If in-memory empty, try DB
+    if (history.length === 0 && documents.length === 0) {
+      try {
+        const anyPrisma = prisma as any;
+        if (anyPrisma.whiteboardState && anyPrisma.whiteboardDocument) {
+           const liveSession = await prisma.liveSession.findUnique({ where: { sessionId } });
+           if (liveSession) {
+               // Load History
+               const states = await anyPrisma.whiteboardState.findMany({
+                   where: { liveSessionId: liveSession.id },
+                   orderBy: { timestamp: 'asc' }
+               });
+               if (states.length > 0) {
+                   history = states.map((s: any) => {
+                     try { return JSON.parse(s.action); } catch { return null; }
+                   }).filter(Boolean);
+                   whiteboardHistory.set(sessionId, history);
+               }
+
+               // Load Documents
+               const docs = await anyPrisma.whiteboardDocument.findMany({
+                   where: { liveSessionId: liveSession.id },
+                   orderBy: { createdAt: 'asc' }
+               });
+               if (docs.length > 0) {
+                   documents = docs.map((d: any) => {
+                       try { return JSON.parse(d.data); } catch { return null; }
+                   }).filter(Boolean);
+                   whiteboardDocuments.set(sessionId, documents);
+               }
+           }
+        }
+      } catch (e) {
+        console.error("Error fetching whiteboard history from DB:", e);
+      }
+    }
+
+    socket.emit("whiteboard-history", { history, documents })
+  })
+
+  socket.on("whiteboard-doc-add", ({ sessionId, doc }) => {
+      if (!sessionId || !doc) return;
+      
+      // Update in-memory
+      if (!whiteboardDocuments.has(sessionId)) {
+          whiteboardDocuments.set(sessionId, []);
+      }
+      const docs = whiteboardDocuments.get(sessionId)!;
+      // Avoid duplicates
+      if (!docs.some(d => d.id === doc.id)) {
+          docs.push(doc);
+      }
+      
+      // Persist
+      saveWhiteboardDocument(sessionId, doc);
+      
+      // Broadcast
+      socket.to(sessionId).emit("whiteboard-doc-add", { doc });
+  });
+
+  socket.on("whiteboard-doc-update", ({ sessionId, docId, updates }) => {
+      if (!sessionId || !docId) return;
+
+      // Update in-memory
+      const docs = whiteboardDocuments.get(sessionId);
+      if (docs) {
+          const docIndex = docs.findIndex(d => d.id === docId);
+          if (docIndex !== -1) {
+              docs[docIndex] = { ...docs[docIndex], ...updates };
+          }
+      }
+
+      // Persist
+      updateWhiteboardDocument(docId, updates);
+
+      // Broadcast
+      socket.to(sessionId).emit("whiteboard-doc-update", { docId, updates });
+  });
+
+  socket.on("whiteboard-doc-delete", ({ sessionId, docId }) => {
+      if (!sessionId || !docId) return;
+
+      // Update in-memory
+      const docs = whiteboardDocuments.get(sessionId);
+      if (docs) {
+          whiteboardDocuments.set(sessionId, docs.filter(d => d.id !== docId));
+      }
+
+      // Persist
+      deleteWhiteboardDocument(docId);
+
+      // Broadcast
+      socket.to(sessionId).emit("whiteboard-doc-delete", { docId });
+  });
 
   socket.on("whiteboard-image", ({ sessionId, imageUrl }) => {
     socket.to(sessionId).emit("whiteboard-image", imageUrl)
@@ -1218,8 +1514,16 @@ io.on("connection", (socket) => {
     socket.to(sessionId).emit("chat-message", message)
   })
 
+  socket.on("file-shared", ({ sessionId, file }) => {
+    socket.to(sessionId).emit("file-shared", file)
+  })
+
   socket.on("shared-notes-update", ({ sessionId, notes }) => {
     socket.to(sessionId).emit("shared-notes-update", notes)
+  })
+
+  socket.on("notes-typing", ({ sessionId, userName }) => {
+    socket.to(sessionId).emit("notes-typing", userName)
   })
 
   // Admin actions (mute, kick, request-unmute)
@@ -1697,6 +2001,603 @@ app.post(
   },
 )
 
+// Send credentials to existing tutors (admin only)
+app.post(
+  "/api/admin/tutors/send-credentials",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { tutorIds, subject, message } = req.body || {}
+      if (!Array.isArray(tutorIds) || tutorIds.length === 0) {
+        return res.status(400).json({ success: false, error: "tutorIds[] is required" })
+      }
+
+      const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+      const results: any[] = []
+
+      for (const tutorId of tutorIds) {
+        try {
+          // Get tutor details with courses and enrollments
+          const tutor = await prisma.user.findUnique({ 
+            where: { id: parseInt(tutorId) },
+            include: {
+              courses: {
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                  department: true
+                }
+              }
+            }
+          })
+
+          if (!tutor || tutor.role !== "tutor") {
+            results.push({ tutorId, error: "Tutor not found" })
+            continue
+          }
+
+          // Check if tutor has a personal email
+          if (!tutor.personalEmail || tutor.personalEmail.trim() === "") {
+            results.push({ 
+              tutorId, 
+              name: tutor.name,
+              systemEmail: tutor.email,
+              error: "No personal email found - credentials cannot be sent" 
+            })
+            continue
+          }
+
+          // Validate personal email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+          if (!emailRegex.test(tutor.personalEmail)) {
+            results.push({ 
+              tutorId, 
+              name: tutor.name,
+              personalEmail: tutor.personalEmail,
+              error: "Invalid personal email format" 
+            })
+            continue
+          }
+
+          // Generate password using the same method as PDF export
+          const tempPassword = generatePasswordFromName(tutor.name)
+          const hash = await hashPassword(tempPassword)
+
+          // Update password in database (still use system email for login)
+          const db = await getConnection()
+          try {
+            const now = new Date().toISOString()
+            await db.run(
+              `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
+               VALUES (?, ?, ?, ?::timestamp, ?::timestamp)
+               ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, updated_at=excluded.updated_at RETURNING email`,
+              [tutor.email, tutor.id, hash, now, now]
+            )
+          } finally {
+            await db.close()
+          }
+
+          // Get tutor's courses and departments (same logic as PDF export)
+          const tutorCourses = tutor.courses || []
+          const courseNames = tutorCourses.map(course => course.name)
+          const courseDepartments = [...new Set(tutorCourses.map(course => course.department).filter(Boolean))]
+          
+          // Primary department from tutor profile, fallback to course departments
+          const primaryDepartment = tutor.department || courseDepartments[0] || "General"
+          
+          // All departments (tutor's primary + course departments)
+          const allDepartments = [...new Set([
+            tutor.department,
+            ...courseDepartments
+          ].filter(Boolean))]
+
+          // Create email content
+          const loginUrl = `https://www.excellenceakademie.co.za/tutor-login`
+          
+          const emailContent = renderTutorCredentialsEmail({
+            recipientName: tutor.name,
+            tutorEmail: tutor.email, // System email for login
+            personalEmail: tutor.personalEmail, // Personal email for display
+            tempPassword,
+            loginUrl,
+            department: primaryDepartment,
+            allDepartments: allDepartments.join(", "),
+            courses: courseNames.join(", ") || "No courses assigned",
+            courseCount: courseNames.length,
+            additionalMessage: message || ""
+          })
+
+          // Send email to PERSONAL EMAIL
+          const emailResult = await sendEmail({
+            to: tutor.personalEmail, // Send to personal email
+            subject: subject || "Your Tutor Account Credentials - Excellence Academia",
+            content: emailContent,
+          })
+
+          results.push({ 
+            tutorId, 
+            systemEmail: tutor.email,
+            personalEmail: tutor.personalEmail,
+            name: tutor.name,
+            department: primaryDepartment,
+            allDepartments: allDepartments,
+            courses: courseNames,
+            courseCount: courseNames.length,
+            sent: !!emailResult.success, 
+            tempPassword: emailResult.success ? tempPassword : undefined,
+            error: !emailResult.success ? "Failed to send email" : undefined
+          })
+
+        } catch (error) {
+          console.error(`Error processing tutor ${tutorId}:`, error)
+          results.push({ tutorId, error: "Processing failed" })
+        }
+      }
+
+      // Emit socket events for real-time updates
+      if (results.some(r => r.sent)) {
+        const io = req.app.get("io")
+        io.emit("user-updated", { role: "tutor", action: "credentials-sent" })
+        io.emit("admin-stats-updated")
+      }
+
+      // Separate successful sends from failures
+      const successful = results.filter(r => r.sent)
+      const failed = results.filter(r => !r.sent)
+      const noPersonalEmail = results.filter(r => r.error && r.error.includes("personal email"))
+
+      return res.json({ 
+        success: true, 
+        sent: successful.length,
+        failed: failed.length,
+        noPersonalEmail: noPersonalEmail.length,
+        results,
+        summary: {
+          total: tutorIds.length,
+          successful: successful.length,
+          failed: failed.length,
+          noPersonalEmail: noPersonalEmail.length
+        }
+      })
+
+    } catch (error) {
+      console.error("Send tutor credentials error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send tutor credentials" })
+    }
+  },
+)
+
+// Send credentials to existing admins (admin only)
+app.post(
+  "/api/admin/admins/send-credentials",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await ensureAdminUsersTable()
+      const { adminIds, subject, message } = req.body || {}
+      if (!Array.isArray(adminIds) || adminIds.length === 0) {
+        return res.status(400).json({ success: false, error: "adminIds[] is required" })
+      }
+
+      const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+      const results: any[] = []
+
+      for (const adminId of adminIds) {
+        try {
+          // Get admin details
+          const admin = await prisma.adminUser.findUnique({ 
+            where: { id: parseInt(adminId) }
+          })
+
+          if (!admin) {
+            results.push({ adminId, error: "Admin not found" })
+            continue
+          }
+
+          // Check if admin has a personal email
+          if (!admin.personalEmail || admin.personalEmail.trim() === "") {
+            results.push({ 
+              adminId, 
+              name: admin.displayName || admin.username,
+              systemEmail: admin.email,
+              error: "No personal email found - credentials cannot be sent" 
+            })
+            continue
+          }
+
+          // Validate personal email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+          if (!emailRegex.test(admin.personalEmail)) {
+            results.push({ 
+              adminId, 
+              name: admin.displayName || admin.username,
+              personalEmail: admin.personalEmail,
+              error: "Invalid personal email format" 
+            })
+            continue
+          }
+
+          // Generate password using the same method as PDF export
+          const tempPassword = generatePasswordFromName(admin.displayName || admin.username)
+          const passwordHash = await bcrypt.hash(tempPassword, 10)
+
+          // Update password in adminUser table
+          await prisma.adminUser.update({
+            where: { id: admin.id },
+            data: { passwordHash }
+          })
+
+          // Create email content
+          const loginUrl = `${frontendBase.replace(/\/$/, "")}/admin-login`
+          
+          const emailContent = renderAdminCredentialsEmail({
+            recipientName: admin.displayName || admin.username,
+            adminEmail: admin.email, // System email for login
+            personalEmail: admin.personalEmail, // Personal email for display
+            tempPassword,
+            loginUrl,
+            additionalMessage: message || ""
+          })
+
+          // Send email to PERSONAL EMAIL
+          const emailResult = await sendEmail({
+            to: admin.personalEmail, // Send to personal email
+            subject: subject || "Your Admin Account Credentials - Excellence Academia",
+            content: emailContent,
+          })
+
+          results.push({ 
+            adminId, 
+            systemEmail: admin.email,
+            personalEmail: admin.personalEmail,
+            name: admin.displayName || admin.username,
+            sent: !!emailResult.success, 
+            tempPassword: emailResult.success ? tempPassword : undefined,
+            error: !emailResult.success ? "Failed to send email" : undefined
+          })
+
+        } catch (error) {
+          console.error(`Error processing admin ${adminId}:`, error)
+          results.push({ adminId, error: "Processing failed" })
+        }
+      }
+
+      // Emit socket events for real-time updates
+      if (results.some(r => r.sent)) {
+        const io = req.app.get("io")
+        io.emit("user-updated", { role: "admin", action: "credentials-sent" })
+        io.emit("admin-stats-updated")
+      }
+
+      // Separate successful sends from failures
+      const successful = results.filter(r => r.sent)
+      const failed = results.filter(r => !r.sent)
+      const noPersonalEmail = results.filter(r => r.error && r.error.includes("personal email"))
+
+      return res.json({ 
+        success: true, 
+        sent: successful.length,
+        failed: failed.length,
+        noPersonalEmail: noPersonalEmail.length,
+        results,
+        summary: {
+          total: adminIds.length,
+          successful: successful.length,
+          failed: failed.length,
+          noPersonalEmail: noPersonalEmail.length
+        }
+      })
+
+    } catch (error) {
+      console.error("Send admin credentials error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send admin credentials" })
+    }
+  },
+)
+
+// Preview admin credentials email (admin only)
+app.post(
+  "/api/admin/admins/credentials-preview",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      await ensureAdminUsersTable()
+      const { adminId, subject, message } = req.body || {}
+      
+      if (!adminId) {
+        return res.status(400).json({ success: false, error: "adminId is required" })
+      }
+
+      // Get admin details for preview
+      const admin = await prisma.adminUser.findUnique({ 
+        where: { id: parseInt(adminId) }
+      })
+
+      if (!admin) {
+        return res.status(404).json({ success: false, error: "Admin not found" })
+      }
+
+      // Prepare preview data
+      const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+      const loginUrl = `${frontendBase.replace(/\/$/, "")}/admin-login`
+      
+      // Generate preview email content
+      const emailContent = renderAdminCredentialsEmail({
+        recipientName: admin.displayName || admin.username,
+        adminEmail: admin.email,
+        personalEmail: admin.personalEmail || undefined,
+        tempPassword: "PREVIEW123", // Sample password for preview
+        loginUrl,
+        additionalMessage: message || ""
+      })
+
+      return res.json({ 
+        success: true, 
+        preview: {
+          html: emailContent,
+          subject: subject || "Your Admin Account Credentials - Excellence Academia",
+          recipientName: admin.displayName || admin.username,
+          personalEmail: admin.personalEmail,
+          systemEmail: admin.email,
+          hasPersonalEmail: !!admin.personalEmail
+        }
+      })
+
+    } catch (error) {
+      console.error("Admin credentials preview error:", error)
+      return res.status(500).json({ success: false, error: "Failed to generate preview" })
+    }
+  },
+)
+
+// Send credentials to existing students (admin only)
+app.post(
+  "/api/admin/students/send-credentials",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { studentIds, subject, message } = req.body || {}
+      if (!Array.isArray(studentIds) || studentIds.length === 0) {
+        return res.status(400).json({ success: false, error: "studentIds[] is required" })
+      }
+
+      const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+      const results: any[] = []
+
+      for (const studentId of studentIds) {
+        try {
+          // Get student details with courses and enrollments
+          const student = await prisma.user.findUnique({ 
+            where: { id: parseInt(studentId) },
+            include: {
+              courseEnrollments: {
+                include: {
+                  course: {
+                    select: {
+                      id: true,
+                      name: true,
+                      description: true,
+                      department: true
+                    }
+                  }
+                }
+              }
+            }
+          })
+
+          if (!student || student.role !== "student") {
+            results.push({ studentId, error: "Student not found" })
+            continue
+          }
+
+          // Check if student has a personal email
+          if (!student.personalEmail || student.personalEmail.trim() === "") {
+            results.push({ 
+              studentId, 
+              name: student.name,
+              systemEmail: student.email,
+              error: "No personal email found - credentials cannot be sent" 
+            })
+            continue
+          }
+
+          // Validate personal email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+          if (!emailRegex.test(student.personalEmail)) {
+            results.push({ 
+              studentId, 
+              name: student.name,
+              personalEmail: student.personalEmail,
+              error: "Invalid personal email format" 
+            })
+            continue
+          }
+
+          // Generate password using the same method as PDF export
+          const tempPassword = generatePasswordFromName(student.name)
+          const hash = await hashPassword(tempPassword)
+
+          // Update password in database (still use system email for login)
+          const db = await getConnection()
+          try {
+            const now = new Date().toISOString()
+            await db.run(
+              `INSERT INTO user_credentials (email, user_id, password_hash, created_at, updated_at)
+               VALUES (?, ?, ?, ?::timestamp, ?::timestamp)
+               ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, updated_at=excluded.updated_at RETURNING email`,
+              [student.email, student.id, hash, now, now]
+            )
+          } finally {
+            await db.close()
+          }
+
+          // Get student's courses and departments
+          const studentCourses = student.courseEnrollments?.map(enrollment => enrollment.course) || []
+          const courseNames = studentCourses.map(course => course.name)
+          const courseDepartments = [...new Set(studentCourses.map(course => course.department).filter(Boolean))]
+          
+          // Primary department from student profile, fallback to course departments
+          const primaryDepartment = student.department || courseDepartments[0] || "General"
+          
+          // All departments (student's primary + course departments)
+          const allDepartments = [...new Set([
+            student.department,
+            ...courseDepartments
+          ].filter(Boolean))]
+
+          // Create email content
+          const loginUrl = `https://www.excellenceakademie.co.za/student-login`
+          
+          const emailContent = renderStudentCredentialsEmail({
+            recipientName: student.name,
+            studentNumber: student.studentNumber || "N/A",
+            studentEmail: student.email, // System email for login
+            personalEmail: student.personalEmail, // Personal email for display
+            tempPassword,
+            loginUrl,
+            department: primaryDepartment,
+            allDepartments: allDepartments.join(", "),
+            courses: courseNames.join(", ") || "No courses enrolled",
+            courseCount: courseNames.length,
+            additionalMessage: message || ""
+          })
+
+          // Send email to PERSONAL EMAIL
+          const emailResult = await sendEmail({
+            to: student.personalEmail, // Send to personal email
+            subject: subject || "Your Student Account Credentials - Excellence Academia",
+            content: emailContent,
+          })
+
+          results.push({ 
+            studentId, 
+            systemEmail: student.email,
+            personalEmail: student.personalEmail,
+            name: student.name,
+            studentNumber: student.studentNumber,
+            department: primaryDepartment,
+            allDepartments: allDepartments,
+            courses: courseNames,
+            courseCount: courseNames.length,
+            sent: !!emailResult.success, 
+            tempPassword: emailResult.success ? tempPassword : undefined,
+            error: !emailResult.success ? "Failed to send email" : undefined
+          })
+
+        } catch (error) {
+          console.error(`Error processing student ${studentId}:`, error)
+          results.push({ studentId, error: "Processing failed" })
+        }
+      }
+
+      // Emit socket events for real-time updates
+      if (results.some(r => r.sent)) {
+        const io = req.app.get("io")
+        io.emit("user-updated", { role: "student", action: "credentials-sent" })
+        io.emit("admin-stats-updated")
+      }
+
+      // Separate successful sends from failures
+      const successful = results.filter(r => r.sent)
+      const failed = results.filter(r => !r.sent)
+      const noPersonalEmail = results.filter(r => r.error && r.error.includes("personal email"))
+
+      return res.json({ 
+        success: true, 
+        sent: successful.length,
+        failed: failed.length,
+        noPersonalEmail: noPersonalEmail.length,
+        results,
+        summary: {
+          total: studentIds.length,
+          successful: successful.length,
+          failed: failed.length,
+          noPersonalEmail: noPersonalEmail.length
+        }
+      })
+
+    } catch (error) {
+      console.error("Send student credentials error:", error)
+      return res.status(500).json({ success: false, error: "Failed to send student credentials" })
+    }
+  },
+)
+
+// Preview tutor credentials email (admin only)
+app.post(
+  "/api/admin/tutors/credentials-preview",
+  authenticateJWT as RequestHandler,
+  authorizeRoles("admin") as RequestHandler,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { tutorId, subject, message } = req.body || {}
+      
+      if (!tutorId) {
+        return res.status(400).json({ success: false, error: "tutorId is required" })
+      }
+
+      // Get tutor details for preview
+      const tutor = await prisma.user.findUnique({ 
+        where: { id: parseInt(tutorId) },
+        include: {
+          courses: {
+            select: {
+              name: true,
+              description: true,
+              department: true
+            }
+          }
+        }
+      })
+
+      if (!tutor || tutor.role !== "tutor") {
+        return res.status(404).json({ success: false, error: "Tutor not found" })
+      }
+
+      // Prepare preview data
+      const frontendBase = process.env.FRONTEND_URL || "https://www.excellenceakademie.co.za"
+      const coursesList = tutor.courses?.map(c => c.name).join(", ") || "No courses assigned"
+      const department = tutor.department || tutor.courses?.[0]?.department || "General"
+      const loginUrl = `${frontendBase.replace(/\/$/, "")}/tutor/login`
+      
+      // Generate preview email content
+      const emailContent = renderTutorCredentialsEmail({
+        recipientName: tutor.name,
+        tutorEmail: tutor.email,
+        personalEmail: tutor.personalEmail || undefined,
+        tempPassword: "PREVIEW123", // Sample password for preview
+        loginUrl,
+        department,
+        courses: coursesList,
+        additionalMessage: message || ""
+      })
+
+      return res.json({ 
+        success: true, 
+        preview: {
+          html: emailContent,
+          subject: subject || "Your Tutor Account Credentials - Excellence Academia",
+          recipientName: tutor.name,
+          personalEmail: tutor.personalEmail,
+          systemEmail: tutor.email,
+          department,
+          courses: coursesList,
+          hasPersonalEmail: !!tutor.personalEmail
+        }
+      })
+
+    } catch (error) {
+      console.error("Tutor credentials preview error:", error)
+      return res.status(500).json({ success: false, error: "Failed to generate preview" })
+    }
+  },
+)
+
 // Student auth: login
 app.post("/api/auth/login", async (req: Request, res: Response) => {
   try {
@@ -1922,6 +2823,7 @@ app.get("/api/admin/users", authenticateJWT as RequestHandler, authorizeRoles("a
       id: u.id,
       name: u.name,
       email: u.email,
+      personalEmail: u.personalEmail,
       role: u.role,
       department: u.department,
       subjects: u.subjects,
@@ -1956,6 +2858,47 @@ app.get("/api/admin/admin-users", authenticateJWT as RequestHandler, authorizeRo
   } catch (error) {
     console.error("Admin admin-users fetch error:", error)
     return res.status(500).json({ success: false, error: "Failed to load admin users" })
+  }
+})
+
+// Debug endpoint to check tutor data
+app.get("/api/debug/tutors", authenticateJWT as RequestHandler, authorizeRoles("admin") as RequestHandler, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { role: "tutor" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        personalEmail: true,
+        department: true,
+        subjects: true,
+        createdAt: true
+      }
+    })
+
+    const tutorTable = await prisma.tutor.findMany({
+      select: {
+        id: true,
+        name: true,
+        contactEmail: true,
+        subjects: true,
+        isActive: true
+      }
+    })
+
+    return res.json({
+      success: true,
+      userTableTutors: users,
+      tutorTable: tutorTable,
+      counts: {
+        userTableTutors: users.length,
+        tutorTable: tutorTable.length
+      }
+    })
+  } catch (error) {
+    console.error("Debug tutors error:", error)
+    return res.status(500).json({ success: false, error: "Failed to fetch debug data" })
   }
 })
 
@@ -6176,7 +7119,7 @@ app.get("/api/tutor/dashboard", authenticateJWT as RequestHandler, authorizeRole
         name: tutorUser.name,
         email: tutorUser.email,
         department: tutorUser.department || "General",
-        subjects: [],
+        subjects: parseArrayField(tutorUser.subjects),
         contactEmail: tutorUser.email,
         contactPhone: "",
         description: "",

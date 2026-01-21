@@ -25,7 +25,10 @@
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
     "seed:content": "tsx src/scripts/migrate-content.ts",
-    "seed:all": "tsx src/scripts/migrate-all-content.ts"
+    "seed:all": "tsx src/scripts/migrate-all-content.ts",
+    "test:email": "tsx scripts/test-email.ts",
+    "test:smtp": "tsx simple-smtp-test.ts",
+    "test:tutor": "tsx tutor-template-test.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
@@ -65,6 +68,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
+    "@types/nodemailer": "^7.0.5",
     "@types/pg": "8.16.0",
     "@types/simple-peer": "^9.11.9",
     "@vercel/analytics": "^1.4.1",
@@ -93,6 +97,7 @@
     "lucide-react": "^0.462.0",
     "multer": "^2.0.2",
     "next-themes": "^0.3.0",
+    "nodemailer": "^6.9.8",
     "pdf-parse": "^2.4.5",
     "performance-now": "^2.1.0",
     "pg": "8.17.1",
@@ -108,6 +113,7 @@
     "react-router-dom": "^6.26.2",
     "recharts": "^2.12.7",
     "remark-gfm": "^4.0.1",
+    "semver": "^7.7.3",
     "simple-peer": "^9.11.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",

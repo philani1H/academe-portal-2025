@@ -29,6 +29,7 @@ interface SidebarProps {
   socket?: Socket
   sessionId: string
   currentUserId?: string
+  currentUserName?: string
 }
 
 export function Sidebar({
@@ -52,7 +53,8 @@ export function Sidebar({
   fileInputRef,
   socket,
   sessionId,
-  currentUserId
+  currentUserId,
+  currentUserName
 }: SidebarProps) {
   if (!isOpen) return null
 
@@ -156,6 +158,7 @@ export function Sidebar({
             <SharedNotes 
                 socket={socket}
                 sessionId={sessionId}
+                userName={currentUserName}
             />
         )}
       </div>

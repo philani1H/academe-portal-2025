@@ -85,7 +85,11 @@ export function FilesTab({
                 </div>
 
                 {/* Download Button */}
-                <button className="h-9 w-9 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/30 border border-indigo-500/20 hover:border-indigo-500/40 flex items-center justify-center text-indigo-400 hover:text-indigo-300 transition-all duration-200 opacity-0 group-hover:opacity-100">
+                <button 
+                  onClick={() => window.open(file.url, '_blank')}
+                  className="h-9 w-9 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/30 border border-indigo-500/20 hover:border-indigo-500/40 flex items-center justify-center text-indigo-400 hover:text-indigo-300 transition-all duration-200 opacity-0 group-hover:opacity-100"
+                  title="Download"
+                >
                   <Download className="h-4 w-4" />
                 </button>
               </div>

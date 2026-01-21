@@ -204,13 +204,10 @@ export default function TutorDashboard() {
         
         if (parsed) {
             const storedRole = (parsed?.role || '').toLowerCase()
-            // If we have a stored user but they are not tutor/admin, deny access
-            if (storedRole !== 'tutor' && storedRole !== 'admin') {
-               setError('Access Denied: Tutor or Admin privileges required.')
-               setLoading(false)
-               return
+            // Allow access if stored user is tutor or admin
+            if (storedRole === 'tutor' || storedRole === 'admin') {
+               tutorId = parsed.id
             }
-            tutorId = parsed.id
         }
       }
       const data = await apiFetch<any>(`/api/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
@@ -236,7 +233,7 @@ export default function TutorDashboard() {
         email: data?.tutor?.contactEmail ?? "",
         role: "Tutor",
         avatar: data?.tutor?.image ?? undefined,
-        department: data?.tutor?.subjects?.[0] ?? "Education",
+        department: data?.tutor?.department || data?.tutor?.subjects?.[0] || "Education",
       }
       setUser(nextUser)
 

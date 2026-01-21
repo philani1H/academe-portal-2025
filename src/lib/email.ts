@@ -1,10 +1,64 @@
 import * as brevo from '@getbrevo/brevo';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const nodemailer = require('nodemailer');
 
 const brevoApiKey = process.env.BREVO_API_KEY || '';
 const apiInstance = new brevo.TransactionalEmailsApi();
 apiInstance.setApiKey(brevo.TransactionalEmailsApiApiKeys.apiKey, brevoApiKey);
 const defaultFromEmail = process.env.BREVO_FROM_EMAIL || 'notifications@excellenceakademie.co.za';
 const defaultFromName = process.env.BREVO_FROM_NAME || 'Excellence Academia';
+
+// Email method preference
+const emailMethod = process.env.EMAIL_METHOD || 'auto'; // 'smtp_only', 'api_only', or 'auto'
+
+// SMTP Configuration for Brevo
+const smtpConfig = {
+  host: process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com',
+  port: parseInt(process.env.BREVO_SMTP_PORT || '2525'),
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.BREVO_SMTP_USER || '',
+    pass: process.env.BREVO_SMTP_PASS || '',
+  },
+};
+
+// Create SMTP transporter
+let smtpTransporter: any | null = null;
+if (process.env.BREVO_SMTP_USER && process.env.BREVO_SMTP_PASS) {
+  try {
+    smtpTransporter = nodemailer.createTransport(smtpConfig);
+    console.log('✅ SMTP transporter configured for Brevo');
+  } catch (error) {
+    console.error('❌ Failed to configure SMTP transporter:', error);
+  }
+}
+
+// Duplicate email prevention - track recent emails
+const recentEmails = new Map<string, number>();
+const DUPLICATE_PREVENTION_WINDOW = 60000; // 1 minute
+
+function isDuplicateEmail(to: string, subject: string): boolean {
+  const key = `${to}:${subject}`;
+  const now = Date.now();
+  const lastSent = recentEmails.get(key);
+  
+  if (lastSent && (now - lastSent) < DUPLICATE_PREVENTION_WINDOW) {
+    return true;
+  }
+  
+  recentEmails.set(key, now);
+  
+  // Clean up old entries
+  for (const [k, timestamp] of recentEmails.entries()) {
+    if (now - timestamp > DUPLICATE_PREVENTION_WINDOW) {
+      recentEmails.delete(k);
+    }
+  }
+  
+  return false;
+}
 
 export interface EmailPayload {
   to: string;
@@ -158,16 +212,28 @@ export function renderStudentCredentialsEmail({
   recipientName,
   studentNumber,
   studentEmail,
+  personalEmail,
   tempPassword,
   loginUrl,
-  courseName
+  department,
+  allDepartments,
+  courses,
+  courseCount,
+  courseName,
+  additionalMessage
 }: {
   recipientName: string;
   studentNumber: string;
   studentEmail: string;
+  personalEmail?: string;
   tempPassword: string;
   loginUrl: string;
+  department?: string;
+  allDepartments?: string;
+  courses?: string;
+  courseCount?: number;
   courseName?: string;
+  additionalMessage?: string;
 }) {
   const title = "Your Student Login Credentials";
   const message = `
@@ -178,6 +244,20 @@ export function renderStudentCredentialsEmail({
       <p style="font-size: 16px; line-height: 1.8; color: #334155; margin: 0 0 20px;">
         Welcome to <strong style="color: #0EA5E9;">Excellence Academia</strong>! Your student account has been created successfully.
       </p>
+      ${personalEmail ? `
+        <div style="margin: 20px 0; padding: 16px; background: #EFF6FF; border-radius: 12px; border-left: 4px solid #3B82F6;">
+          <p style="font-size: 14px; line-height: 1.6; color: #1E40AF; margin: 0;">
+            <strong>📧 Note:</strong> This email was sent to your personal email address (${personalEmail}) for security purposes. Please use your system email address (${studentEmail}) to log in to the portal.
+          </p>
+        </div>
+      ` : ''}
+      ${additionalMessage ? `
+        <div style="margin: 20px 0; padding: 16px; background: #F8FAFC; border-radius: 12px; border-left: 4px solid #0EA5E9;">
+          <p style="font-size: 15px; line-height: 1.6; color: #334155; margin: 0;">
+            ${additionalMessage}
+          </p>
+        </div>
+      ` : ''}
       <p style="font-size: 16px; line-height: 1.8; color: #334155; margin: 0;">
         Below are your official login credentials. Please keep them safe.
       </p>
@@ -185,7 +265,7 @@ export function renderStudentCredentialsEmail({
 
     <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(79, 70, 229, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(14, 165, 233, 0.2);">
       <div style="font-size: 14px; font-weight: 700; color: #0EA5E9; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
-        🔑 Your Credentials
+        🔑 Your Login Credentials
       </div>
       <table width="100%" cellspacing="0" cellpadding="0">
         <tr>
@@ -196,10 +276,148 @@ export function renderStudentCredentialsEmail({
         </tr>
         <tr>
           <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
-            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Student Email</div>
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Login Email Address</div>
             <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${studentEmail}</div>
           </td>
         </tr>
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Password</div>
+            <div style="font-size: 18px; font-weight: 700; color: #4F46E5; font-family: monospace; letter-spacing: 1px;">${tempPassword}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    ${department || courses ? `
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(14, 165, 233, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: #4F46E5; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        📚 Your Course Enrollments
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        ${department ? `
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(79, 70, 229, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Primary Department</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${department}</div>
+          </td>
+        </tr>
+        ` : ''}
+        ${allDepartments && allDepartments !== department ? `
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(79, 70, 229, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">All Departments</div>
+            <div style="font-size: 14px; font-weight: 500; color: #0F172A;">${allDepartments}</div>
+          </td>
+        </tr>
+        ` : ''}
+        ${courses ? `
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Enrolled Courses ${courseCount ? `(${courseCount})` : ''}</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${courses}</div>
+          </td>
+        </tr>
+        ` : ''}
+      </table>
+    </div>
+    ` : ''}
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${loginUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, #0EA5E9 0%, #4F46E5 100%); color: #FFFFFF; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            🚀 Login to Student Portal
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <div style="margin: 32px 0; padding: 20px; background: #F1F5F9; border-radius: 12px; border: 1px dashed #64748B20;">
+      <p style="margin: 0 0 12px; font-size: 14px; color: #64748B; font-weight: 600;">
+        📋 Next Steps:
+      </p>
+      <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #64748B; line-height: 1.6;">
+        <li>Login using your <strong>system email address</strong> (${studentEmail}) and password above</li>
+        ${courseCount ? `<li>Review your ${courseCount} course enrollment${courseCount !== 1 ? 's' : ''} and class schedules</li>` : '<li>Check for available courses and enroll in your subjects</li>'}
+        <li>Complete your student profile and preferences</li>
+        <li>Explore the learning resources and materials</li>
+        <li>Contact support if you need assistance with any courses</li>
+      </ul>
+    </div>
+
+    <div style="margin: 32px 0; padding: 20px; background: #FEF3C7; border-radius: 12px; border: 1px solid #F59E0B;">
+      <p style="margin: 0; font-size: 13px; color: #92400E;">
+        <strong>🔒 Security Notice:</strong> This password is generated from your name for consistency. You can change it after logging in if desired. Always use your system email address (${studentEmail}) to log in, not your personal email.
+      </p>
+    </div>
+  `;
+
+  return renderBrandedEmail({ title, message });
+}
+
+export function renderAdminCredentialsEmail({
+  recipientName,
+  adminEmail,
+  personalEmail,
+  tempPassword,
+  loginUrl,
+  additionalMessage
+}: {
+  recipientName: string;
+  adminEmail: string;
+  personalEmail?: string;
+  tempPassword: string;
+  loginUrl: string;
+  additionalMessage?: string;
+}) {
+  const title = "Your Admin Account Credentials";
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: #334155; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: #0F172A;">${recipientName || 'Admin'}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: #334155; margin: 0 0 20px;">
+        Welcome to the <strong style="color: #0EA5E9;">Excellence Academia</strong> admin portal! Your account credentials have been updated.
+      </p>
+      ${personalEmail ? `
+        <div style="margin: 20px 0; padding: 16px; background: #EFF6FF; border-radius: 12px; border-left: 4px solid #0EA5E9;">
+          <p style="font-size: 14px; line-height: 1.6; color: #1E40AF; margin: 0;">
+            <strong>📧 Note:</strong> This email was sent to your personal email address (${personalEmail}) for security purposes. Please use your system email (${adminEmail}) to log in.
+          </p>
+        </div>
+      ` : ''}
+      ${additionalMessage ? `
+        <div style="margin: 20px 0; padding: 16px; background: #F8FAFC; border-radius: 12px; border-left: 4px solid #0EA5E9;">
+          <p style="font-size: 15px; line-height: 1.6; color: #334155; margin: 0;">
+            ${additionalMessage}
+          </p>
+        </div>
+      ` : ''}
+      <p style="font-size: 16px; line-height: 1.8; color: #334155; margin: 0;">
+        Below are your login credentials.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(79, 70, 229, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(14, 165, 233, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: #0EA5E9; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        🔑 Your Login Credentials
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Login Email Address</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${adminEmail}</div>
+          </td>
+        </tr>
+        ${personalEmail ? `
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Personal Email (This Email)</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${personalEmail}</div>
+          </td>
+        </tr>
+        ` : ''}
         <tr>
           <td style="padding: 10px 0;">
             <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Temporary Password</div>
@@ -213,15 +431,167 @@ export function renderStudentCredentialsEmail({
       <tr>
         <td align="center">
           <a href="${loginUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, #0EA5E9 0%, #4F46E5 100%); color: #FFFFFF; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
-            🚀 Login to Portal
+            🛡️ Access Admin Portal
           </a>
         </td>
       </tr>
     </table>
 
     <div style="margin: 32px 0; padding: 20px; background: #F1F5F9; border-radius: 12px; border: 1px dashed #64748B20;">
-      <p style="margin: 0; font-size: 13px; color: #64748B;">
-        <strong>Security Tip:</strong> We strongly recommend changing your password immediately after your first login.
+      <p style="margin: 0 0 12px; font-size: 14px; color: #64748B; font-weight: 600;">
+        📋 Next Steps:
+      </p>
+      <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #64748B; line-height: 1.6;">
+        <li>Login using your <strong>system email</strong> (${adminEmail}) and temporary password</li>
+        <li>Change your password immediately after first login</li>
+        <li>Manage users, courses, and platform settings</li>
+        <li>Review system analytics and reports</li>
+      </ul>
+    </div>
+
+    <div style="margin: 32px 0; padding: 20px; background: #FEF3C7; border-radius: 12px; border: 1px solid #F59E0B;">
+      <p style="margin: 0; font-size: 13px; color: #92400E;">
+        <strong>🔒 Security Notice:</strong> This is a temporary password. Please change it immediately after logging in for security purposes.
+      </p>
+    </div>
+  `;
+
+  return renderBrandedEmail({ title, message });
+}
+
+export function renderTutorCredentialsEmail({
+  recipientName,
+  tutorEmail,
+  personalEmail,
+  tempPassword,
+  loginUrl,
+  department,
+  allDepartments,
+  courses,
+  courseCount,
+  additionalMessage
+}: {
+  recipientName: string;
+  tutorEmail: string;
+  personalEmail?: string;
+  tempPassword: string;
+  loginUrl: string;
+  department: string;
+  allDepartments?: string;
+  courses: string;
+  courseCount?: number;
+  additionalMessage?: string;
+}) {
+  const title = "Your Tutor Account Credentials";
+  const message = `
+    <div style="margin-bottom: 32px;">
+      <p style="font-size: 18px; line-height: 1.7; color: #334155; margin: 0 0 20px; font-weight: 400;">
+        Hi <strong style="color: #0F172A;">${recipientName || 'Tutor'}</strong>,
+      </p>
+      <p style="font-size: 16px; line-height: 1.8; color: #334155; margin: 0 0 20px;">
+        Welcome to the <strong style="color: #0EA5E9;">Excellence Academia</strong> tutor portal! Your account credentials have been updated.
+      </p>
+      ${personalEmail ? `
+        <div style="margin: 20px 0; padding: 16px; background: #EFF6FF; border-radius: 12px; border-left: 4px solid #0EA5E9;">
+          <p style="font-size: 14px; line-height: 1.6; color: #1E40AF; margin: 0;">
+            <strong>📧 Note:</strong> This email was sent to your personal email address (${personalEmail}) for security purposes. Please use your system email (${tutorEmail}) to log in.
+          </p>
+        </div>
+      ` : ''}
+      ${additionalMessage ? `
+        <div style="margin: 20px 0; padding: 16px; background: #F8FAFC; border-radius: 12px; border-left: 4px solid #0EA5E9;">
+          <p style="font-size: 15px; line-height: 1.6; color: #334155; margin: 0;">
+            ${additionalMessage}
+          </p>
+        </div>
+      ` : ''}
+      <p style="font-size: 16px; line-height: 1.8; color: #334155; margin: 0;">
+        Below are your login credentials and course assignments.
+      </p>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(14, 165, 233, 0.08) 0%, rgba(79, 70, 229, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(14, 165, 233, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: #0EA5E9; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        🔑 Your Login Credentials
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Login Email Address</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${tutorEmail}</div>
+          </td>
+        </tr>
+        ${personalEmail ? `
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(14, 165, 233, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Personal Email (This Email)</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${personalEmail}</div>
+          </td>
+        </tr>
+        ` : ''}
+        <tr>
+          <td style="padding: 10px 0;">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Temporary Password</div>
+            <div style="font-size: 18px; font-weight: 700; color: #4F46E5; font-family: monospace; letter-spacing: 1px;">${tempPassword}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="margin: 32px 0; padding: 24px; background: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(14, 165, 233, 0.08) 100%); border-radius: 16px; border: 1px solid rgba(79, 70, 229, 0.2);">
+      <div style="font-size: 14px; font-weight: 700; color: #4F46E5; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px;">
+        📚 Your Teaching Assignments
+      </div>
+      <table width="100%" cellspacing="0" cellpadding="0">
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(79, 70, 229, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Primary Department</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${department}</div>
+          </td>
+        </tr>
+        ${allDepartments && allDepartments !== department ? `
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(79, 70, 229, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">All Departments</div>
+            <div style="font-size: 14px; font-weight: 500; color: #0F172A;">${allDepartments}</div>
+          </td>
+        </tr>
+        ` : ''}
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid rgba(79, 70, 229, 0.1);">
+            <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Assigned Courses ${courseCount ? `(${courseCount})` : ''}</div>
+            <div style="font-size: 16px; font-weight: 600; color: #0F172A;">${courses}</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <table width="100%" cellspacing="0" cellpadding="0" style="margin: 40px 0;">
+      <tr>
+        <td align="center">
+          <a href="${loginUrl}" style="display: inline-block; padding: 18px 40px; background: linear-gradient(135deg, #0EA5E9 0%, #4F46E5 100%); color: #FFFFFF; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(79, 70, 229, 0.25);">
+            🎓 Access Tutor Portal
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <div style="margin: 32px 0; padding: 20px; background: #F1F5F9; border-radius: 12px; border: 1px dashed #64748B20;">
+      <p style="margin: 0 0 12px; font-size: 14px; color: #64748B; font-weight: 600;">
+        📋 Next Steps:
+      </p>
+      <ul style="margin: 0; padding-left: 20px; font-size: 13px; color: #64748B; line-height: 1.6;">
+        <li>Login using your <strong>system email</strong> (${tutorEmail}) and temporary password</li>
+        <li>Change your password immediately after first login</li>
+        <li>Review your course assignments and student lists</li>
+        <li>Set up your tutor profile and preferences</li>
+        <li>Explore the teaching tools and resources available</li>
+      </ul>
+    </div>
+
+    <div style="margin: 32px 0; padding: 20px; background: #FEF3C7; border-radius: 12px; border: 1px solid #F59E0B;">
+      <p style="margin: 0; font-size: 13px; color: #92400E;">
+        <strong>🔒 Security Notice:</strong> This is a temporary password. Please change it immediately after logging in for security purposes.
       </p>
     </div>
   `;
@@ -430,180 +800,72 @@ export function renderBrandedEmail({
                 </td>
               </tr>
               
-              <!-- Modern Footer -->
+              <!-- Enhanced Professional Footer -->
               <tr>
-                <td style="background: ${colors.dark}; padding: 48px 40px;">
+                <td style="background: ${colors.dark}; padding: 48px 30px; text-align: center;">
                   
-                  <!-- Contact Section -->
-                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 32px;">
-                    <tr>
-                      <td style="padding-bottom: 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
-                        <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: ${colors.white}; letter-spacing: -0.3px;">
-                          Get in Touch
-                        </h3>
-                      </td>
-                    </tr>
-                  </table>
-                  
-                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 32px;">
-                    <!-- Contact Info Grid -->
-                    <tr>
-                      <td width="50%" style="padding: 12px 12px 12px 0; vertical-align: top;">
-                        <table cellspacing="0" cellpadding="0" border="0">
-                          <tr>
-                            <td width="32" valign="top">
-                              <div style="width: 28px; height: 28px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px;">📞</div>
-                            </td>
-                            <td style="padding-left: 12px;">
-                              <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-bottom: 4px; font-weight: 500;">Phone</div>
-                              <a href="tel:+27123456789" style="font-size: 15px; color: #93C5FD; text-decoration: none; font-weight: 600;">
-                                +27 (0) 12 345 6789
-                              </a>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                      <td width="50%" style="padding: 12px 0 12px 12px; vertical-align: top;">
-                        <table cellspacing="0" cellpadding="0" border="0">
-                          <tr>
-                            <td width="32" valign="top">
-                              <div style="width: 28px; height: 28px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px;">✉️</div>
-                            </td>
-                            <td style="padding-left: 12px;">
-                              <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-bottom: 4px; font-weight: 500;">Email</div>
-                              <a href="mailto:info@excellenceakademie.co.za" style="font-size: 15px; color: #93C5FD; text-decoration: none; font-weight: 600;">
-                                info@excellenceakademie.co.za
-                              </a>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
+                  <!-- Logo/Brand -->
+                  <h3 style="margin: 0 0 16px; font-size: 22px; font-weight: 700; color: ${colors.white}; letter-spacing: -0.5px;">
+                    Excellence Academia
+                  </h3>
+                  <p style="margin: 0 0 32px; font-size: 15px; color: rgba(255, 255, 255, 0.7); font-weight: 500; max-width: 400px; margin-left: auto; margin-right: auto;">
+                    Empowering Academic Excellence Through Quality Education
+                  </p>
+
+                  <!-- Get in Touch Section -->
+                  <div style="background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 24px; margin-bottom: 32px; max-width: 500px; margin-left: auto; margin-right: auto; border: 1px solid rgba(255, 255, 255, 0.1);">
+                    <h4 style="color: ${colors.white}; margin: 0 0 16px; font-size: 16px; font-weight: 600;">Get in Touch</h4>
+                    <p style="color: rgba(255, 255, 255, 0.8); font-size: 14px; margin: 0 0 16px; line-height: 1.6;">
+                      Have questions or need assistance? Our support team is ready to help you succeed.
+                    </p>
+                    <div>
+                      <a href="mailto:ExcellenceAcademia2025@gmail.com" style="display: inline-block; color: ${colors.white}; text-decoration: none; margin: 0 12px; font-size: 14px; font-weight: 500; background: rgba(255, 255, 255, 0.1); padding: 8px 16px; border-radius: 6px;">
+                        ✉️ ExcellenceAcademia2025@gmail.com
+                      </a>
+                      <a href="https://wa.me/27793867427" style="display: inline-block; color: ${colors.white}; text-decoration: none; margin: 12px 12px 0; font-size: 14px; font-weight: 500; background: rgba(37, 211, 102, 0.2); padding: 8px 16px; border-radius: 6px; border: 1px solid rgba(37, 211, 102, 0.3);">
+                        💬 WhatsApp Support
+                      </a>
+                    </div>
+                  </div>
+
+                  <!-- Social Links -->
+                  <div style="margin-bottom: 40px;">
+                    <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Connect With Us</p>
+                    <a href="https://www.instagram.com/excellence.academia25" style="display: inline-block; margin: 0 12px; text-decoration: none; opacity: 0.8; transition: opacity 0.2s;">
+                      <span style="font-size: 24px;">📷</span>
+                    </a>
+                    <a href="https://www.tiktok.com/@excellence.academia25" style="display: inline-block; margin: 0 12px; text-decoration: none; opacity: 0.8; transition: opacity 0.2s;">
+                      <span style="font-size: 24px;">🎵</span>
+                    </a>
+                    <a href="https://wa.me/27793867427" style="display: inline-block; margin: 0 12px; text-decoration: none; opacity: 0.8; transition: opacity 0.2s;">
+                      <span style="font-size: 24px;">💬</span>
+                    </a>
+                  </div>
+
+                  <!-- Disclaimer & Legal -->
+                  <div style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 32px; text-align: left;">
+                    <p style="margin: 0 0 16px; font-size: 11px; color: rgba(255, 255, 255, 0.4); line-height: 1.6;">
+                      <strong>Disclaimer:</strong> This email and any attachments are confidential and intended solely for the use of the individual or entity to whom they are addressed. If you have received this email in error, please notify the sender immediately and delete it from your system. Any views or opinions expressed are solely those of the author and do not necessarily represent those of Excellence Academia.
+                    </p>
                     
-                    <tr>
-                      <td colspan="2" style="padding: 20px 0 12px;">
-                        <table cellspacing="0" cellpadding="0" border="0">
-                          <tr>
-                            <td width="32" valign="top">
-                              <div style="width: 28px; height: 28px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px;">🌐</div>
-                            </td>
-                            <td style="padding-left: 12px;">
-                              <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-bottom: 4px; font-weight: 500;">Website</div>
-                              <a href="https://www.excellenceakademie.co.za" style="font-size: 15px; color: #93C5FD; text-decoration: none; font-weight: 600;">
-                                www.excellenceakademie.co.za
-                              </a>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                    
-                    <tr>
-                      <td colspan="2" style="padding: 12px 0;">
-                        <table cellspacing="0" cellpadding="0" border="0">
-                          <tr>
-                            <td width="32" valign="top">
-                              <div style="width: 28px; height: 28px; background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px;">📍</div>
-                            </td>
-                            <td style="padding-left: 12px;">
-                              <div style="font-size: 12px; color: rgba(255, 255, 255, 0.6); margin-bottom: 4px; font-weight: 500;">Address</div>
-                              <div style="font-size: 15px; color: rgba(255, 255, 255, 0.85); line-height: 1.6; font-weight: 500;">
-                                123 Academic Boulevard, Education District<br>
-                                Cape Town, Western Cape 8000<br>
-                                South Africa
-                              </div>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                  
-                  <!-- Social Media -->
-                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin: 32px 0;">
-                    <tr>
-                      <td style="padding: 24px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
-                        <div style="text-align: center; margin-bottom: 16px;">
-                          <span style="font-size: 14px; color: rgba(255, 255, 255, 0.6); font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px;">Connect With Us</span>
-                        </div>
-                        <table width="100%" cellspacing="0" cellpadding="0" border="0">
-                          <tr>
-                            <td align="center">
-                              <a href="https://facebook.com/excellenceacademia" style="display: inline-block; margin: 0 8px; width: 44px; height: 44px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border-radius: 12px; text-decoration: none; line-height: 44px; text-align: center; font-size: 20px; transition: all 0.3s ease;">
-                                📘
-                              </a>
-                              <a href="https://twitter.com/excellenceacad" style="display: inline-block; margin: 0 8px; width: 44px; height: 44px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border-radius: 12px; text-decoration: none; line-height: 44px; text-align: center; font-size: 20px;">
-                                🐦
-                              </a>
-                              <a href="https://instagram.com/excellenceacademia" style="display: inline-block; margin: 0 8px; width: 44px; height: 44px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border-radius: 12px; text-decoration: none; line-height: 44px; text-align: center; font-size: 20px;">
-                                📷
-                              </a>
-                              <a href="https://linkedin.com/company/excellence-academia" style="display: inline-block; margin: 0 8px; width: 44px; height: 44px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border-radius: 12px; text-decoration: none; line-height: 44px; text-align: center; font-size: 20px;">
-                                💼
-                              </a>
-                              <a href="https://youtube.com/@excellenceacademia" style="display: inline-block; margin: 0 8px; width: 44px; height: 44px; background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); border-radius: 12px; text-decoration: none; line-height: 44px; text-align: center; font-size: 20px;">
-                                🎥
-                              </a>
-                            </td>
-                          </tr>
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                  
-                  <!-- Quick Links -->
-                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin: 24px 0;">
-                    <tr>
-                      <td align="center" style="padding: 20px 0;">
-                        <a href="https://www.excellenceakademie.co.za/about" style="color: #93C5FD; text-decoration: none; font-size: 14px; margin: 0 16px; font-weight: 500;">About</a>
-                        <span style="color: rgba(255, 255, 255, 0.2); margin: 0 4px;">•</span>
-                        <a href="https://www.excellenceakademie.co.za/courses" style="color: #93C5FD; text-decoration: none; font-size: 14px; margin: 0 16px; font-weight: 500;">Courses</a>
-                        <span style="color: rgba(255, 255, 255, 0.2); margin: 0 4px;">•</span>
-                        <a href="https://www.excellenceakademie.co.za/tutors" style="color: #93C5FD; text-decoration: none; font-size: 14px; margin: 0 16px; font-weight: 500;">Tutors</a>
-                        <span style="color: rgba(255, 255, 255, 0.2); margin: 0 4px;">•</span>
-                        <a href="https://www.excellenceakademie.co.za/contact" style="color: #93C5FD; text-decoration: none; font-size: 14px; margin: 0 16px; font-weight: 500;">Contact</a>
-                      </td>
-                    </tr>
-                  </table>
-                  
-                  <!-- Business Hours Card -->
-                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin: 32px 0;">
-                    <tr>
-                      <td style="padding: 24px; background: rgba(255, 255, 255, 0.04); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.08);">
-                        <div style="text-align: center;">
-                          <div style="font-size: 14px; color: rgba(255, 255, 255, 0.6); margin-bottom: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">⏰ Business Hours</div>
-                          <table width="100%" cellspacing="0" cellpadding="0" border="0">
-                            <tr>
-                              <td style="text-align: center; font-size: 14px; color: rgba(255, 255, 255, 0.85); line-height: 1.8; font-weight: 500;">
-                                Monday - Friday: 8:00 AM - 6:00 PM<br>
-                                Saturday: 9:00 AM - 2:00 PM<br>
-                                Sunday: Closed
-                              </td>
-                            </tr>
-                          </table>
-                        </div>
-                      </td>
-                    </tr>
-                  </table>
-                  
-                  <!-- Legal & Copyright -->
-                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="margin-top: 32px;">
-                    <tr>
-                      <td style="padding: 28px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.08); text-align: center;">
-                        <p style="margin: 0 0 16px; font-size: 13px; color: rgba(255, 255, 255, 0.5); line-height: 1.7; font-weight: 500;">
-                          © ${year} Excellence Academia. All rights reserved.<br>
-                          Registered Education Provider • Reg. No: 2024/123456/07
-                        </p>
-                        <p style="margin: 16px 0 0; font-size: 12px; color: rgba(255, 255, 255, 0.35); line-height: 1.6;">
-                          <a href="https://www.excellenceakademie.co.za/privacy" style="color: rgba(255, 255, 255, 0.35); text-decoration: none; margin: 0 12px;">Privacy Policy</a>
-                          <span style="color: rgba(255, 255, 255, 0.2);">•</span>
-                          <a href="https://www.excellenceakademie.co.za/terms" style="color: rgba(255, 255, 255, 0.35); text-decoration: none; margin: 0 12px;">Terms of Service</a>
-                          <span style="color: rgba(255, 255, 255, 0.2);">•</span>
-                          <a href="https://www.excellenceakademie.co.za/unsubscribe" style="color: rgba(255, 255, 255, 0.35); text-decoration: none; margin: 0 12px;">Unsubscribe</a>
-                        </p>
-                      </td>
-                    </tr>
-                  </table>
+                    <p style="margin: 0 0 24px; font-size: 11px; color: rgba(255, 255, 255, 0.4); line-height: 1.6;">
+                      Excellence Academia is a registered educational platform in South Africa.<br>
+                      Headquarters: South Africa
+                    </p>
+
+                    <div style="text-align: center; margin-top: 32px;">
+                      <p style="margin: 0 0 12px; font-size: 12px; color: rgba(255, 255, 255, 0.4);">
+                        © ${year} Excellence Academia. All rights reserved.
+                      </p>
+                      <div style="font-size: 11px;">
+                        <a href="https://www.excellenceakademie.co.za/privacy" style="color: rgba(255, 255, 255, 0.5); text-decoration: none; margin: 0 8px;">Privacy Policy</a>
+                        <span style="color: rgba(255, 255, 255, 0.2);">|</span>
+                        <a href="https://www.excellenceakademie.co.za/terms" style="color: rgba(255, 255, 255, 0.5); text-decoration: none; margin: 0 8px;">Terms of Service</a>
+                        <span style="color: rgba(255, 255, 255, 0.2);">|</span>
+                        <a href="mailto:ExcellenceAcademia2025@gmail.com?subject=Unsubscribe" style="color: rgba(255, 255, 255, 0.5); text-decoration: none; margin: 0 8px;">Unsubscribe</a>
+                      </div>
+                    </div>
+                  </div>
                   
                 </td>
               </tr>
@@ -1189,40 +1451,112 @@ export function renderBrandedEmailPreview(payload: EmailPreviewPayload) {
 export async function sendEmail(payload: EmailPayload) {
   try {
     const { to, subject, content, fromEmail, fromName } = payload;
-    if (!brevoApiKey) {
-      console.warn('⚠️ BREVO_API_KEY not configured. Email sending skipped (dev mode).');
-      console.info('📧 [EMAIL PREVIEW]', {
-        to,
-        from: fromEmail || defaultFromEmail,
-        fromName: fromName || defaultFromName,
-        subject,
-        contentLength: content.length,
-        preview: content.slice(0, 200) + '...'
-      });
-      return { success: true, data: { mocked: true, message: 'Email logged in development mode' } };
+    
+    // Check for duplicate emails
+    if (isDuplicateEmail(to, subject)) {
+      console.warn('⚠️ Duplicate email prevented:', { to, subject });
+      return { 
+        success: false, 
+        error: 'Duplicate email prevented - same email sent within the last minute',
+        duplicate: true 
+      };
+    }
+    
+    // SMTP Only Mode - Force SMTP usage
+    if (emailMethod === 'smtp_only' || !brevoApiKey) {
+      if (!smtpTransporter || !process.env.BREVO_SMTP_USER || !process.env.BREVO_SMTP_PASS) {
+        console.warn('⚠️ SMTP credentials not configured. Email sending skipped (dev mode).');
+        console.info('📧 [EMAIL PREVIEW - SMTP ONLY MODE]', {
+          to,
+          from: fromEmail || defaultFromEmail,
+          fromName: fromName || defaultFromName,
+          subject,
+          contentLength: content.length,
+          preview: content.slice(0, 200) + '...'
+        });
+        return { success: true, data: { mocked: true, message: 'Email logged in development mode (SMTP only)' } };
+      }
+
+      try {
+        const mailOptions = {
+          from: {
+            name: fromName || defaultFromName,
+            address: fromEmail || defaultFromEmail,
+          },
+          to: to,
+          subject: subject,
+          html: content,
+        };
+
+        const info = await smtpTransporter.sendMail(mailOptions);
+        console.info('✅ Email sent successfully via SMTP:', { 
+          to, 
+          from: fromEmail || defaultFromEmail,
+          subject, 
+          messageId: info.messageId 
+        });
+        return { success: true, data: { messageId: info.messageId, method: 'smtp' } };
+      } catch (smtpError) {
+        console.error('❌ SMTP sending failed:', smtpError);
+        return { success: false, error: smtpError };
+      }
+    }
+    
+    // Auto mode - Try SMTP first, then API fallback
+    if (smtpTransporter && process.env.BREVO_SMTP_USER) {
+      try {
+        const mailOptions = {
+          from: {
+            name: fromName || defaultFromName,
+            address: fromEmail || defaultFromEmail,
+          },
+          to: to,
+          subject: subject,
+          html: content,
+        };
+
+        const info = await smtpTransporter.sendMail(mailOptions);
+        console.info('✅ Email sent successfully via SMTP:', { 
+          to, 
+          from: fromEmail || defaultFromEmail,
+          subject, 
+          messageId: info.messageId 
+        });
+        return { success: true, data: { messageId: info.messageId, method: 'smtp' } };
+      } catch (smtpError) {
+        console.warn('⚠️ SMTP sending failed, trying Brevo API fallback:', smtpError);
+        // Fall through to API method
+      }
     }
 
-    const sendSmtpEmail = new brevo.SendSmtpEmail();
-    // Use custom sender if provided, otherwise use default
-    sendSmtpEmail.sender = { 
-      email: fromEmail || defaultFromEmail, 
-      name: fromName || defaultFromName 
-    };
-    sendSmtpEmail.to = [{ email: to }];
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.htmlContent = content;
+    // Fallback to Brevo API (only if not in smtp_only mode)
+    if (emailMethod !== 'smtp_only' && brevoApiKey) {
+      const sendSmtpEmail = new brevo.SendSmtpEmail();
+      sendSmtpEmail.sender = { 
+        email: fromEmail || defaultFromEmail, 
+        name: fromName || defaultFromName 
+      };
+      sendSmtpEmail.to = [{ email: to }];
+      sendSmtpEmail.subject = subject;
+      sendSmtpEmail.htmlContent = content;
 
-    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+      const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
 
-    console.info('✅ Email sent successfully via Brevo:', { 
-      to, 
-      from: fromEmail || defaultFromEmail,
-      subject, 
-      messageId: data.messageId 
-    });
-    return { success: true, data };
+      console.info('✅ Email sent successfully via Brevo API:', { 
+        to, 
+        from: fromEmail || defaultFromEmail,
+        subject, 
+        messageId: data.messageId 
+      });
+      return { success: true, data: { ...data, method: 'api' } };
+    }
+
+    // No valid email method available
+    console.warn('⚠️ No email sending method configured.');
+    return { success: false, error: 'No email sending method configured' };
+    
   } catch (error) {
-    console.error('❌ Error sending email via Brevo:', error);
+    console.error('❌ Error sending email:', error);
     return { success: false, error };
   }
 }

@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import EnhancedLiveSession from '@/components/live-session/LiveSession';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 
 export default function LiveClass() {
     const { user } = useAuth();
@@ -206,11 +207,12 @@ export default function LiveClass() {
     // Handle leave - navigate based on entry point
     const handleLeave = () => {
         console.log('[LiveClass] Leaving session, entry point:', entryPoint);
+        toast.info("Leaving session...");
         
         if (entryPoint === 'share-link') {
-            // User came from share link - return to join screen or home
-            const joinUrl = `/live-session/${sessionId}?${searchParams.toString()}`;
-            navigate(joinUrl);
+            // User came from share link - redirect to home page instead of join screen
+            // This provides better "Leave" feedback
+            navigate('/');
         } else if (entryPoint) {
             // Navigate to stored entry point
             navigate(entryPoint);

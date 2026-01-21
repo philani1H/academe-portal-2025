@@ -3,8 +3,8 @@ import prisma from '../lib/prisma'
 // Announcements data - posted today
 const announcementsData = [
   {
-    title: "Welcome to Excellence Academia 2025",
-    content: "Greetings, Class of 2025! Welcome to Excellence Academia, your premier online tutoring centre dedicated to empowering learners through high-quality, personalised education.",
+    title: "Welcome to Excellence Academia 2026",
+    content: "Greetings, Class of 2026! Welcome to Excellence Academia, your premier online tutoring centre dedicated to empowering learners through high-quality, personalised education.",
     type: "info",
     pinned: true,
     authorId: 1
@@ -24,14 +24,14 @@ async function migrateAnnouncements() {
   try {
     // Clear existing announcements with authorId: 1
     console.log('Clearing existing system announcements...')
-    await prisma.announcements.deleteMany({
+    await prisma.announcement.deleteMany({
       where: { authorId: 1 }
     })
 
     // Migrate Announcements
     console.log('Migrating announcements...')
     for (const announcement of announcementsData) {
-      await prisma.announcements.create({
+      await prisma.announcement.create({
         data: { 
           title: announcement.title,          // from data
           content: announcement.content,      // from data

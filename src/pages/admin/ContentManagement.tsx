@@ -65,6 +65,7 @@ import { uploadToCloudinary } from "@/lib/cloudinary"
 import { io } from "socket.io-client"
 import { API_BASE } from "@/lib/api"
 import * as XLSX from "xlsx"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
 // Types
 interface HeroContent {
@@ -283,6 +284,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
   const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("overview")
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 
   // State for content
@@ -3757,7 +3759,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          "flex flex-col border-r border-border bg-sidebar transition-all duration-300",
+          "hidden md:flex flex-col border-r border-border bg-sidebar transition-all duration-300",
           sidebarOpen ? "w-64" : "w-16",
         )}
       >
@@ -3816,12 +3818,50 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
       {/* Main content */}
       <main className="flex-1 overflow-auto">
         <div className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex h-14 items-center justify-between gap-4 px-6">
+          <div className="flex h-14 items-center justify-between gap-4 px-4 md:px-6">
             <div className="flex items-center gap-3">
+              {/* Mobile Menu */}
+              <div className="md:hidden">
+                <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="ghost" size="icon" className="-ml-2">
+                      <Menu className="h-5 w-5" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-64 p-0">
+                    <div className="flex h-14 items-center border-b px-4">
+                      <span className="font-semibold">Content Manager</span>
+                    </div>
+                    <ScrollArea className="h-[calc(100vh-3.5rem)]">
+                      <div className="p-2 space-y-1">
+                        {filteredNavItems.map((item) => (
+                          <Button
+                            key={item.id}
+                            variant="ghost"
+                            className={cn(
+                              "w-full justify-start gap-3 h-10",
+                              activeTab === item.id && "bg-muted text-foreground"
+                            )}
+                            onClick={() => {
+                              setActiveTab(item.id)
+                              setMobileMenuOpen(false)
+                            }}
+                          >
+                            <item.icon className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </Button>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </SheetContent>
+                </Sheet>
+              </div>
+
               {onBack && (
                 <Button variant="ghost" size="sm" onClick={onBack}>
                   <ChevronLeft className="h-4 w-4 mr-1" />
-                  Back to Dashboard
+                  <span className="sm:hidden">Back</span>
+                  <span className="hidden sm:inline">Back to Dashboard</span>
                 </Button>
               )}
               <nav className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -3833,7 +3873,7 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
           </div>
         </div>
 
-        <div className="p-6">{renderContent()}</div>
+        <div className="p-4 md:p-6">{renderContent()}</div>
       </main>
 
       {/* Dialogs */}

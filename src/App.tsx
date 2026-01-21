@@ -24,6 +24,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
 import NoInternetModal from "./components/NoInternetModal";
 import AgreementBlockModal from "./components/AgreementBlockModal";
 import MaintenanceModal from "./components/MaintenanceModal";
@@ -149,6 +151,8 @@ const AppInner = () => {
             <Route path="/testimonials" element={<Testimonies />} />
             <Route path="/university-application" element={<UniversityApplication />} />
             <Route path="/exam-rewrite" element={<ExamRewrite />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/terms-of-service" element={<TermsOfService />} />
             <Route path="/dashboards" element={<DashboardNavigation />} />
             
             {/* Login Routes */}

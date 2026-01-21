@@ -65,15 +65,16 @@ const Testimonials = () => {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  // Calculate the number of pages for pagination
-  const pageCount = Math.max(1, Math.ceil(testimonials.length / visibleCount))
-  const maxIndex = Math.max(0, testimonials.length - visibleCount)
-
   // Autoplay functionality
   useEffect(() => {
     if (autoplay && testimonials.length > visibleCount) {
       autoplayRef.current = setInterval(() => {
-        setActiveIndex((prev) => (prev + 1) % pageCount)
+        setActiveIndex((prev) => {
+          if (prev >= testimonials.length - visibleCount) {
+            return 0
+          }
+          return prev + 1
+        })
       }, 5000)
     }
 
@@ -82,17 +83,26 @@ const Testimonials = () => {
         clearInterval(autoplayRef.current)
       }
     }
-  }, [autoplay, visibleCount, testimonials.length, pageCount])
+  }, [autoplay, visibleCount, testimonials.length])
 
   // Handle navigation
   const handlePrev = () => {
     setAutoplay(false)
-    setActiveIndex((prev) => Math.max(0, prev - 1))
+    setActiveIndex((prev) => {
+      if (prev === 0) return Math.max(0, testimonials.length - visibleCount)
+      return prev - 1
+    })
   }
 
   const handleNext = () => {
     setAutoplay(false)
-    setActiveIndex((prev) => Math.min(maxIndex, prev + 1))
+    setActiveIndex((prev) => {
+      // Loop back to start if we reach the end
+      if (prev >= testimonials.length - visibleCount) {
+        return 0
+      }
+      return prev + 1
+    })
   }
 
   // Render stars based on rating
@@ -132,17 +142,15 @@ const Testimonials = () => {
               </div>
             ) : (
               <motion.div
-                className="flex transition-all duration-500 ease-in-out"
-                style={{
-                  transform: `translateX(-${activeIndex * (100 / Math.max(1, visibleCount))}%)`,
-                  width: `${(testimonials.length / Math.max(1, visibleCount)) * 100}%`,
-                }}
+                className="flex"
+                animate={{ x: `-${activeIndex * (100 / visibleCount)}%` }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
               >
                 {testimonials.map((testimonial) => (
                   <motion.div
                     key={testimonial.id}
-                    className="px-4"
-                    style={{ width: `${(100 / Math.max(1, testimonials.length)) * visibleCount}%` }}
+                    className="px-4 flex-shrink-0"
+                    style={{ width: `${100 / visibleCount}%` }}
                     whileHover={{ y: -5 }}
                     transition={{ duration: 0.3 }}
                   >
@@ -187,16 +195,15 @@ const Testimonials = () => {
             )}
           </div>
 
-          {/* Navigation Buttons - Only show if there are testimonials */}
-          {testimonials.length > 0 && (
+          {/* Navigation Buttons - Only show if there are enough testimonials to scroll */}
+          {testimonials.length > visibleCount && (
             <>
               <div className="flex justify-center mt-10 gap-4">
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={handlePrev}
-                  disabled={activeIndex === 0}
-                  className="rounded-full border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800 disabled:opacity-50"
+                  className="rounded-full border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
                   aria-label="Previous testimonial"
                 >
                   <ChevronLeft className="h-5 w-5" />
@@ -210,7 +217,7 @@ const Testimonials = () => {
                         key={i}
                         onClick={() => {
                           setAutoplay(false)
-                          setActiveIndex(i * visibleCount)
+                          setActiveIndex(Math.min(i * visibleCount, testimonials.length - visibleCount))
                         }}
                         className={`w-3 h-3 rounded-full transition-all duration-300 ${
                           Math.floor(activeIndex / visibleCount) === i ? "bg-blue-600 w-6" : "bg-blue-200 hover:bg-blue-300"
@@ -224,8 +231,7 @@ const Testimonials = () => {
                   variant="outline"
                   size="icon"
                   onClick={handleNext}
-                  disabled={activeIndex >= maxIndex}
-                  className="rounded-full border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800 disabled:opacity-50"
+                  className="rounded-full border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
                   aria-label="Next testimonial"
                 >
                   <ChevronRight className="h-5 w-5" />
