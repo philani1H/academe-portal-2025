@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { VideoOff, MicOff, MonitorUp, Hand, Mic, User } from 'lucide-react'
+import { VideoOff, MicOff, MonitorUp, Hand, Mic, User, PictureInPicture } from 'lucide-react'
 import { PeerData } from './types'
 
 interface VideoGridProps {
@@ -15,13 +15,133 @@ interface VideoGridProps {
   onUnmuteStudent?: (peerId: string) => void
 }
 
-const VideoPlayer = ({ stream, isLocal = false, isScreenShare = false }: { stream: MediaStream | null | undefined, isLocal?: boolean, isScreenShare?: boolean }) => {
+const VideoPlayer = ({ 
+    stream, 
+    isLocal = false, 
+    isScreenShare = false,
+    enablePiP = false 
+}: { 
+    stream: MediaStream | null | undefined, 
+    isLocal?: boolean, 
+    isScreenShare?: boolean,
+    enablePiP?: boolean
+}) => {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const gainNodeRef = useRef<GainNode | null>(null);
     const [trackId, setTrackId] = useState<string>('');
+    const [isInPiP, setIsInPiP] = useState(false);
 
     useEffect(() => {
         if (videoRef.current && stream) {
-            videoRef.current.srcObject = stream;
+            // Clone stream for video (without audio to avoid echo)
+            const videoStream = new MediaStream(stream.getVideoTracks());
+            videoRef.current.srcObject = videoStream;
+
+            // Enhanced audio processing for remote streams
+            if (!isLocal && audioRef.current && stream.getAudioTracks().length > 0) {
+                const setupAudioProcessing = async () => {
+                    try {
+                        // Create audio context if it doesn't exist
+                        if (!audioContextRef.current) {
+                            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
+                                latencyHint: 'interactive',
+                                sampleRate: 48000
+                            });
+                        }
+
+                        const audioContext = audioContextRef.current;
+                        
+                        // Resume if suspended
+                        if (audioContext.state === 'suspended') {
+                            await audioContext.resume();
+                        }
+
+                        // Create audio source from stream
+                        const audioStream = new MediaStream(stream.getAudioTracks());
+                        const source = audioContext.createMediaStreamSource(audioStream);
+
+                        // Create gain node for volume control
+                        if (!gainNodeRef.current) {
+                            gainNodeRef.current = audioContext.createGain();
+                            gainNodeRef.current.gain.value = 1.2; // Slight volume boost for clarity
+                        }
+
+                        // Create dynamic range compressor for consistent volume
+                        const compressor = audioContext.createDynamicsCompressor();
+                        compressor.threshold.value = -50;
+                        compressor.knee.value = 40;
+                        compressor.ratio.value = 12;
+                        compressor.attack.value = 0;
+                        compressor.release.value = 0.25;
+
+                        // Create low-pass filter to reduce high-frequency noise
+                        const lowPassFilter = audioContext.createBiquadFilter();
+                        lowPassFilter.type = 'lowpass';
+                        lowPassFilter.frequency.value = 8000; // Cut frequencies above 8kHz (human voice range)
+
+                        // Create high-pass filter to reduce low-frequency rumble
+                        const highPassFilter = audioContext.createBiquadFilter();
+                        highPassFilter.type = 'highpass';
+                        highPassFilter.frequency.value = 85; // Cut frequencies below 85Hz (rumble/hum)
+
+                        // Connect the audio processing chain
+                        source.connect(highPassFilter);
+                        highPassFilter.connect(lowPassFilter);
+                        lowPassFilter.connect(compressor);
+                        compressor.connect(gainNodeRef.current);
+
+                        // Create destination stream for the processed audio
+                        const destination = audioContext.createMediaStreamDestination();
+                        gainNodeRef.current.connect(destination);
+
+                        // Set the processed audio to the audio element
+                        if (audioRef.current) {
+                            audioRef.current.srcObject = destination.stream;
+                            audioRef.current.volume = 1.0;
+                            
+                            // Important: These properties ensure best playback
+                            audioRef.current.muted = false;
+                            audioRef.current.autoplay = true;
+                            audioRef.current.playsInline = true;
+                        }
+
+                        // Apply audio track constraints for additional noise reduction
+                        const audioTrack = stream.getAudioTracks()[0];
+                        if (audioTrack && audioTrack.applyConstraints) {
+                            await audioTrack.applyConstraints({
+                                echoCancellation: { exact: true },
+                                noiseSuppression: { exact: true },
+                                autoGainControl: { exact: true },
+                                sampleRate: { ideal: 48000 },
+                                channelCount: { ideal: 2 },
+                                latency: { ideal: 0 },
+                                sampleSize: { ideal: 16 }
+                            }).catch(err => {
+                                // Fallback to non-exact constraints
+                                audioTrack.applyConstraints({
+                                    echoCancellation: true,
+                                    noiseSuppression: true,
+                                    autoGainControl: true,
+                                    sampleRate: 48000
+                                }).catch(e => console.log('Audio constraints not fully applied:', e));
+                            });
+                        }
+
+                    } catch (error) {
+                        console.error('Audio processing setup failed:', error);
+                        // Fallback to direct audio
+                        if (audioRef.current) {
+                            const audioStream = new MediaStream(stream.getAudioTracks());
+                            audioRef.current.srcObject = audioStream;
+                            audioRef.current.volume = 1.0;
+                        }
+                    }
+                };
+
+                setupAudioProcessing();
+            }
 
             const videoTrack = stream.getVideoTracks()[0];
             if (videoTrack) {
@@ -31,44 +151,114 @@ const VideoPlayer = ({ stream, isLocal = false, isScreenShare = false }: { strea
             const handleTrackChange = () => {
                 console.log('[VideoPlayer] Track changed, updating video element');
                 if (videoRef.current) {
-                    videoRef.current.srcObject = null;
-                    setTimeout(() => {
-                        if (videoRef.current && stream) {
-                            videoRef.current.srcObject = stream;
-                        }
-                    }, 0);
+                    const newVideoStream = new MediaStream(stream.getVideoTracks());
+                    videoRef.current.srcObject = newVideoStream;
                 }
+                
                 const videoTrack = stream.getVideoTracks()[0];
                 if (videoTrack) {
                     setTrackId(videoTrack.id);
                 }
             };
 
+            const handleEnterPiP = () => setIsInPiP(true);
+            const handleLeavePiP = () => setIsInPiP(false);
+
             stream.addEventListener('addtrack', handleTrackChange);
             stream.addEventListener('removetrack', handleTrackChange);
+            
+            const videoEl = videoRef.current;
+            videoEl.addEventListener('enterpictureinpicture', handleEnterPiP);
+            videoEl.addEventListener('leavepictureinpicture', handleLeavePiP);
 
             return () => {
                 stream.removeEventListener('addtrack', handleTrackChange);
                 stream.removeEventListener('removetrack', handleTrackChange);
+                videoEl.removeEventListener('enterpictureinpicture', handleEnterPiP);
+                videoEl.removeEventListener('leavepictureinpicture', handleLeavePiP);
+                
+                // Cleanup audio processing nodes
+                if (gainNodeRef.current) {
+                    gainNodeRef.current.disconnect();
+                    gainNodeRef.current = null;
+                }
             };
         }
-    }, [stream, trackId]);
+    }, [stream, trackId, isLocal]);
+
+    // Cleanup audio context on unmount
+    useEffect(() => {
+        return () => {
+            if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+                audioContextRef.current.close().catch(console.error);
+                audioContextRef.current = null;
+            }
+        };
+    }, []);
+
+    const togglePiP = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (document.pictureInPictureElement) {
+            await document.exitPictureInPicture();
+        } else if (videoRef.current) {
+            try {
+                await videoRef.current.requestPictureInPicture();
+            } catch (error) {
+                console.error('Failed to enter PiP:', error);
+            }
+        }
+    };
+
+    // Only enable auto PiP for non-local streams that have video
+    const hasVideo = stream?.getVideoTracks().length > 0 && stream?.getVideoTracks()[0].enabled;
+    const shouldAutoPiP = enablePiP && !isLocal && hasVideo;
 
     return (
-        <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted={isLocal}
-            className="w-full h-full"
-            style={{ 
-                transform: isLocal ? 'scaleX(-1)' : 'none',
-                objectFit: isScreenShare ? 'contain' : 'cover',
-                maxHeight: '100%',
-                maxWidth: '100%',
-                backgroundColor: isScreenShare ? '#000' : 'transparent'
-            }}
-        />
+        <div className="relative w-full h-full group">
+            <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted={true}
+                className="w-full h-full"
+                // @ts-ignore
+                autoPictureInPicture={shouldAutoPiP ? "true" : undefined}
+                style={{ 
+                    transform: isLocal ? 'scaleX(-1)' : 'none',
+                    objectFit: isScreenShare ? 'contain' : 'cover',
+                    maxHeight: '100%',
+                    maxWidth: '100%',
+                    backgroundColor: isScreenShare ? '#000' : 'transparent'
+                }}
+            />
+            
+            {/* Enhanced audio element with processing */}
+            {!isLocal && (
+                <audio
+                    ref={audioRef}
+                    autoPlay
+                    playsInline
+                    muted={false}
+                    className="hidden"
+                    preload="auto"
+                />
+            )}
+            
+            {/* PiP Toggle Button */}
+            {hasVideo && !isLocal && (
+                <div className={`absolute top-2 left-2 z-20 transition-opacity duration-200 ${isInPiP ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={togglePiP}
+                        className="h-8 w-8 p-0 rounded-full bg-black/40 hover:bg-black/60 backdrop-blur-sm border border-white/10 text-white"
+                        title={isInPiP ? "Exit Picture-in-Picture" : "Picture-in-Picture"}
+                    >
+                        <PictureInPicture className="h-4 w-4" />
+                    </Button>
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -135,9 +325,8 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
         };
     }, []);
 
-    // Speaking detection - Optimized AudioContext Management
+    // Enhanced speaking detection with better audio analysis
     useEffect(() => {
-        // Use a persistent AudioContext reference to avoid constant recreation
         const audioContextRef = { current: null as AudioContext | null };
         const analysers = new Map<string, AnalyserNode>();
         let interval: NodeJS.Timeout;
@@ -145,7 +334,10 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
         const initAudioContext = () => {
              if (!audioContextRef.current) {
                 try {
-                    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+                    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
+                        latencyHint: 'interactive',
+                        sampleRate: 48000
+                    });
                 } catch (e) {
                     console.error("Failed to create AudioContext", e);
                 }
@@ -164,18 +356,20 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
 
             peers.forEach(peer => {
                 if (peer.stream && peer.isAudioOn) {
-                    // Get or create analyser for this peer
                     let analyser = analysers.get(peer.peerId);
 
                     if (!analyser) {
                         try {
                             analyser = ctx.createAnalyser();
-                            analyser.fftSize = 512;
+                            analyser.fftSize = 2048; // Higher resolution for better detection
+                            analyser.smoothingTimeConstant = 0.85; // Smoother transitions
+                            analyser.minDecibels = -90;
+                            analyser.maxDecibels = -10;
+                            
                             const source = ctx.createMediaStreamSource(peer.stream);
                             source.connect(analyser);
                             analysers.set(peer.peerId, analyser);
                         } catch (e) {
-                            // MediaStreamSource creation can fail if stream is inactive
                             return;
                         }
                     }
@@ -183,19 +377,20 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                     const dataArray = new Uint8Array(analyser.frequencyBinCount);
                     analyser.getByteFrequencyData(dataArray);
                     
-                    // Calculate average volume
+                    // Focus on speech frequency range (85Hz - 3000Hz for human voice)
+                    const speechRange = dataArray.slice(3, 100); // Approximate speech frequencies
+                    
                     let sum = 0;
-                    for(let i = 0; i < dataArray.length; i++) {
-                        sum += dataArray[i];
+                    for(let i = 0; i < speechRange.length; i++) {
+                        sum += speechRange[i];
                     }
-                    const average = sum / dataArray.length;
+                    const average = sum / speechRange.length;
 
-                    // Threshold for speaking detection
-                    if (average > 25) { // Slightly lowered threshold
+                    // Adaptive threshold based on ambient noise
+                    if (average > 18) { // Optimized threshold for voice detection
                         newSpeakingPeers.add(peer.peerId);
                     }
                 } else {
-                    // Clean up analyser if audio is off or stream is gone
                     if (analysers.has(peer.peerId)) {
                         const analyser = analysers.get(peer.peerId);
                         analyser?.disconnect();
@@ -207,18 +402,18 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
             setSpeakingPeers(newSpeakingPeers);
         };
 
-        interval = setInterval(checkSpeaking, 100);
+        interval = setInterval(checkSpeaking, 80); // Faster polling for responsive detection
 
         return () => {
             clearInterval(interval);
             analysers.forEach(analyser => analyser.disconnect());
             analysers.clear();
-            if (audioContextRef.current) {
+            if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
                 audioContextRef.current.close().catch(console.error);
                 audioContextRef.current = null;
             }
         };
-    }, [peers]); // Note: Still depends on peers, but logic is robust enough to handle re-creation safely
+    }, [peers]);
 
     // --- STUDENT VIEW (Mobile Optimized) ---
     if (userRole !== 'tutor') {
@@ -228,10 +423,11 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                 {tutorPeer ? (
                     tutorPeer.stream ? (
                          <div className="w-full h-full relative flex items-center justify-center bg-black">
-                            <div className={`${orientation === 'landscape' ? 'w-full h-full' : 'w-full h-full'} relative`}>
+                            <div className="w-full h-full relative">
                                 <VideoPlayer 
                                     stream={tutorPeer.stream} 
                                     isScreenShare={tutorPeer.isScreenSharing !== undefined && tutorPeer.isScreenSharing} 
+                                    enablePiP={true}
                                 />
                             </div>
                             <SpeakingIndicator isAudioOn={tutorPeer.isAudioOn} isSpeaking={speakingPeers.has(tutorPeer.peerId)} />
@@ -242,12 +438,12 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                                 <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-blue-600/90 to-cyan-600/90 backdrop-blur-md py-1.5 px-3 flex items-center justify-center gap-1.5 shadow-lg border-b border-blue-400/30 z-20">
                                     <MonitorUp className="h-3 w-3 text-white flex-shrink-0" />
                                     <p className="text-white font-semibold text-xs truncate">
-                                        {tutorPeer.name || 'Instructor'} is sharing
+                                        {tutorPeer.name || 'Instructor'} is sharing screen
                                     </p>
                                 </div>
                             )}
 
-                            {/* Tutor Info Badge - Mobile Optimized */}
+                            {/* Tutor Info Badge */}
                             <div className="absolute bottom-3 left-3 bg-gradient-to-r from-indigo-600/95 to-purple-600/95 backdrop-blur-md rounded-lg px-3 py-1.5 flex flex-col gap-0.5 shadow-xl border border-indigo-400/30 max-w-[60%] z-20">
                                 <p className="text-white font-bold text-xs truncate">
                                     {tutorPeer.name || 'Instructor'}
@@ -278,7 +474,6 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                                      <MicOff className="h-2.5 w-2.5 mr-1" /> Muted
                                  </Badge>
                              )}
-                             {/* Ensure audio plays even if video is off */}
                              {tutorPeer.stream && (
                                  <div className="absolute opacity-0 pointer-events-none w-0 h-0 overflow-hidden">
                                      <VideoPlayer stream={tutorPeer.stream} />
@@ -298,7 +493,7 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                     </div>
                 )}
                 
-                {/* Student Self Preview - Mobile Optimized (Always Visible) */}
+                {/* Student Self Preview */}
                 <div className="absolute bottom-2 right-2 w-24 h-32 bg-gradient-to-br from-slate-900 to-slate-950 border-2 border-indigo-500/50 rounded-lg shadow-2xl overflow-hidden z-30 group hover:border-indigo-400 transition-all">
                     {isLocalVideoOn && localStream ? (
                         <div className="w-full h-full relative">
@@ -322,13 +517,11 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
 
     // --- TUTOR VIEW (Responsive Grid) ---
     const getGridCols = (count: number) => {
-        // Mobile (default)
         if (window.innerWidth < 768) {
              if (count <= 1) return 'grid-cols-1';
              return 'grid-cols-2';
         }
         
-        // Tablet / Desktop
         if (count <= 1) return 'md:grid-cols-1';
         if (count <= 4) return 'md:grid-cols-2';
         if (count <= 9) return 'md:grid-cols-3';
@@ -338,7 +531,6 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
 
     return (
         <div className="flex-1 p-2 h-full relative flex flex-col bg-gradient-to-br from-slate-950 via-indigo-950/20 to-slate-950 overflow-hidden">
-            {/* Students Grid - Mobile Optimized */}
             {studentPeers.length > 0 ? (
                 <div className={`grid ${getGridCols(studentPeers.length)} gap-2 auto-rows-fr flex-1 overflow-y-auto content-start pb-2`}>
                     {studentPeers.map(p => (
@@ -356,7 +548,6 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                                 <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-3 relative">
                                     <AvatarPlaceholder name={p.name} size="sm" />
                                     <span className="text-white text-xs font-medium truncate max-w-full">{p.name || 'Student'}</span>
-                                    {/* Ensure audio plays even if video is off */}
                                     {p.stream && (
                                         <div className="absolute opacity-0 pointer-events-none w-0 h-0 overflow-hidden">
                                             <VideoPlayer stream={p.stream} />
@@ -366,7 +557,6 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                                 </div>
                             )}
 
-                            {/* Student Info - Mobile Optimized */}
                             <div className="absolute bottom-1 left-1 right-1 flex justify-between items-end gap-1">
                                 <Badge className="bg-gradient-to-r from-indigo-600/90 to-purple-600/90 backdrop-blur-sm text-white text-[9px] font-semibold px-1.5 py-0.5 truncate max-w-[65%] border-0">
                                     {p.name || 'Student'}
@@ -386,7 +576,6 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                                 </div>
                             </div>
 
-                            {/* Tutor Controls - Mobile Optimized */}
                             {userRole === 'tutor' && (
                                 <div className="absolute inset-0 bg-black/50 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 p-2">
                                     {p.isAudioOn ? (
@@ -424,7 +613,7 @@ export function VideoGrid({ localStream, peers, userRole, isLocalVideoOn, layout
                 </div>
             )}
 
-            {/* Tutor Self Preview - Mobile Optimized */}
+            {/* Tutor Self Preview */}
             <div className="absolute bottom-2 right-2 w-24 h-32 bg-gradient-to-br from-slate-900 to-slate-950 border-2 border-indigo-500/50 rounded-lg shadow-2xl overflow-hidden z-30 group hover:border-indigo-400 transition-all">
                  {isLocalVideoOn && localStream ? (
                      <div className="w-full h-full relative">

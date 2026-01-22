@@ -2,12 +2,14 @@
 
 import type React from "react"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "@/hooks/use-toast"
 import { Upload, File, X } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 
 interface FileUploadProps {
   onUpload?: (files: File[]) => void
@@ -24,11 +26,43 @@ export default function FileUploadPage() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [dragActive, setDragActive] = useState(false)
+  const [courses, setCourses] = useState<{ id: string; name: string }[]>([])
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("")
   
   // Default values for page usage
   const maxSize = 10
   const accept = "*"
   const multiple = true
+
+  useEffect(() => {
+    loadCourses()
+  }, [])
+
+  const loadCourses = async () => {
+    try {
+      // Get tutor ID from localStorage to filter courses
+      let tutorId: string | undefined
+      try {
+        const storedUser = localStorage.getItem('user')
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser)
+          if (parsed.role === 'tutor') {
+            tutorId = String(parsed.id)
+          }
+        }
+      } catch {}
+
+      const coursesData = await api.getCourses(tutorId)
+      setCourses(coursesData.map(c => ({ id: c.id, name: c.name })))
+    } catch (error) {
+      console.error("Failed to load courses:", error)
+      toast({
+        title: "Error",
+        description: "Failed to load courses. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -81,6 +115,14 @@ export default function FileUploadPage() {
 
   const uploadFiles = async () => {
     if (files.length === 0) return
+    if (!selectedCourseId) {
+      toast({
+        title: "Select a Course",
+        description: "Please select a course to upload these materials to.",
+        variant: "destructive",
+      })
+      return
+    }
 
     setUploading(true)
     setUploadProgress(0)
@@ -92,13 +134,14 @@ export default function FileUploadPage() {
 
       // Upload files sequentially to track progress
       for (const file of files) {
-        await api.uploadFile(file)
+        await api.uploadFile(file, selectedCourseId)
         uploadedFileNames.push(file.name)
         completed++
         setUploadProgress(Math.round((completed / totalFiles) * 100))
       }
 
       setFiles([])
+      setSelectedCourseId("")
 
       // Send email notification to students about new material
       try {
@@ -111,6 +154,7 @@ export default function FileUploadPage() {
           },
           body: JSON.stringify({
             materialNames: uploadedFileNames,
+            courseId: selectedCourseId,
           }),
         })
       } catch (emailError) {
@@ -120,7 +164,7 @@ export default function FileUploadPage() {
 
       toast({
         title: "Success",
-        description: `${totalFiles} file(s) uploaded successfully`,
+        description: `${totalFiles} file(s) uploaded successfully to course.`,
       })
     } catch (error: any) {
       console.error('Upload error:', error)
@@ -144,7 +188,36 @@ export default function FileUploadPage() {
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full space-y-6">
+      <Card>
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="course-select">Select Course</Label>
+              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+                <SelectTrigger id="course-select">
+                  <SelectValue placeholder="Select a course..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {courses.length === 0 ? (
+                    <SelectItem value="none" disabled>No courses available</SelectItem>
+                  ) : (
+                    courses.map((course) => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                Files will be added to the selected course materials.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card
         className={`border-2 border-dashed transition-colors ${
           dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25"

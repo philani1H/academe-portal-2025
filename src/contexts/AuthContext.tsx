@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types/user';
 import { apiFetch, clearApiCache } from '@/lib/api';
+import { socket, connectSocket, disconnectSocket } from '@/lib/socket';
 
 interface AuthContextType {
   user: User | null;
@@ -32,6 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(userData);
           setIsAuthenticated(true);
           localStorage.setItem('user', JSON.stringify(userData));
+          connectSocket();
           return;
         }
       } catch (error) {
@@ -46,6 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const parsedUser = JSON.parse(storedUser);
             setUser(parsedUser);
             setIsAuthenticated(true);
+            connectSocket();
           } catch (e) {
             // Invalid stored data, clear it
             localStorage.removeItem('user');
@@ -64,6 +67,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  // Listen for real-time auth changes from the server
+  useEffect(() => {
+    const handleAuthChange = (data: { type: string; user?: User }) => {
+      console.log('[AuthContext] Received auth-state-change:', data);
+      
+      if (data.type === 'LOGOUT') {
+        if (isAuthenticated) {
+          console.log('[AuthContext] Processing remote logout');
+          // Perform local cleanup only - do not call API to avoid loops
+          disconnectSocket();
+          setUser(null);
+          setIsAuthenticated(false);
+          localStorage.removeItem('user');
+          localStorage.removeItem('auth_token');
+          localStorage.removeItem('admin_token');
+          clearApiCache();
+        }
+      } else if (data.type === 'LOGIN' && data.user) {
+        console.log('[AuthContext] Processing remote login update');
+        setUser(data.user);
+        setIsAuthenticated(true);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+    };
+
+    socket.on('auth-state-change', handleAuthChange);
+
+    return () => {
+      socket.off('auth-state-change', handleAuthChange);
+    };
+  }, [isAuthenticated]);
 
   const login = async (email: string, password: string, role?: string) => {
     try {
@@ -84,6 +119,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Store in localStorage as backup
       localStorage.setItem('user', JSON.stringify(userData));
+      
+      // Connect socket on successful login
+      connectSocket();
       
       // Clear any cached API data
       clearApiCache();
@@ -121,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('user', JSON.stringify(userData));
+      connectSocket();
       clearApiCache();
       
     } catch (error) {
@@ -140,6 +179,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     // Always clear local state regardless of API success
+    disconnectSocket();
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('user');

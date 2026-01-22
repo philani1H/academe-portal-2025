@@ -1,13 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import prisma from '@/lib/prisma'
+import { authenticateJWT, AuthenticatedRequest } from '@/lib/auth-middleware';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     switch (req.method) {
       case 'GET':
-        return await getCourses(req, res)
+        return await authenticateJWT(req as AuthenticatedRequest, res, async () => {
+          return await getCourses(req as AuthenticatedRequest, res);
+        });
       case 'PUT':
-        return await updateCourse(req, res)
+        return await authenticateJWT(req as AuthenticatedRequest, res, async () => {
+          return await updateCourse(req as AuthenticatedRequest, res);
+        });
       default:
         return res.status(405).json({ error: 'Method not allowed' })
     }
@@ -17,16 +22,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
-async function getCourses(req: NextApiRequest, res: NextApiResponse) {
+async function getCourses(req: AuthenticatedRequest, res: NextApiResponse) {
   try {
     const { tutorId } = req.query
+    const authenticatedTutorId = req.user.userId;
 
-    if (!tutorId || typeof tutorId !== 'string') {
-      return res.status(400).json({ error: 'Tutor ID is required' })
+    if (tutorId && parseInt(tutorId as string) !== authenticatedTutorId) {
+        return res.status(403).json({ error: 'Access denied: You can only view your own courses' });
     }
 
     // Get all courses (in a real app, filter by tutor)
     const courses = await prisma.course.findMany({
+      where: {
+        tutorId: authenticatedTutorId
+      },
       include: {
         materials: {
           orderBy: { order: 'asc' },
@@ -37,7 +46,7 @@ async function getCourses(req: NextApiRequest, res: NextApiResponse) {
             submissions: true,
           },
         },
-        enrollments: {
+        courseEnrollments: {
           include: {
             user: true,
           },
@@ -48,14 +57,14 @@ async function getCourses(req: NextApiRequest, res: NextApiResponse) {
 
     const formattedCourses = courses.map((course) => ({
       id: course.id,
-      title: course.title,
+      title: course.name,
       description: course.description,
       category: course.category,
-      status: course.status,
-      startDate: course.startDate?.toISOString(),
-      endDate: course.endDate?.toISOString(),
-      color: course.color,
-      studentsCount: course.enrollments.length,
+      status: 'active', // Default status as it's not in schema
+      startDate: course.createdAt?.toISOString(),
+      endDate: course.updatedAt?.toISOString(),
+      color: 'blue', // Default color
+      studentsCount: course.courseEnrollments.length,
       materialsCount: course.materials.length,
       testsCount: course.tests.length,
       materials: course.materials.map((m) => ({
@@ -83,12 +92,25 @@ async function getCourses(req: NextApiRequest, res: NextApiResponse) {
   }
 }
 
-async function updateCourse(req: NextApiRequest, res: NextApiResponse) {
+async function updateCourse(req: AuthenticatedRequest, res: NextApiResponse) {
   try {
     const { courseId, title, description, category, status, startDate, endDate, color } = req.body
+    const authenticatedTutorId = req.user.userId;
 
     if (!courseId) {
       return res.status(400).json({ error: 'Course ID is required' })
+    }
+
+    const course = await prisma.course.findUnique({
+      where: { id: courseId }
+    });
+
+    if (!course) {
+        return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (course.tutorId !== authenticatedTutorId) {
+        return res.status(403).json({ error: 'Access denied: You can only update your own courses' });
     }
 
     const updatedCourse = await prisma.course.update({

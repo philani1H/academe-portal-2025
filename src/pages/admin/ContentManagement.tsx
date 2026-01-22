@@ -572,22 +572,17 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
 
   // Real-time updates listener
   useEffect(() => {
-    const socket = io(API_BASE.replace('/api', ''), {
-      path: "/socket.io",
-      transports: ["websocket"],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    })
+    connectSocket()
 
-    socket.on("connect", () => {
+    function onConnect() {
       console.log("Connected to content updates socket")
-    })
+    }
 
-    socket.on("connect_error", (err) => {
+    function onConnectError(err: any) {
       console.warn("Socket connection error:", err.message)
-    })
+    }
 
-    socket.on("content-updated", (event: { type: string, action: string, data: any }) => {
+    function onContentUpdated(event: { type: string, action: string, data: any }) {
       console.log("Content update received:", event)
       // Refresh the specific content type
       switch (event.type) {
@@ -608,10 +603,16 @@ export default function ContentManagement({ onBack }: ContentManagementProps) {
         case "exam-rewrite": fetchExamRewriteContent(); break;
         case "university-application": fetchUniversityApplicationContent(); break;
       }
-    })
+    }
+
+    socket.on("connect", onConnect)
+    socket.on("connect_error", onConnectError)
+    socket.on("content-updated", onContentUpdated)
 
     return () => {
-      socket.disconnect()
+      socket.off("connect", onConnect)
+      socket.off("connect_error", onConnectError)
+      socket.off("content-updated", onContentUpdated)
     }
   }, [])
 

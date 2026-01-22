@@ -35,6 +35,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       });
 
+      // Send Socket.IO event
+      const io = (global as any).io;
+      if (io) {
+        io.to(`course:${courseId}`).emit('course-updated', { courseId, updates });
+        // Also emit notification to all enrolled students if possible, 
+        // but for now we'll emit a general one or let the client refresh
+        io.to(`course:${courseId}`).emit('notification-added', notification);
+      }
+
       // Send SSE event to connected clients
       const sseData = {
         type: 'course_update',

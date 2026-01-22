@@ -45,6 +45,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       });
 
+      // Emit real-time update
+      const io = (global as any).io;
+      if (io) {
+        io.emit('announcement-added', announcement);
+      }
+
       res.status(201).json(announcement);
     } catch (error) {
       console.error('Error creating announcement:', error);

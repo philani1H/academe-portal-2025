@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
+import { socket, connectSocket } from '@/lib/socket'
 import { motion } from "framer-motion"
 import {
   Bell,
@@ -275,10 +276,12 @@ export default function StudentPortal() {
 
   // Effects
   useEffect(() => {
-    const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    socketRef.current = io(SOCKET_SERVER_URL);
-    const socket = socketRef.current;
-
+    // Use singleton socket
+    if (!socket.connected) {
+      connectSocket();
+    }
+    
+    // Join user room for private notifications
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       try {
@@ -291,7 +294,7 @@ export default function StudentPortal() {
       }
     }
 
-    socket.on('session-live', (data: any) => {
+    const handleSessionLive = (data: any) => {
       console.log('[StudentPortal] session-live received', data);
       const currentCourses = coursesRef.current;
       const isEnrolled = currentCourses.some(c => String(c.id) === String(data.courseId));
@@ -332,35 +335,52 @@ export default function StudentPortal() {
         }
         return session;
       }));
-    });
+    };
 
-    socket.on('announcement-added', () => {
+    const handleAnnouncement = () => {
       toast.message('New Announcement', { description: "A new announcement has been posted." });
       fetchStudentData();
-    });
+    };
 
-    socket.on('material-added', (data: any) => {
+    const handleMaterial = (data: any) => {
       const currentCourses = coursesRef.current;
       const isEnrolled = currentCourses.some(c => String(c.id) === String(data.courseId));
       if (isEnrolled) {
         toast.message('New Material', { description: "New material added to your course." });
         fetchStudentData();
       }
-    });
+    };
 
-    socket.on('course-updated', () => {
+    const handleCourseUpdate = () => {
       fetchStudentData();
-    });
+    };
 
-    socket.on('enrollment-updated', (data: any) => {
+    const handleEnrollmentUpdate = (data: any) => {
       // If the student is the one enrolled, or if we just want to refresh to see new classmates (if visible)
-      // For now, just refresh to be safe
+      // For now, just refresh data
       fetchStudentData();
-    });
+    };
+
+    const handleNotification = (data: any) => {
+      toast.message('New Notification', { description: data.title || "You have a new notification" });
+      fetchStudentData();
+    };
+
+    socket.on('session-live', handleSessionLive);
+    socket.on('announcement-added', handleAnnouncement);
+    socket.on('material-added', handleMaterial);
+    socket.on('course-updated', handleCourseUpdate);
+    socket.on('enrollment-updated', handleEnrollmentUpdate);
+    socket.on('notification-added', handleNotification);
 
     return () => {
-      socket.disconnect();
-    }
+      socket.off('session-live', handleSessionLive);
+      socket.off('announcement-added', handleAnnouncement);
+      socket.off('material-added', handleMaterial);
+      socket.off('course-updated', handleCourseUpdate);
+      socket.off('enrollment-updated', handleEnrollmentUpdate);
+      socket.off('notification-added', handleNotification);
+    };
   }, []);
 
   useEffect(() => {

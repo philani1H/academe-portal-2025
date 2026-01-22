@@ -2,17 +2,27 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
 
 
+import { authenticateJWT, AuthenticatedRequest } from '@/lib/auth-middleware';
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     switch (req.method) {
       case 'GET':
-        return await getTutorStudents(req, res);
+        return await authenticateJWT(req as AuthenticatedRequest, res, async () => {
+          return await getTutorStudents(req as AuthenticatedRequest, res);
+        });
       case 'POST':
-        return await addStudent(req, res);
+        return await authenticateJWT(req as AuthenticatedRequest, res, async () => {
+          return await addStudent(req as AuthenticatedRequest, res);
+        });
       case 'PUT':
-        return await updateStudent(req, res);
+        return await authenticateJWT(req as AuthenticatedRequest, res, async () => {
+          return await updateStudent(req as AuthenticatedRequest, res);
+        });
       case 'DELETE':
-        return await removeStudent(req, res);
+        return await authenticateJWT(req as AuthenticatedRequest, res, async () => {
+          return await removeStudent(req as AuthenticatedRequest, res);
+        });
       default:
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -22,7 +32,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
-async function getTutorStudents(req: NextApiRequest, res: NextApiResponse) {
+async function getTutorStudents(req: AuthenticatedRequest, res: NextApiResponse) {
   try {
     const { tutorId } = req.query;
 
@@ -30,20 +40,30 @@ async function getTutorStudents(req: NextApiRequest, res: NextApiResponse) {
       return res.status(400).json({ error: 'Tutor ID is required' });
     }
 
+    const parsedTutorId = parseInt(tutorId);
+    if (isNaN(parsedTutorId)) {
+        return res.status(400).json({ error: 'Invalid Tutor ID' });
+    }
+
+    // Security check: Ensure the authenticated user is accessing their own students
+    if (req.user.userId !== parsedTutorId) {
+        return res.status(403).json({ error: 'Access denied: You can only view your own students' });
+    }
+
     // Get students enrolled in courses taught by this tutor
     const students = await prisma.user.findMany({
       where: {
         role: 'student',
-        enrollments: {
+        courseEnrollments: {
           some: {
             course: {
-              tutorId: parseInt(tutorId as string)
+              tutorId: parsedTutorId
             }
           }
         }
       },
       include: {
-        enrollments: {
+        courseEnrollments: {
           include: {
             course: true
           }
@@ -61,9 +81,9 @@ async function getTutorStudents(req: NextApiRequest, res: NextApiResponse) {
       name: student.name,
       email: student.email,
       progress: Math.floor(Math.random() * 100), // Mock progress
-      lastActivity: student.updatedAt.toISOString(),
+      lastActivity: student.updatedAt?.toISOString() || new Date().toISOString(),
       status: 'active',
-      enrolledCourses: student.enrollments.map(e => e.course.title),
+      enrolledCourses: student.courseEnrollments.map(e => e.course.name),
       avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random`,
       grades: student.testSubmissions.reduce((acc, submission) => {
         acc[submission.test.title] = submission.score;
@@ -80,12 +100,14 @@ async function getTutorStudents(req: NextApiRequest, res: NextApiResponse) {
   }
 }
 
-async function addStudent(req: NextApiRequest, res: NextApiResponse) {
+async function addStudent(req: AuthenticatedRequest, res: NextApiResponse) {
   try {
-    const { tutorId, studentEmail, courseId } = req.body;
+    const { studentEmail, courseId } = req.body;
+    // tutorId is ignored from body, we use authenticated user's ID
+    const tutorId = req.user.userId;
 
-    if (!tutorId || !studentEmail || !courseId) {
-      return res.status(400).json({ error: 'Tutor ID, student email, and course ID are required' });
+    if (!studentEmail || !courseId) {
+      return res.status(400).json({ error: 'Student email and course ID are required' });
     }
 
     // Find student by email
@@ -99,20 +121,24 @@ async function addStudent(req: NextApiRequest, res: NextApiResponse) {
 
     // Use transaction to prevent race condition
     const enrollment = await prisma.$transaction(async (tx) => {
-      // Verify course exists
+      // Verify course exists and belongs to tutor
       const course = await tx.course.findUnique({
-        where: { id: courseId }
+        where: { id: parseInt(courseId) }
       });
 
       if (!course) {
         throw new Error('Course not found');
       }
 
+      if (course.tutorId !== tutorId) {
+        throw new Error('Course does not belong to this tutor');
+      }
+
       // Check if already enrolled
       const existingEnrollment = await tx.courseEnrollment.findFirst({
         where: {
           userId: student.id,
-          courseId: courseId
+          courseId: parseInt(courseId)
         }
       });
 
@@ -124,7 +150,7 @@ async function addStudent(req: NextApiRequest, res: NextApiResponse) {
       return await tx.courseEnrollment.create({
         data: {
           userId: student.id,
-          courseId: courseId,
+          courseId: parseInt(courseId),
           status: 'enrolled'
         },
         include: {
@@ -146,21 +172,48 @@ async function addStudent(req: NextApiRequest, res: NextApiResponse) {
     if (error.message === 'Student is already enrolled in this course') {
       return res.status(400).json({ error: 'Student is already enrolled in this course' });
     }
+    if (error.message === 'Course does not belong to this tutor') {
+      return res.status(403).json({ error: 'Access denied: Course does not belong to this tutor' });
+    }
     return res.status(500).json({ error: 'Failed to add student' });
   }
 }
 
-async function updateStudent(req: NextApiRequest, res: NextApiResponse) {
+async function updateStudent(req: AuthenticatedRequest, res: NextApiResponse) {
   try {
     const { studentId, updates } = req.body;
+    const tutorId = req.user.userId;
 
     if (!studentId || !updates) {
       return res.status(400).json({ error: 'Student ID and updates are required' });
     }
 
+    // Security check: Ensure student is enrolled in at least one of the tutor's courses
+    const enrollment = await prisma.courseEnrollment.findFirst({
+      where: {
+        userId: parseInt(studentId),
+        course: {
+          tutorId: tutorId
+        }
+      }
+    });
+
+    if (!enrollment) {
+      return res.status(403).json({ error: 'Access denied: You can only update students enrolled in your courses' });
+    }
+
+    // Prevent updating sensitive fields
+    const safeUpdates = { ...updates };
+    delete safeUpdates.id;
+    delete safeUpdates.email;
+    delete safeUpdates.password;
+    delete safeUpdates.role;
+    delete safeUpdates.createdAt;
+    delete safeUpdates.updatedAt;
+
     const updatedStudent = await prisma.user.update({
-      where: { id: studentId },
-      data: updates
+      where: { id: parseInt(studentId) },
+      data: safeUpdates
     });
 
     return res.status(200).json(updatedStudent);
@@ -170,19 +223,33 @@ async function updateStudent(req: NextApiRequest, res: NextApiResponse) {
   }
 }
 
-async function removeStudent(req: NextApiRequest, res: NextApiResponse) {
+async function removeStudent(req: AuthenticatedRequest, res: NextApiResponse) {
   try {
     const { studentId, courseId } = req.query;
+    const tutorId = req.user.userId;
 
     if (!studentId || !courseId) {
       return res.status(400).json({ error: 'Student ID and course ID are required' });
     }
 
+    // Verify course ownership
+    const course = await prisma.course.findUnique({
+      where: { id: parseInt(courseId as string) }
+    });
+    
+    if (!course) {
+        return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (course.tutorId !== tutorId) {
+      return res.status(403).json({ error: 'Access denied: Course does not belong to this tutor' });
+    }
+
     // Remove enrollment
     await prisma.courseEnrollment.deleteMany({
       where: {
-        userId: studentId as string,
-        courseId: courseId as string
+        userId: parseInt(studentId as string),
+        courseId: parseInt(courseId as string)
       }
     });
 

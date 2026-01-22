@@ -549,7 +549,8 @@ export const api = {
     }
 
     const token = getAuthToken();
-    const url = withBase('/api/upload');
+    // If courseId is provided, use the material upload endpoint which links to the course and verifies ownership
+    const url = withBase(courseId ? '/api/upload/material' : '/api/upload');
     
     const xhr = new XMLHttpRequest();
     
@@ -564,14 +565,29 @@ export const api = {
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           const json = JSON.parse(xhr.responseText);
-          const data = json.data || json;
+          
+          // Handle different response structures
+          let result;
+          if (json.material) {
+            // Response from /api/upload/material
+            result = {
+              url: json.material.url,
+              id: json.material.id,
+              name: json.material.name
+            };
+          } else {
+            // Response from /api/upload
+            const data = json.data || json;
+            result = {
+              url: data.url,
+              id: data.id || crypto.randomUUID(),
+              name: data.name || file.name
+            };
+          }
+
           cache.invalidate('materials');
           cache.invalidate('courses');
-          resolve({
-            url: data.url,
-            id: data.id || crypto.randomUUID(),
-            name: data.name || file.name
-          });
+          resolve(result);
         } else {
           reject(new Error(`Upload failed: ${xhr.statusText}`));
         }

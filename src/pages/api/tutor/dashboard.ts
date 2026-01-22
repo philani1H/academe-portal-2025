@@ -1,12 +1,14 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import prisma from '@/lib/prisma';
-
+import { authenticateJWT, AuthenticatedRequest } from '@/lib/auth-middleware';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     switch (req.method) {
       case 'GET':
-        return await getTutorDashboard(req, res);
+        return await authenticateJWT(req as AuthenticatedRequest, res, async () => {
+          return await getTutorDashboard(req as AuthenticatedRequest, res);
+        });
       default:
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -16,7 +18,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
-async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
+async function getTutorDashboard(req: AuthenticatedRequest, res: NextApiResponse) {
   try {
     const { tutorId } = req.query;
 
@@ -24,12 +26,22 @@ async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
       return res.status(400).json({ error: 'Tutor ID is required' });
     }
 
-    // Get tutor information
-    const tutor = await prisma.tutor.findUnique({
-      where: { id: tutorId }
+    const parsedTutorId = parseInt(tutorId);
+    if (isNaN(parsedTutorId)) {
+        return res.status(400).json({ error: 'Invalid Tutor ID' });
+    }
+
+    // Security check: Ensure the authenticated user is accessing their own dashboard
+    if (req.user.userId !== parsedTutorId) {
+        return res.status(403).json({ error: 'Access denied: You can only view your own dashboard' });
+    }
+
+    // Get tutor information (Tutors are Users with role 'tutor')
+    const tutor = await prisma.user.findUnique({
+      where: { id: parsedTutorId }
     });
 
-    if (!tutor) {
+    if (!tutor || tutor.role !== 'tutor') {
       return res.status(404).json({ error: 'Tutor not found' });
     }
 
@@ -37,17 +49,16 @@ async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
     const students = await prisma.user.findMany({
       where: {
         role: 'student',
-        enrollments: {
+        courseEnrollments: {
           some: {
             course: {
-              // Assuming we have a tutorId field in Course model
-              // For now, we'll get all students
+              tutorId: parsedTutorId
             }
           }
         }
       },
       include: {
-        enrollments: {
+        courseEnrollments: {
           include: {
             course: true
           }
@@ -58,18 +69,17 @@ async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
     // Get courses taught by this tutor
     const courses = await prisma.course.findMany({
       where: {
-        // Assuming we have a tutorId field in Course model
-        // For now, we'll get all courses
+        tutorId: parsedTutorId
       },
       include: {
-        enrollments: {
+        courseEnrollments: {
           include: {
             user: true
           }
         },
         tests: {
           include: {
-            submissions: true
+            testSubmissions: true
           }
         }
       }
@@ -78,7 +88,7 @@ async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
     // Get recent notifications
     const notifications = await prisma.notification.findMany({
       where: {
-        userId: tutorId
+        userId: parsedTutorId
       },
       orderBy: {
         createdAt: 'desc'
@@ -90,66 +100,99 @@ async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
     const totalStudents = students.length;
     const totalCourses = courses.length;
     const activeStudents = students.filter(s => 
-      s.enrollments.some(e => e.status === 'enrolled')
+      s.courseEnrollments.some(e => e.status === 'enrolled')
     ).length;
 
-    // Get upcoming sessions (mock data for now)
-    const upcomingSessions = [
-      {
-        id: '1',
-        courseName: 'Mathematics Grade 12',
-        studentName: 'John Doe',
-        date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        time: '10:00 AM',
-        duration: '60 minutes',
-        type: '1-on-1'
+    // Get upcoming sessions (Real Data)
+    const upcomingSessionsRaw = await prisma.scheduledSession.findMany({
+      where: {
+        tutorId: parsedTutorId,
+        scheduledAt: {
+            gte: new Date()
+        }
       },
-      {
-        id: '2',
-        courseName: 'Physics Grade 11',
-        studentName: 'Jane Smith',
-        date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-        time: '2:00 PM',
-        duration: '90 minutes',
-        type: 'Group'
-      }
-    ];
+      include: {
+        course: true,
+      },
+      orderBy: {
+        scheduledAt: 'asc'
+      },
+      take: 5
+    });
 
-    // Get recent activities (mock data for now)
+    const upcomingSessions = upcomingSessionsRaw.map(session => ({
+        id: session.id,
+        courseName: session.course.name,
+        studentName: 'Students', // Group session or check enrollment if specific
+        date: session.scheduledAt.toISOString(),
+        time: session.scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        duration: `${session.duration} minutes`,
+        type: 'Session'
+    }));
+
+    // Get recent activities (Real Data: Completed Sessions and Assignments)
+    // 1. Completed sessions
+    const completedSessions = await prisma.scheduledSession.findMany({
+        where: {
+            tutorId: parsedTutorId,
+            scheduledAt: { lt: new Date() }
+        },
+        orderBy: { scheduledAt: 'desc' },
+        take: 5,
+        include: { course: true }
+    });
+
+    // 2. Recent assignment submissions for this tutor's courses
+    const recentSubmissions = await prisma.assignmentSubmission.findMany({
+        where: {
+            assignment: {
+                course: {
+                    tutorId: parsedTutorId
+                }
+            }
+        },
+        orderBy: { submittedAt: 'desc' },
+        take: 5,
+        include: {
+            user: true,
+            assignment: true
+        }
+    });
+
     const recentActivities = [
-      {
-        id: '1',
-        type: 'session_completed',
-        message: 'Completed session with John Doe - Mathematics',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        studentName: 'John Doe'
-      },
-      {
-        id: '2',
-        type: 'assignment_submitted',
-        message: 'Jane Smith submitted Physics assignment',
-        timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-        studentName: 'Jane Smith'
-      }
-    ];
+        ...completedSessions.map(s => ({
+            id: s.id,
+            type: 'session_completed',
+            message: `Completed session for ${s.course.name}`,
+            timestamp: s.scheduledAt.toISOString(),
+            studentName: 'Class'
+        })),
+        ...recentSubmissions.map(s => ({
+            id: s.id,
+            type: 'assignment_submitted',
+            message: `${s.user.name} submitted ${s.assignment.title}`,
+            timestamp: s.submittedAt.toISOString(),
+            studentName: s.user.name
+        }))
+    ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
 
     const dashboardData = {
       tutor: {
         id: tutor.id,
         name: tutor.name,
-        subjects: JSON.parse(tutor.subjects || '[]'),
-        contactEmail: tutor.contactEmail,
-        contactPhone: tutor.contactPhone,
-        description: tutor.description,
-        image: tutor.image
+        subjects: tutor.subjects ? JSON.parse(tutor.subjects) : [],
+        contactEmail: tutor.email, // Use email as contactEmail
+        contactPhone: null, // User model doesn't have phone
+        description: null, // User model doesn't have description
+        image: null // User model doesn't have image
       },
       statistics: {
         totalStudents,
         totalCourses,
         activeStudents,
-        completedSessions: 45, // Mock data
-        averageRating: 4.8, // Mock data
-        totalEarnings: 12500 // Mock data
+        completedSessions: completedSessions.length, // Real count from recent fetch (approximate)
+        averageRating: 0, // No rating system yet
+        totalEarnings: 0 // No earnings system yet
       },
       upcomingSessions,
       recentActivities,
@@ -157,26 +200,26 @@ async function getTutorDashboard(req: NextApiRequest, res: NextApiResponse) {
         id: student.id,
         name: student.name,
         email: student.email,
-        progress: Math.floor(Math.random() * 100), // Mock progress
-        lastActivity: student.updatedAt.toISOString(),
+        progress: 0, // Placeholder
+        lastActivity: student.updatedAt?.toISOString() || new Date().toISOString(),
         status: 'active',
-        enrolledCourses: student.enrollments.map(e => e.course.title),
+        enrolledCourses: student.courseEnrollments.map(e => e.course.name),
         avatar: `https://ui-avatars.com/api/?name=${student.name}&background=random`
       })),
       courses: courses.map(course => ({
         id: course.id,
-        name: course.title,
+        name: course.name,
         description: course.description,
-        students: course.enrollments.length,
-        nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        progress: Math.floor(Math.random() * 100), // Mock progress
-        materials: [], // Mock materials
+        students: course.courseEnrollments.length,
+        nextSession: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Placeholder
+        progress: 0, // Placeholder
+        materials: [], // Materials not fetched here to save bandwidth
         tests: course.tests.map(test => ({
           id: test.id,
           title: test.title,
-          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          submissions: test.submissions.length,
-          totalPoints: 100
+          dueDate: test.dueDate,
+          submissions: test.testSubmissions.length,
+          totalPoints: test.totalPoints
         })),
         color: 'blue'
       })),

@@ -140,6 +140,20 @@ async function submitAssignment(req: NextApiRequest, res: NextApiResponse) {
       },
     })
 
+    // Emit real-time update
+    const io = (global as any).io
+    if (io) {
+      // Emit to course room so tutor (and potentially other students if group work) receives it
+      // Better to emit to tutor specifically if possible, but course room is okay if tutor is in it
+      // Also emit to specific 'assignment-submitted' event
+      io.to(`course:${assignment.courseId}`).emit('assignment-submitted', {
+        assignmentId,
+        courseId: assignment.courseId,
+        studentId,
+        submission
+      })
+    }
+
     return res.status(201).json({
       message: 'Assignment submitted successfully',
       submission: {

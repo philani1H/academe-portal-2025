@@ -30,6 +30,7 @@ import crypto from "crypto"
 import multer from "multer"
 import { createRequire } from "module"
 import trendRoutes from "./routes/trends.js"
+import tutorRoutes from "./routes/tutor.js"
 import { TrendService } from "./services/TrendService.js"
 
 // Configure Cloudinary
@@ -46,6 +47,12 @@ cloudinary.config({
 const require = createRequire(import.meta.url)
 const pdfParse = require("pdf-parse")
 const bcrypt = require("bcryptjs")
+
+// JWT Configuration
+if (!process.env.JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is required for security. Server cannot start without it.');
+}
+const JWT_SECRET = process.env.JWT_SECRET
 
 // Duplicate email prevention for server endpoints
 const recentCredentialsSent = new Map<string, number>();
@@ -419,6 +426,9 @@ app.use((req, res, next) => {
 
 // Trends API
 app.use('/api/trends', trendRoutes);
+
+// Tutor API
+app.use('/api/tutor', tutorRoutes);
 
 // Timetable API
 // Remove file-based storage references
@@ -989,8 +999,32 @@ const io = new Server(httpServer, {
 
 app.set("io", io)
 
+// Socket Authentication Middleware
+io.use((socket, next) => {
+  const cookieHeader = socket.handshake.headers.cookie;
+  if (cookieHeader) {
+    const cookies = parseCookies({ headers: { cookie: cookieHeader } } as any);
+    const token = cookies.auth_token || cookies.admin_token;
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        (socket as any).user = decoded;
+      } catch (e) {
+        // Invalid token, treat as anonymous/guest
+      }
+    }
+  }
+  next();
+});
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id)
+
+  const user = (socket as any).user;
+  if (user && user.id) {
+      socket.join(`user:${user.id}`);
+      console.log(`Authenticated user ${user.id} (${user.role}) auto-joined room user:${user.id}`);
+  }
 
   socket.on("join-user-room", (userId: string) => {
     socket.join(`user:${userId}`)
@@ -1681,11 +1715,8 @@ app.use("/uploads", (req: Request, res: Response, next: NextFunction) => {
   next()
 })
 
-// JWT auth helpers
-if (!process.env.JWT_SECRET) {
-  throw new Error('FATAL: JWT_SECRET environment variable is required for security. Server cannot start without it.');
-}
-const JWT_SECRET = process.env.JWT_SECRET
+// JWT auth helpers - Moved to top
+
 
 function parseCookies(req: Request): Record<string, string> {
   const header = req.headers?.cookie || ""
@@ -1984,6 +2015,12 @@ app.post("/api/admin/students/auto-place", authenticateJWT as RequestHandler, au
           status: "enrolled",
         },
       })
+      
+      const io = req.app.get("io");
+      if (io) {
+         io.to(`user:${userId}`).emit("enrollment-updated", { courseId: course.id });
+      }
+
       placed++
     }
 
@@ -2786,6 +2823,16 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       "Set-Cookie",
       `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax;${secure}`,
     )
+
+    // Emit login event to user's room (for other devices)
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user:${user.id}`).emit("auth-state-change", { 
+        type: "LOGIN", 
+        user: { id: user.id, email: user.email, role: user.role, name: user.name } 
+      });
+    }
+
     return res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, name: user.name } })
   } catch (error) {
     console.error("Login error:", error)
@@ -2795,6 +2842,23 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
 
 // Student auth: logout
 app.post("/api/auth/logout", (req: Request, res: Response) => {
+  // Emit logout event before clearing cookie
+  const io = req.app.get("io");
+  if (io) {
+    const cookies = parseCookies(req);
+    const token = cookies.auth_token;
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        if (decoded && decoded.id) {
+           io.to(`user:${decoded.id}`).emit("auth-state-change", { type: "LOGOUT" });
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
   const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
   res.setHeader("Set-Cookie", `auth_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax;${secure}`)
   return res.json({ success: true })
@@ -3482,6 +3546,11 @@ app.post(
             await prisma.courseEnrollment.create({
               data: { userId: user.id, courseId: courseId, status: "enrolled" },
             })
+            
+            const io = req.app.get("io");
+            if (io) {
+               io.to(`user:${user.id}`).emit("enrollment-updated", { courseId });
+            }
           }
         }
 
@@ -4693,6 +4762,15 @@ app.post("/api/notifications", async (req: Request, res: Response) => {
       }
       sendList.push(...toSpecific.map((e: string) => e.toLowerCase()))
       const uniqueList = Array.from(new Set(sendList)).slice(0, 200)
+
+      // Emit real-time notification to all recipients
+      const io = req.app.get("io");
+      if (io) {
+        // Emit specific notification events to users if we can
+        // For broad notifications, we still emit the general event
+        io.emit("notification-added", { title, type, message });
+      }
+
       for (const to of uniqueList) {
         const html = renderBrandedEmail({ title: String(title), message: `<p>${String(message)}</p>` })
         await sendEmail({ to, subject: String(title), content: html })
@@ -6474,7 +6552,14 @@ app.put(
       const parsed = parseJsonFields(updated, cfg.jsonFields)
 
       // Emit real-time update
-      io.emit('content-updated', { type, action: 'update', data: parsed })
+      const io = req.app.get("io");
+      if (io) {
+        io.emit('content-updated', { type, action: 'update', data: parsed });
+        
+        if (type === 'announcements') {
+           io.emit('announcement-added', parsed);
+        }
+      }
 
       return res.json({ success: true, data: parsed })
     } catch (error: any) {
@@ -7821,6 +7906,12 @@ const startServer = async (): Promise<void> => {
             created++
           }
         }
+
+        const io = req.app.get("io");
+        if (io) {
+           io.emit("announcement-added");
+        }
+
         res.json({
           message: "Announcements processed successfully",
           updated,
@@ -8566,6 +8657,12 @@ const startServer = async (): Promise<void> => {
                   status: "enrolled",
                 },
               })
+              
+              const io = req.app.get("io");
+              if (io) {
+                 io.to(`user:${student.id}`).emit("enrollment-updated", { courseId: course.id });
+              }
+
               studentsEnrolled++
             }
           }
@@ -8708,6 +8805,12 @@ const startServer = async (): Promise<void> => {
               status: "enrolled"
             }
           })
+          
+          const io = req.app.get("io");
+          if (io) {
+             io.to(`user:${id}`).emit("enrollment-updated", { courseId: courseIdNum });
+          }
+
           enrolledCount++
         }
 

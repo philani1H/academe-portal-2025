@@ -81,6 +81,43 @@ export default function EnhancedLiveSession({
     initUser();
   }, [userRole, propTutorName]);
 
+  useEffect(() => {
+    // Screen Wake Lock API to prevent device from sleeping during session
+    let wakeLock: any = null;
+
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+          console.log('Wake Lock is active');
+        }
+      } catch (err) {
+        console.error('Wake Lock request failed:', err);
+      }
+    };
+
+    // Request wake lock when session starts
+    requestWakeLock();
+
+    // Re-request wake lock if visibility changes (e.g. user comes back to tab)
+    const handleVisibilityChange = async () => {
+      if (wakeLock !== null && document.visibilityState === 'visible') {
+        await requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock !== null) {
+        wakeLock.release().then(() => {
+          console.log('Wake Lock released');
+        });
+      }
+    };
+  }, []);
+
   const {
       localStream,
       peers,

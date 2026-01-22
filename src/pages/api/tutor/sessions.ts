@@ -1,10 +1,24 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { PrismaClient } from '@prisma/client';
+import jwt from 'jsonwebtoken';
 
 const prisma = new PrismaClient();
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: number; role: string };
+    if (decoded.role !== 'tutor') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // Attach user info to request for handlers to use
+    (req as any).user = decoded;
+
     switch (req.method) {
       case 'GET':
         return await getTutorSessions(req, res);
@@ -26,84 +40,66 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 async function getTutorSessions(req: NextApiRequest, res: NextApiResponse) {
   try {
     const { tutorId, date } = req.query;
+    const user = (req as any).user;
 
     if (!tutorId || typeof tutorId !== 'string') {
       return res.status(400).json({ error: 'Tutor ID is required' });
     }
 
-    // For now, return mock session data
-    // In a real implementation, you would query a sessions table
-    const sessions = [
-      {
-        id: '1',
-        courseName: 'Mathematics Grade 12',
-        studentName: 'John Doe',
-        studentEmail: 'john@example.com',
-        date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        time: '10:00 AM',
-        duration: 60,
-        type: '1-on-1',
-        status: 'scheduled',
-        location: 'Online',
-        notes: 'Focus on calculus problems',
-        materials: [
-          {
-            id: '1',
-            name: 'Calculus Worksheet 1',
-            type: 'pdf',
-            url: '/materials/calculus-worksheet-1.pdf'
-          }
-        ]
-      },
-      {
-        id: '2',
-        courseName: 'Physics Grade 11',
-        studentName: 'Jane Smith',
-        studentEmail: 'jane@example.com',
-        date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-        time: '2:00 PM',
-        duration: 90,
-        type: 'Group',
-        status: 'scheduled',
-        location: 'Online',
-        notes: 'Mechanics and motion',
-        materials: [
-          {
-            id: '2',
-            name: 'Physics Lab Report Template',
-            type: 'doc',
-            url: '/materials/physics-lab-template.doc'
-          }
-        ]
-      },
-      {
-        id: '3',
-        courseName: 'Mathematics Grade 12',
-        studentName: 'Mike Johnson',
-        studentEmail: 'mike@example.com',
-        date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-        time: '3:00 PM',
-        duration: 60,
-        type: '1-on-1',
-        status: 'completed',
-        location: 'Online',
-        notes: 'Completed algebra review',
-        materials: [],
-        feedback: 'Great progress on quadratic equations!'
-      }
-    ];
-
-    // Filter by date if provided
-    let filteredSessions = sessions;
-    if (date) {
-      const targetDate = new Date(date as string);
-      filteredSessions = sessions.filter(session => {
-        const sessionDate = new Date(session.date);
-        return sessionDate.toDateString() === targetDate.toDateString();
-      });
+    // Enforce ownership
+    if (parseInt(tutorId) !== user.userId) {
+      return res.status(403).json({ error: 'Access denied: You can only view your own sessions' });
     }
 
-    return res.status(200).json(filteredSessions);
+    const whereClause: any = {
+      tutorId: parseInt(tutorId),
+    };
+
+    if (date) {
+      const targetDate = new Date(date as string);
+      const nextDate = new Date(targetDate);
+      nextDate.setDate(targetDate.getDate() + 1);
+
+      whereClause.scheduledAt = {
+        gte: targetDate,
+        lt: nextDate,
+      };
+    }
+
+    const sessions = await prisma.scheduledSession.findMany({
+      where: whereClause,
+      include: {
+        course: true,
+        // liveSession: true // Include if needed
+      },
+      orderBy: {
+        scheduledAt: 'asc',
+      },
+    });
+
+    // Transform data to match frontend expectations if necessary
+    // The frontend seems to expect specific fields like courseName, studentName, etc.
+    // Since ScheduledSession is linked to Course (which can have students via CourseEnrollment),
+    // mapping "studentName" might be tricky if it's a 1-to-many session.
+    // However, the mock data implied 1-on-1 sessions with a specific student.
+    // The schema has `courseId` but not `studentId`.
+    // We will return the sessions as is, but mapped to a friendly format.
+
+    const formattedSessions = sessions.map(session => ({
+      id: session.id,
+      courseName: session.course.name,
+      // studentName: 'Multiple Students', // Schema doesn't have studentId on ScheduledSession
+      date: session.scheduledAt.toISOString(),
+      time: session.scheduledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      duration: session.duration,
+      type: 'Class', // Or derive from course type
+      status: session.status,
+      title: session.title,
+      description: session.description,
+      // location: 'Online',
+    }));
+
+    return res.status(200).json(formattedSessions);
   } catch (error) {
     console.error('Error fetching tutor sessions:', error);
     return res.status(500).json({ error: 'Failed to fetch sessions' });
@@ -112,31 +108,50 @@ async function getTutorSessions(req: NextApiRequest, res: NextApiResponse) {
 
 async function createSession(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const { tutorId, courseId, studentId, date, time, duration, type, location, notes } = req.body;
+    const { tutorId, courseId, date, time, duration, title, description } = req.body;
+    const user = (req as any).user;
 
-    if (!tutorId || !courseId || !studentId || !date || !time || !duration) {
+    if (!tutorId || !courseId || !date || !time || !duration || !title) {
       return res.status(400).json({ error: 'Required fields are missing' });
     }
 
-    // In a real implementation, you would create a session in the database
-    const newSession = {
-      id: Date.now().toString(),
-      courseId,
-      studentId,
-      tutorId,
-      date,
-      time,
-      duration,
-      type,
-      location: location || 'Online',
-      notes: notes || '',
-      status: 'scheduled',
-      createdAt: new Date().toISOString()
-    };
+    // Enforce ownership
+    if (parseInt(tutorId) !== user.userId) {
+      return res.status(403).json({ error: 'Access denied: You can only create sessions for yourself' });
+    }
+
+    // Verify course belongs to tutor
+    const course = await prisma.course.findUnique({
+      where: { id: parseInt(courseId) },
+    });
+
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (course.tutorId !== user.userId) {
+      return res.status(403).json({ error: 'Access denied: You can only create sessions for your own courses' });
+    }
+
+    // Combine date and time into scheduledAt
+    // Assuming date is "YYYY-MM-DD" and time is "HH:MM"
+    const scheduledAt = new Date(`${date}T${time}:00`);
+
+    const newSession = await prisma.scheduledSession.create({
+      data: {
+        title,
+        description,
+        duration: parseInt(duration),
+        status: 'scheduled',
+        courseId: parseInt(courseId),
+        tutorId: parseInt(tutorId),
+        scheduledAt,
+      },
+    });
 
     return res.status(201).json({
       message: 'Session created successfully',
-      session: newSession
+      session: newSession,
     });
   } catch (error) {
     console.error('Error creating session:', error);
@@ -147,21 +162,33 @@ async function createSession(req: NextApiRequest, res: NextApiResponse) {
 async function updateSession(req: NextApiRequest, res: NextApiResponse) {
   try {
     const { sessionId, updates } = req.body;
+    const user = (req as any).user;
 
     if (!sessionId || !updates) {
       return res.status(400).json({ error: 'Session ID and updates are required' });
     }
 
-    // In a real implementation, you would update the session in the database
-    const updatedSession = {
-      id: sessionId,
-      ...updates,
-      updatedAt: new Date().toISOString()
-    };
+    // Verify session belongs to tutor
+    const session = await prisma.scheduledSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (session.tutorId !== user.userId) {
+      return res.status(403).json({ error: 'Access denied: You can only update your own sessions' });
+    }
+
+    const updatedSession = await prisma.scheduledSession.update({
+      where: { id: sessionId },
+      data: updates,
+    });
 
     return res.status(200).json({
       message: 'Session updated successfully',
-      session: updatedSession
+      session: updatedSession,
     });
   } catch (error) {
     console.error('Error updating session:', error);
@@ -172,12 +199,29 @@ async function updateSession(req: NextApiRequest, res: NextApiResponse) {
 async function deleteSession(req: NextApiRequest, res: NextApiResponse) {
   try {
     const { sessionId } = req.query;
+    const user = (req as any).user;
 
     if (!sessionId || typeof sessionId !== 'string') {
       return res.status(400).json({ error: 'Session ID is required' });
     }
 
-    // In a real implementation, you would delete the session from the database
+    // Verify session belongs to tutor
+    const session = await prisma.scheduledSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (session.tutorId !== user.userId) {
+      return res.status(403).json({ error: 'Access denied: You can only delete your own sessions' });
+    }
+
+    await prisma.scheduledSession.delete({
+      where: { id: sessionId },
+    });
+
     return res.status(200).json({ message: 'Session deleted successfully' });
   } catch (error) {
     console.error('Error deleting session:', error);

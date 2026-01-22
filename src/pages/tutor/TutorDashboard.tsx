@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import io from "socket.io-client"
+import { socket, connectSocket } from '@/lib/socket'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -341,35 +341,49 @@ export default function TutorDashboard() {
 
   // Socket.IO integration
   useEffect(() => {
-    const SOCKET_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-    const socket = io(SOCKET_SERVER_URL)
+    // Use the singleton socket connection from AuthContext (via src/lib/socket.ts)
+    // instead of creating a new connection
+    if (!socket.connected) {
+      connectSocket();
+    }
 
     if (user?.id) {
       socket.emit('join-user-room', user.id)
     }
 
-    socket.on('enrollment-updated', () => {
-      toast({ title: "Update", description: "Student enrollment updated." })
-      loadData()
-    })
+    const handleReload = () => {
+      loadData();
+    };
 
-    socket.on('course-updated', () => {
-      loadData()
-    })
+    const handleNotification = (data: any) => {
+       toast({ title: "New Notification", description: data.title || "You have a new notification" });
+       loadData();
+    };
 
+    socket.on('enrollment-updated', handleReload);
+    socket.on('course-updated', handleReload);
     socket.on('material-added', () => {
-      toast({ title: "Update", description: "Course material added." })
-      loadData()
-    })
-
+      toast({ title: "Update", description: "Course material added." });
+      loadData();
+    });
     socket.on('announcement-added', () => {
-      toast({ title: "New Announcement", description: "A new announcement has been posted." })
-      loadData()
-    })
+      toast({ title: "New Announcement", description: "A new announcement has been posted." });
+      loadData();
+    });
+    socket.on('notification-added', handleNotification);
+    socket.on('assignment-submitted', () => {
+      toast({ title: "Assignment Submitted", description: "A student has submitted an assignment." });
+      loadData();
+    });
 
     return () => {
-      socket.disconnect()
-    }
+      socket.off('enrollment-updated', handleReload);
+      socket.off('course-updated', handleReload);
+      socket.off('material-added');
+      socket.off('announcement-added');
+      socket.off('notification-added', handleNotification);
+      socket.off('assignment-submitted');
+    };
   }, [user?.id])
 
   // Effects
