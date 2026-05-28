@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useRef } from "react"
 import { apiFetch } from "@/lib/api"
+import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { getPublicContent, subscribePublicContent } from "@/lib/publicContent"
+import { socket } from "@/lib/socket"
 import { motion } from "framer-motion"
 import { ChevronLeft, ChevronRight, Quote, Star } from "lucide-react"
 import { Button } from "./ui/button"
@@ -24,27 +27,56 @@ interface Testimonial {
 const defaultTestimonials: Testimonial[] = []
 
 const Testimonials = () => {
-  const [testimonials, setTestimonials] = useState<Testimonial[]>(defaultTestimonials);
+  const [testimonials, setTestimonials] = useState<Testimonial[]>(() =>
+    (getPublicContent('testimonials') as Testimonial[]) ?? readContentCache<Testimonial[]>('testimonials') ?? defaultTestimonials
+  );
   const [activeIndex, setActiveIndex] = useState(0)
   const [visibleCount, setVisibleCount] = useState(3)
   const [autoplay, setAutoplay] = useState(true)
   const autoplayRef = useRef<NodeJS.Timeout | null>(null)
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  // Subscribe to server-push store
+  useEffect(() => subscribePublicContent('testimonials', () => {
+    const d = getPublicContent('testimonials');
+    if (d && d.length > 0) setTestimonials(d as Testimonial[]);
+  }), []);
 
   useEffect(() => {
     fetchTestimonials();
   }, []);
 
+  // Real-time updates when admin edits testimonials
+  useEffect(() => {
+    const onUpdate = ({ type, action, data, id }: any) => {
+      if (type !== 'testimonials') return;
+      setTestimonials(prev => {
+        let next: Testimonial[];
+        if (action === 'delete') {
+          next = prev.filter(t => String(t.id) !== String(id));
+        } else if (action === 'create' && data) {
+          next = prev.some(t => String(t.id) === String(data.id)) ? prev.map(t => String(t.id) === String(data.id) ? { ...t, ...data } : t) : [...prev, data];
+        } else if (action === 'update' && data) {
+          next = prev.map(t => String(t.id) === String(data.id) ? { ...t, ...data } : t);
+        } else { return prev; }
+        writeContentCache('testimonials', next);
+        return next;
+      });
+    };
+    socket.on('content-updated', onUpdate);
+    return () => { socket.off('content-updated', onUpdate); };
+  }, []);
+
   const fetchTestimonials = async () => {
     try {
-      const data = await apiFetch<any[]>('/api/admin/content/testimonials');
+      const data = await apiFetch<any[]>('/api/admin/content/testimonials', { noCache: true });
       const list = Array.isArray(data) ? data.filter(Boolean) : []
-      setTestimonials(list);
+      if (list.length > 0) {
+        setTestimonials(list);
+        writeContentCache('testimonials', list);
+      }
     } catch (error) {
       console.error('Error fetching testimonials:', error);
-      setTestimonials([])
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -132,11 +164,7 @@ const Testimonials = () => {
         <div className="relative">
           {/* Testimonial Cards */}
           <div className="overflow-hidden">
-            {loading ? (
-              <div className="flex justify-center py-20">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-              </div>
-            ) : testimonials.length === 0 ? (
+            {testimonials.length === 0 ? (
               <div className="text-center py-20">
                 <p className="text-gray-500">No testimonials available at the moment.</p>
               </div>

@@ -36,6 +36,9 @@ import { Analytics } from "@vercel/analytics/react";
 import Dashboard from "./pages/Dashboard";
 import { useAuth, AuthProvider } from "./contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
+import { readContentCache, writeContentCache } from "@/lib/contentCache";
+import { socket, connectSocket } from "@/lib/socket";
+import { initPublicContentSync } from "@/lib/publicContent";
 import UniversityApplication from "./components/UniversityApplication";
 import ExamRewrite from "./components/ExamRewrite";
 import DashboardNavigation from "./components/DashboardNavigation";
@@ -61,16 +64,41 @@ const AppInner = () => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
   const isLoginRoute = ["/student-login", "/tutor-login", "/admin-login"].includes(location.pathname);
+
+  // Connect socket for all visitors (anonymous OK) so public pages receive real-time updates.
+  // initPublicContentSync wires the 'public-content' event before the first connection fires.
+  useEffect(() => {
+    initPublicContentSync();
+    connectSocket();
+  }, []);
+
+  // Real-time: update maintenance/agreement/popup when admin changes site settings
+  useEffect(() => {
+    const onUpdate = ({ type, action, data }: any) => {
+      if (type !== 'site-settings' || !data) return;
+      const key = String(data.key || '').toLowerCase();
+      const val = String(data.value || '').toLowerCase();
+      if (key === 'system_maintenance_mode') setIsMaintenanceMode(val === 'true' || val === '1');
+      else if (key === 'system_agreement_met') setIsAgreementMet(!(val === 'false' || val === '0'));
+      else if (key === 'system_popup_active') setPromoPopup(p => ({ ...p, active: val === 'true' || val === '1' }));
+      else if (key === 'system_popup_image') setPromoPopup(p => ({ ...p, image: data.value }));
+      else if (key === 'system_popup_link') setPromoPopup(p => ({ ...p, link: data.value }));
+    };
+    socket.on('content-updated', onUpdate);
+    return () => { socket.off('content-updated', onUpdate); };
+  }, []);
   
-  const [isAgreementMet, setIsAgreementMet] = useState(true);
-  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
-  
+  // Initialise from cache so modals appear instantly on returning visits
+  const cachedSiteSettings = readContentCache<{ maintenance: boolean; agreement: boolean; popup: { active: boolean; image: string; link: string } }>('site-settings');
+  const [isAgreementMet, setIsAgreementMet] = useState(cachedSiteSettings?.agreement ?? true);
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(cachedSiteSettings?.maintenance ?? false);
+  const [settingsLoaded, setSettingsLoaded] = useState(true); // never block rendering
+
   // Promo Popup State
   const [promoPopup, setPromoPopup] = useState({
-    active: false,
-    image: "",
-    link: ""
+    active: cachedSiteSettings?.popup?.active ?? false,
+    image: cachedSiteSettings?.popup?.image ?? "",
+    link: cachedSiteSettings?.popup?.link ?? ""
   });
 
   useEffect(() => {
@@ -78,42 +106,25 @@ const AppInner = () => {
       try {
         const data = await apiFetch<any[]>("/api/admin/content/site-settings");
         const list = Array.isArray(data) ? data : [];
-        const maintRow = list.find(
-          (r) => String(r.key).toLowerCase() === "system_maintenance_mode"
-        );
-        const agreementRow = list.find(
-          (r) => String(r.key).toLowerCase() === "system_agreement_met"
-        );
-        
-        // Popup Settings
+        const maintRow = list.find((r) => String(r.key).toLowerCase() === "system_maintenance_mode");
+        const agreementRow = list.find((r) => String(r.key).toLowerCase() === "system_agreement_met");
         const popupActiveRow = list.find((r) => String(r.key).toLowerCase() === "system_popup_active");
         const popupImageRow = list.find((r) => String(r.key).toLowerCase() === "system_popup_image");
         const popupLinkRow = list.find((r) => String(r.key).toLowerCase() === "system_popup_link");
 
-        if (maintRow) {
-          const v = String(maintRow.value).toLowerCase();
-          setIsMaintenanceMode(v === "true" || v === "1");
-        }
-        if (agreementRow) {
-          const v = String(agreementRow.value).toLowerCase();
-          setIsAgreementMet(!(v === "false" || v === "0"));
-        }
-        
-        if (popupActiveRow) {
-          const v = String(popupActiveRow.value).toLowerCase();
-          setPromoPopup(prev => ({ ...prev, active: v === "true" || v === "1" }));
-        }
-        if (popupImageRow) {
-          setPromoPopup(prev => ({ ...prev, image: String(popupImageRow.value) }));
-        }
-        if (popupLinkRow) {
-          setPromoPopup(prev => ({ ...prev, link: String(popupLinkRow.value) }));
-        }
+        const maintenance = maintRow ? (String(maintRow.value).toLowerCase() === "true" || String(maintRow.value) === "1") : false;
+        const agreement = agreementRow ? !(String(agreementRow.value).toLowerCase() === "false" || String(agreementRow.value) === "0") : true;
+        const popupActive = popupActiveRow ? (String(popupActiveRow.value).toLowerCase() === "true" || String(popupActiveRow.value) === "1") : false;
+        const popupImage = popupImageRow ? String(popupImageRow.value) : "";
+        const popupLink = popupLinkRow ? String(popupLinkRow.value) : "";
 
+        setIsMaintenanceMode(maintenance);
+        setIsAgreementMet(agreement);
+        setPromoPopup({ active: popupActive, image: popupImage, link: popupLink });
+
+        writeContentCache('site-settings', { maintenance, agreement, popup: { active: popupActive, image: popupImage, link: popupLink } });
       } catch (error) {
         console.error("Error loading site settings:", error);
-      } finally {
-        setSettingsLoaded(true);
       }
     };
     loadSettings();

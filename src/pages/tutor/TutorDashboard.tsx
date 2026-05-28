@@ -157,15 +157,24 @@ interface Analytics {
 
 // Mock data removed - all data now comes from real API calls
 
+function readTutorCache(id?: string | number) {
+  try {
+    const raw = id ? localStorage.getItem(`cache_tutor_${id}`) : null;
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 export default function TutorDashboard() {
-  const { logout } = useAuth()
-  // State
-  const [user, setUser] = useState<User | null>(null)
-  const [courses, setCourses] = useState<Course[]>([])
-  const [students, setStudents] = useState<Student[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [analytics, setAnalytics] = useState<Analytics | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { user: authUser, logout } = useAuth()
+
+  const cachedInit = readTutorCache(authUser?.id);
+  // State — initialised from cache for instant render
+  const [user, setUser] = useState<User | null>(cachedInit?.user ?? null)
+  const [courses, setCourses] = useState<Course[]>(cachedInit?.courses ?? [])
+  const [students, setStudents] = useState<Student[]>(cachedInit?.students ?? [])
+  const [notifications, setNotifications] = useState<Notification[]>(cachedInit?.notifications ?? [])
+  const [analytics, setAnalytics] = useState<Analytics | null>(cachedInit?.analytics ?? null)
+  const [loading, setLoading] = useState(!cachedInit)
   const [error, setError] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [activeTab, setActiveTab] = useState("dashboard")
@@ -173,49 +182,14 @@ export default function TutorDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  const loadData = async () => {
+  const loadData = async (showSpinner = false) => {
+    if (showSpinner) { setLoading(true); setError(null); }
     try {
-      setLoading(true)
-      setError(null)
-      // Resolve current user from backend (preferred), fallback to localStorage if needed
-      let tutorId: string | undefined
-      try {
-        const me = await apiFetch<any>('/api/auth/me')
-        
-        // If API returns empty/null (due to error), treat as auth failure to trigger fallback
-        if (!me || (!me.user && !me.role)) {
-           throw new Error("Auth check returned invalid response");
-        }
-        
-        const role = (me?.user?.role || me?.role || '').toString().toLowerCase()
-        
-        if (role !== 'tutor' && role !== 'admin') {
-          setError('Access Denied: Tutor or Admin privileges required.')
-          setLoading(false)
-          return
-        }
-
-        if (role === 'tutor') {
-          tutorId = me?.user?.id || me?.id
-        }
-      
-      } catch (e) {
-        console.warn('Auth check failed, falling back to storage', e)
-      }
-      
-      if (!tutorId) {
-        const storedUser = localStorage.getItem('user')
-        const parsed = storedUser ? JSON.parse(storedUser) : null
-        
-        if (parsed) {
-            const storedRole = (parsed?.role || '').toLowerCase()
-            // Allow access if stored user is tutor or admin
-            if (storedRole === 'tutor' || storedRole === 'admin') {
-               tutorId = parsed.id
-            }
-        }
-      }
-      const data = await apiFetch<any>(`/api/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`)
+      // Use authUser from context — no extra /api/auth/me round-trip needed
+      const tutorId = authUser?.id || (() => {
+        try { const p = JSON.parse(localStorage.getItem('user') || '{}'); return p?.id; } catch { return undefined; }
+      })();
+      const data = await apiFetch<any>(`/api/tutor/dashboard${tutorId ? `?tutorId=${encodeURIComponent(tutorId)}` : ''}`, { noCache: true })
       
       if (!data || (!data.tutor && !data.statistics)) {
           throw new Error("Unable to load dashboard data. Please check your connection or try logging in again.");
@@ -293,7 +267,7 @@ export default function TutorDashboard() {
       }))
       const uniqueCourses = Array.from(new Map(mappedCourses.map((c) => [c.id, c])).values())
       setCourses(uniqueCourses)
-      setStudents((data?.students || []).map((s: any) => ({
+      const mappedStudents = (data?.students || []).map((s: any) => ({
         id: s.id,
         name: s.name,
         email: s.email,
@@ -305,30 +279,41 @@ export default function TutorDashboard() {
         totalAssignments: 0,
         completedAssignments: 0,
         avatar: s.avatar,
-      })))
-      setNotifications((data?.notifications || []).map((n: any) => ({
+      }));
+      setStudents(mappedStudents)
+      const mappedNotifications = (data?.notifications || []).map((n: any) => ({
         id: n.id,
         message: n.message,
         type: (n.type as any) ?? 'info',
         read: !!n.read,
         timestamp: n.timestamp,
-        priority: 'low',
-      })))
+        priority: 'low' as const,
+      }));
+      setNotifications(mappedNotifications)
+
+      // Persist to localStorage for instant load on next visit
+      const cacheId = nextUser.id || authUser?.id;
+      if (cacheId) {
+        try {
+          localStorage.setItem(`cache_tutor_${cacheId}`, JSON.stringify({
+            user: nextUser,
+            courses: uniqueCourses,
+            students: mappedStudents,
+            notifications: mappedNotifications,
+            analytics: stats,
+          }));
+        } catch {}
+      }
     } catch (e: any) {
       console.error('Failed to load tutor dashboard:', e)
-      setError(e?.message || 'Failed to load tutor dashboard')
-      // Keep empty arrays - no mock data fallback
-      setCourses([])
-      setStudents([])
-      setNotifications([])
-      setAnalytics({
-        totalStudents: 0,
-        activeStudents: 0,
-        totalCourses: 0,
-        completionRate: 0,
-        averageGrade: 0,
-        monthlyGrowth: 0
-      })
+      // Only show error if we have no cached data to display
+      if (!cachedInit) {
+        setError(e?.message || 'Failed to load tutor dashboard')
+        setCourses([])
+        setStudents([])
+        setNotifications([])
+        setAnalytics({ totalStudents: 0, activeStudents: 0, totalCourses: 0, completionRate: 0, averageGrade: 0, monthlyGrowth: 0 })
+      }
     } finally {
       setLoading(false)
     }
@@ -341,50 +326,77 @@ export default function TutorDashboard() {
 
   // Socket.IO integration
   useEffect(() => {
-    // Use the singleton socket connection from AuthContext (via src/lib/socket.ts)
-    // instead of creating a new connection
     if (!socket.connected) {
       connectSocket();
     }
 
-    if (user?.id) {
-      socket.emit('join-user-room', user.id)
+    const userId = user?.id || authUser?.id;
+    if (userId) {
+      socket.emit('join-user-room', userId)
     }
 
-    const handleReload = () => {
-      loadData();
+    const handleEnrollmentUpdate = (data: any) => {
+      if (data?.student) {
+        setStudents(prev => {
+          const exists = prev.some(s => String(s.id) === String(data.student.id));
+          if (exists) return prev.map(s => String(s.id) === String(data.student.id) ? { ...s, ...data.student } : s);
+          return [data.student, ...prev];
+        });
+      } else {
+        loadData();
+      }
+    };
+
+    const handleCourseUpdate = (data: any) => {
+      if (data?.course) {
+        setCourses(prev => prev.map(c => String(c.id) === String(data.course.id) ? { ...c, ...data.course } : c));
+      } else {
+        loadData();
+      }
     };
 
     const handleNotification = (data: any) => {
        toast({ title: "New Notification", description: data.title || "You have a new notification" });
-       loadData();
+       if (data?.notification) {
+         setNotifications(prev => [{ id: data.notification.id, message: data.notification.message, type: data.notification.type ?? 'info', read: false, timestamp: data.notification.timestamp ?? new Date().toISOString(), priority: 'low' as const }, ...prev]);
+       } else {
+         loadData();
+       }
     };
 
-    socket.on('enrollment-updated', handleReload);
-    socket.on('course-updated', handleReload);
-    socket.on('material-added', () => {
+    socket.on('enrollment-updated', handleEnrollmentUpdate);
+    socket.on('course-updated', handleCourseUpdate);
+    socket.on('material-added', (data: any) => {
       toast({ title: "Update", description: "Course material added." });
-      loadData();
+      if (data?.courseId && data?.material) {
+        setCourses(prev => prev.map(c =>
+          String(c.id) === String(data.courseId)
+            ? { ...c, materials: [...(c.materials || []), data.material] }
+            : c
+        ));
+      } else {
+        loadData();
+      }
     });
-    socket.on('announcement-added', () => {
+    socket.on('announcement-added', (data: any) => {
       toast({ title: "New Announcement", description: "A new announcement has been posted." });
       loadData();
     });
     socket.on('notification-added', handleNotification);
-    socket.on('assignment-submitted', () => {
+    socket.on('assignment-submitted', (data: any) => {
       toast({ title: "Assignment Submitted", description: "A student has submitted an assignment." });
       loadData();
     });
 
     return () => {
-      socket.off('enrollment-updated', handleReload);
-      socket.off('course-updated', handleReload);
+      socket.off('enrollment-updated', handleEnrollmentUpdate);
+      socket.off('course-updated', handleCourseUpdate);
       socket.off('material-added');
       socket.off('announcement-added');
       socket.off('notification-added', handleNotification);
       socket.off('assignment-submitted');
     };
-  }, [user?.id])
+  }, [user?.id, authUser?.id])
 
   // Effects
   useEffect(() => {
@@ -467,7 +479,29 @@ export default function TutorDashboard() {
   ]
 
   if (loading) {
-    return <Loading message="Loading tutor dashboard..." className="min-h-[60vh]" />
+    return (
+      <div className="min-h-screen bg-background flex">
+        <aside className="w-64 border-r bg-card fixed inset-y-0 z-50 p-4 space-y-3">
+          <div className="h-8 bg-muted rounded animate-pulse w-3/4 mb-6" />
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="h-9 bg-muted/60 rounded animate-pulse" />
+          ))}
+        </aside>
+        <main className="flex-1 ml-64 p-6 space-y-6">
+          <div className="h-8 bg-muted rounded animate-pulse w-1/3" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-28 bg-card rounded-xl shadow-sm animate-pulse border" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-40 bg-card rounded-xl shadow-sm animate-pulse border" />
+            ))}
+          </div>
+        </main>
+      </div>
+    )
   }
 
   if (error) {

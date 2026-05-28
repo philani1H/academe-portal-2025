@@ -987,6 +987,63 @@ app.post("/api/tests/save", authenticateJWT as RequestHandler, async (req: Authe
   }
 })
 
+// ─── Public content in-memory cache ─────────────────────────────────────────
+// Populated once at startup and kept fresh after every content write.
+// Pushed to every new socket connection so first-time visitors get content
+// instantly without a separate HTTP round-trip.
+interface PublicContentPayload {
+  subjects: any[];
+  tutors: any[];
+  testimonials: any[];
+  pricing: any[];
+  siteSettings: any[];
+}
+
+let _publicContent: PublicContentPayload | null = null;
+
+async function loadPublicContent(): Promise<PublicContentPayload> {
+  try {
+    const parseJsonFields = (items: any[], fields: string[]) =>
+      items.map(item => {
+        const out = { ...item };
+        fields.forEach(f => {
+          if (typeof out[f] === 'string') {
+            try { out[f] = JSON.parse(out[f]); } catch {}
+          }
+        });
+        return out;
+      });
+
+    const [subjects, tutors, testimonials, pricing, siteSettings] = await Promise.all([
+      prisma.subject.findMany({ where: { isActive: true }, orderBy: { order: 'asc' } }).catch(() => []),
+      (prisma as any).tutor.findMany({ where: { isActive: true } }).catch(() => []),
+      prisma.testimonial.findMany({ where: { isActive: true }, orderBy: { order: 'asc' } }).catch(() => []),
+      prisma.pricingPlan.findMany({ where: { isActive: true }, orderBy: { order: 'asc' } }).catch(() => []),
+      (prisma as any).siteSettings.findMany().catch(() => []),
+    ]);
+
+    _publicContent = {
+      subjects: parseJsonFields(subjects, ['popularTopics', 'difficulty']),
+      tutors:   parseJsonFields(tutors,   ['subjects', 'ratings']),
+      testimonials,
+      pricing:  parseJsonFields(pricing,  ['features', 'notIncluded']),
+      siteSettings,
+    };
+    return _publicContent;
+  } catch (err) {
+    console.error('[publicContent] load error:', err);
+    return _publicContent ?? { subjects: [], tutors: [], testimonials: [], pricing: [], siteSettings: [] };
+  }
+}
+
+// Keep cache warm: refresh after a content write
+function invalidatePublicContent() {
+  loadPublicContent().then(data => {
+    // Broadcast fresh payload to all connected clients
+    try { (global as any).__io?.emit('public-content', data); } catch {}
+  }).catch(console.error);
+}
+
 // Socket.IO Setup
 const allowedOrigins = [
   process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za',
@@ -1012,7 +1069,8 @@ const io = new Server(httpServer, {
   },
 })
 
-app.set("io", io)
+app.set("io", io);
+(global as any).__io = io;
 
 // Socket Authentication Middleware — checks auth.token (cross-origin) then cookie
 io.use((socket, next) => {
@@ -1044,6 +1102,15 @@ io.on("connection", (socket) => {
   if (user && user.id) {
       socket.join(`user:${user.id}`);
       console.log(`Authenticated user ${user.id} (${user.role}) auto-joined room user:${user.id}`);
+  }
+
+  // Push all public content immediately to this connection so the client
+  // never has to make a separate HTTP request for first-time loads.
+  const contentToSend = _publicContent;
+  if (contentToSend) {
+    socket.emit('public-content', contentToSend);
+  } else {
+    loadPublicContent().then(data => socket.emit('public-content', data)).catch(console.error);
   }
 
   socket.on("join-user-room", (userId: string) => {
@@ -6535,8 +6602,9 @@ app.post(
 
       const parsed = parseJsonFields(created, cfg.jsonFields)
 
-      // Emit real-time update
+      // Emit real-time update and refresh public content cache
       io.emit('content-updated', { type, action: 'create', data: parsed })
+      if (['subjects','tutors','testimonials','pricing','site-settings'].includes(type)) invalidatePublicContent();
 
       return res.status(201).json({ success: true, data: parsed })
     } catch (error: any) {
@@ -6587,15 +6655,13 @@ app.put(
       if (!updated) throw new Error("Database update failed")
       const parsed = parseJsonFields(updated, cfg.jsonFields)
 
-      // Emit real-time update
+      // Emit real-time update and refresh public content cache
       const io = req.app.get("io");
       if (io) {
         io.emit('content-updated', { type, action: 'update', data: parsed });
-        
-        if (type === 'announcements') {
-           io.emit('announcement-added', parsed);
-        }
+        if (type === 'announcements') io.emit('announcement-added', parsed);
       }
+      if (['subjects','tutors','testimonials','pricing','site-settings'].includes(type)) invalidatePublicContent();
 
       return res.json({ success: true, data: parsed })
     } catch (error: any) {
@@ -6635,6 +6701,7 @@ app.delete(
 
       // Emit real-time update
       io.emit('content-updated', { type, action: 'delete', id })
+      if (['subjects','tutors','testimonials','pricing','site-settings'].includes(type)) invalidatePublicContent();
 
       return res.json({ success: true })
     } catch (error: any) {
@@ -6666,6 +6733,7 @@ app.delete(
 
       // Emit real-time update
       io.emit('content-updated', { type, action: 'delete', id })
+      if (['subjects','tutors','testimonials','pricing','site-settings'].includes(type)) invalidatePublicContent();
 
       return res.status(200).json({ success: true, message: "Deleted" })
     } catch (error: any) {

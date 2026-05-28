@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
+import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { getPublicContent, subscribePublicContent } from "@/lib/publicContent"
+import { socket } from "@/lib/socket"
 import { motion } from "framer-motion"
 import { Check, X, Star, Shield, Calendar, ChevronRight, Award } from "lucide-react"
 
@@ -20,13 +23,16 @@ interface PricingPlan {
 }
 
 export default function Pricing() {
-  const [plans, setPlans] = useState<PricingPlan[]>([]);
+  // Priority: server-push store > localStorage cache > empty
+  const pricingCache = readContentCache<{ plans: PricingPlan[]; annualDiscount: number; promotionalDiscount: number }>('pricing');
+  const _storedPlans = (getPublicContent('pricing') as PricingPlan[]) ?? pricingCache?.plans ?? [];
+  const [plans, setPlans] = useState<PricingPlan[]>(_storedPlans);
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [activeTab, setActiveTab] = useState("monthly")
   const [activeHash, setActiveHash] = useState("")
-  const [loading, setLoading] = useState(true);
-  const [annualDiscount, setAnnualDiscount] = useState<number>(15);
-  const [promotionalDiscount, setPromotionalDiscount] = useState<number>(0);
+  const [loading, setLoading] = useState(_storedPlans.length === 0);
+  const [annualDiscount, setAnnualDiscount] = useState<number>(pricingCache?.annualDiscount ?? 15);
+  const [promotionalDiscount, setPromotionalDiscount] = useState<number>(pricingCache?.promotionalDiscount ?? 0);
 
   // Helper function to get icon component
   const getIconComponent = (iconName: string) => {
@@ -58,12 +64,26 @@ export default function Pricing() {
     }
   };
 
-  useEffect(() => {
-    const fetchPricingPlans = async () => {
-      try {
-        const data = await apiFetch<any[]>('/api/admin/content/pricing')
+  // Subscribe to server-push store for instant first-visit data
+  useEffect(() => subscribePublicContent('pricing', () => {
+    const d = getPublicContent('pricing');
+    if (d && d.length > 0) { setPlans(d as PricingPlan[]); setLoading(false); }
+  }), []);
 
-        // Process the data to parse JSON strings and sort by order
+  // Run both fetches in parallel on mount; cache results for instant next load
+  useEffect(() => {
+    const loadAll = async () => {
+      const [plansResult, settingsResult] = await Promise.allSettled([
+        apiFetch<any[]>('/api/admin/content/pricing', { noCache: true }),
+        apiFetch<any[]>('/api/admin/content/site-settings', { noCache: true }),
+      ]);
+
+      let nextPlans = plans;
+      let nextAnnual = annualDiscount;
+      let nextPromo = promotionalDiscount;
+
+      if (plansResult.status === 'fulfilled') {
+        const data = plansResult.value;
         const processedPlans = Array.isArray(data)
           ? data
               .filter((plan: any) => plan.isActive)
@@ -73,35 +93,59 @@ export default function Pricing() {
                 features: parseJsonField(plan.features),
                 notIncluded: parseJsonField(plan.notIncluded),
               }))
-          : []
-
-        setPlans(processedPlans)
-      } catch (error) {
-        console.error('Error fetching pricing plans:', error)
-        setPlans([])
-      } finally {
-        setLoading(false)
+          : [];
+        if (processedPlans.length > 0) { setPlans(processedPlans); nextPlans = processedPlans; }
       }
-    }
 
-    fetchPricingPlans()
+      if (settingsResult.status === 'fulfilled') {
+        const rows = Array.isArray(settingsResult.value) ? settingsResult.value : [];
+        const discountRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_annual_discount_percent');
+        const promoRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_promotional_discount_percent');
+        const annual = discountRow ? Number.parseFloat(String(discountRow.value)) : NaN;
+        const promo = promoRow ? Number.parseFloat(String(promoRow.value)) : NaN;
+        if (Number.isFinite(annual) && annual >= 0 && annual <= 100) { setAnnualDiscount(annual); nextAnnual = annual; }
+        if (Number.isFinite(promo) && promo >= 0 && promo <= 100) { setPromotionalDiscount(promo); nextPromo = promo; }
+      }
+
+      writeContentCache('pricing', { plans: nextPlans, annualDiscount: nextAnnual, promotionalDiscount: nextPromo });
+      setLoading(false);
+    };
+    loadAll();
   }, [])
 
+  // Real-time updates when admin edits pricing plans or discount settings
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const settings = await apiFetch<any[]>('/api/admin/content/site-settings')
-        const rows = Array.isArray(settings) ? settings : []
-        const discountRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_annual_discount_percent')
-        const promoRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_promotional_discount_percent')
-        const annual = discountRow ? Number.parseFloat(String(discountRow.value)) : NaN
-        const promo = promoRow ? Number.parseFloat(String(promoRow.value)) : NaN
-        if (Number.isFinite(annual) && annual >= 0 && annual <= 100) setAnnualDiscount(annual)
-        if (Number.isFinite(promo) && promo >= 0 && promo <= 100) setPromotionalDiscount(promo)
-      } catch {}
-    }
-    fetchSettings()
-  }, [])
+    const onUpdate = ({ type, action, data, id }: any) => {
+      if (type === 'pricing') {
+        setPlans(prev => {
+          let next: PricingPlan[];
+          if (action === 'delete') {
+            next = prev.filter(p => String(p.id) !== String(id));
+          } else if (action === 'create' && data) {
+            const norm = { ...data, features: parseJsonField(data.features), notIncluded: parseJsonField(data.notIncluded) };
+            next = prev.some(p => String(p.id) === String(data.id)) ? prev.map(p => String(p.id) === String(data.id) ? { ...p, ...norm } : p) : [...prev, norm];
+            next = next.filter(p => p.isActive).sort((a, b) => a.order - b.order);
+          } else if (action === 'update' && data) {
+            const norm = { ...data, features: parseJsonField(data.features), notIncluded: parseJsonField(data.notIncluded) };
+            next = prev.map(p => String(p.id) === String(data.id) ? { ...p, ...norm } : p).filter(p => p.isActive);
+          } else { return prev; }
+          writeContentCache('pricing', { plans: next, annualDiscount, promotionalDiscount });
+          return next;
+        });
+      } else if (type === 'site-settings' && data) {
+        const key = String(data.key || '').toLowerCase();
+        if (key === 'pricing_annual_discount_percent') {
+          const v = parseFloat(String(data.value));
+          if (Number.isFinite(v)) setAnnualDiscount(v);
+        } else if (key === 'pricing_promotional_discount_percent') {
+          const v = parseFloat(String(data.value));
+          if (Number.isFinite(v)) setPromotionalDiscount(v);
+        }
+      }
+    };
+    socket.on('content-updated', onUpdate);
+    return () => { socket.off('content-updated', onUpdate); };
+  }, [annualDiscount, promotionalDiscount]);
 
   // Handle hash changes for scrolling to specific plan
   useEffect(() => {
@@ -147,9 +191,12 @@ export default function Pricing() {
     return (
       <section id="pricing" className="py-24 bg-gradient-to-b from-white to-blue-50">
         <div className="container mx-auto px-4">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-900 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading pricing plans...</p>
+          <div className="h-8 bg-blue-100 rounded w-48 mx-auto mb-4 animate-pulse" />
+          <div className="h-4 bg-blue-50 rounded w-72 mx-auto mb-12 animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-96 bg-white rounded-2xl shadow-md animate-pulse border border-blue-50" />
+            ))}
           </div>
         </div>
       </section>

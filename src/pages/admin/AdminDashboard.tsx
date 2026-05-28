@@ -148,29 +148,28 @@ interface AdminUserLite {
   createdAt: string
 }
 
+function readAdminCache<T>(key: string): T | null {
+  try { const raw = localStorage.getItem(`cache_admin_${key}`); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function writeAdminCache(key: string, data: unknown) {
+  try { localStorage.setItem(`cache_admin_${key}`, JSON.stringify(data)); } catch {}
+}
+
 // Main component
 export default function AdminDashboard() {
-  const [user, setUser] = useState<{ name: string; email: string; role: string }>({ name: "", email: "", role: "admin" })
-  const [tutors, setTutors] = useState<Tutor[]>([])
-  const [students, setStudents] = useState<Student[]>([])
-  const [courses, setCourses] = useState<Course[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [admins, setAdmins] = useState<AdminUserLite[]>([])
-  const [systemStats, setSystemStats] = useState<SystemStats>({
-    totalUsers: 0,
-    activeUsers: 0,
-    totalTutors: 0,
-    activeTutors: 0,
-    totalStudents: 0,
-    activeStudents: 0,
-    totalCourses: 0,
-    activeCourses: 0,
-    totalDepartments: 0,
-    pendingApprovals: 0,
-    newUsersToday: 0,
-    systemUptime: '0%',
-    lastBackup: new Date().toISOString()
+  const [user, setUser] = useState<{ name: string; email: string; role: string }>(() => {
+    try { const u = localStorage.getItem('user'); return u ? JSON.parse(u) : { name: "", email: "", role: "admin" }; } catch { return { name: "", email: "", role: "admin" }; }
+  })
+  const [tutors, setTutors] = useState<Tutor[]>(() => readAdminCache<Tutor[]>('tutors') ?? [])
+  const [students, setStudents] = useState<Student[]>(() => readAdminCache<Student[]>('students') ?? [])
+  const [courses, setCourses] = useState<Course[]>(() => readAdminCache<Course[]>('courses') ?? [])
+  const [notifications, setNotifications] = useState<Notification[]>(() => readAdminCache<Notification[]>('notifications') ?? [])
+  const [departments, setDepartments] = useState<Department[]>(() => readAdminCache<Department[]>('departments') ?? [])
+  const [admins, setAdmins] = useState<AdminUserLite[]>(() => readAdminCache<AdminUserLite[]>('admins') ?? [])
+  const [systemStats, setSystemStats] = useState<SystemStats>(() => readAdminCache<SystemStats>('stats') ?? {
+    totalUsers: 0, activeUsers: 0, totalTutors: 0, activeTutors: 0, totalStudents: 0,
+    activeStudents: 0, totalCourses: 0, activeCourses: 0, totalDepartments: 0,
+    pendingApprovals: 0, newUsersToday: 0, systemUptime: '0%', lastBackup: new Date().toISOString()
   })
   const [showAdminProfileDialog, setShowAdminProfileDialog] = useState(false)
   const [adminProfileForm, setAdminProfileForm] = useState({
@@ -723,11 +722,7 @@ export default function AdminDashboard() {
       })
       
       setTutors(tutorsWithStatus)
-      
-      // Log the final tutor data for debugging
-      console.log('Final tutors state:', tutorsWithStatus.filter((t: any) => 
-        t.name?.toLowerCase().includes('roshan') || t.name?.toLowerCase().includes('rohan')
-      ))
+      writeAdminCache('tutors', tutorsWithStatus)
       
     } catch (e) {
       console.error('Failed to fetch tutors:', e)
@@ -780,9 +775,10 @@ export default function AdminDashboard() {
         enrolledCourses: (s.enrolledCourses || []).map((id: any) => String(id))
       }))
       setStudents(normalized)
+      writeAdminCache('students', normalized)
     } catch (e) {
       console.error('Failed to fetch students:', e)
-      setStudents([])
+      if (students.length === 0) setStudents([])
     }
   }
 
@@ -810,9 +806,10 @@ export default function AdminDashboard() {
         } as Course
       })
       setCourses(mapped)
+      writeAdminCache('courses', mapped)
     } catch (e) {
       console.error('Failed to fetch courses:', e)
-      setCourses([])
+      if (courses.length === 0) setCourses([])
     }
   }
 
@@ -1028,6 +1025,7 @@ export default function AdminDashboard() {
         color: ['#4f46e5', '#059669', '#dc2626', '#7c3aed', '#ea580c'][i % 5]
       })) : []
       setDepartments(departments)
+      writeAdminCache('departments', departments)
 
       const stats = await apiFetch<any>(`/api/admin/stats`)
       const s = (stats && (stats as any).data) ? (stats as any).data : stats
@@ -1042,21 +1040,13 @@ export default function AdminDashboard() {
       const activeStudents = Number(s?.activeStudents || 0)
       const activeTutors = Number(s?.activeTutors || totalTutors)
       
-      setSystemStats({
-        totalUsers,
-        activeUsers,
-        totalTutors,
-        activeTutors,
-        totalStudents,
-        activeStudents,
-        totalCourses,
-        activeCourses,
-        totalDepartments: departments.length,
-        pendingApprovals: 0,
-        newUsersToday: 0,
-        systemUptime: '99.9%',
-        lastBackup: new Date().toISOString()
-      })
+      const nextStats = {
+        totalUsers, activeUsers, totalTutors, activeTutors, totalStudents, activeStudents,
+        totalCourses, activeCourses, totalDepartments: departments.length,
+        pendingApprovals: 0, newUsersToday: 0, systemUptime: '99.9%', lastBackup: new Date().toISOString()
+      };
+      setSystemStats(nextStats)
+      writeAdminCache('stats', nextStats)
     } catch (e) {
       console.error('Failed to fetch departments/stats:', e)
       setDepartments([])
