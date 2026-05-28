@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
 import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { socket } from "@/lib/socket"
 import { motion } from "framer-motion"
 import { Check, X, Star, Shield, Calendar, ChevronRight, Award } from "lucide-react"
 
@@ -104,6 +105,40 @@ export default function Pricing() {
     };
     loadAll();
   }, [])
+
+  // Real-time updates when admin edits pricing plans or discount settings
+  useEffect(() => {
+    const onUpdate = ({ type, action, data, id }: any) => {
+      if (type === 'pricing') {
+        setPlans(prev => {
+          let next: PricingPlan[];
+          if (action === 'delete') {
+            next = prev.filter(p => String(p.id) !== String(id));
+          } else if (action === 'create' && data) {
+            const norm = { ...data, features: parseJsonField(data.features), notIncluded: parseJsonField(data.notIncluded) };
+            next = prev.some(p => String(p.id) === String(data.id)) ? prev.map(p => String(p.id) === String(data.id) ? { ...p, ...norm } : p) : [...prev, norm];
+            next = next.filter(p => p.isActive).sort((a, b) => a.order - b.order);
+          } else if (action === 'update' && data) {
+            const norm = { ...data, features: parseJsonField(data.features), notIncluded: parseJsonField(data.notIncluded) };
+            next = prev.map(p => String(p.id) === String(data.id) ? { ...p, ...norm } : p).filter(p => p.isActive);
+          } else { return prev; }
+          writeContentCache('pricing', { plans: next, annualDiscount, promotionalDiscount });
+          return next;
+        });
+      } else if (type === 'site-settings' && data) {
+        const key = String(data.key || '').toLowerCase();
+        if (key === 'pricing_annual_discount_percent') {
+          const v = parseFloat(String(data.value));
+          if (Number.isFinite(v)) setAnnualDiscount(v);
+        } else if (key === 'pricing_promotional_discount_percent') {
+          const v = parseFloat(String(data.value));
+          if (Number.isFinite(v)) setPromotionalDiscount(v);
+        }
+      }
+    };
+    socket.on('content-updated', onUpdate);
+    return () => { socket.off('content-updated', onUpdate); };
+  }, [annualDiscount, promotionalDiscount]);
 
   // Handle hash changes for scrolling to specific plan
   useEffect(() => {

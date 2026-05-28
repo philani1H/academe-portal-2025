@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Star, Search, X, Filter, User, Phone, Mail, BookOpen, ThumbsUp, AlertCircle } from "lucide-react"
 import { apiFetch } from "@/lib/api"
 import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { socket } from "@/lib/socket"
 
 // Interface for tutor data
 interface Tutor {
@@ -85,6 +86,35 @@ export default function TutorsPage() {
   useEffect(() => {
     fetchTutors()
   }, [])
+
+  // Real-time updates when admin adds / edits / removes a tutor
+  useEffect(() => {
+    const onUpdate = ({ type, action, data, id }: any) => {
+      if (type !== 'tutors') return;
+      setTutors(prev => {
+        let next: Tutor[];
+        if (action === 'delete') {
+          next = prev.filter(t => String(t.id) !== String(id));
+        } else if (action === 'create' && data) {
+          const norm: Tutor = {
+            id: data.id, name: data.name || 'Unknown Tutor',
+            subjects: Array.isArray(data.subjects) ? data.subjects : typeof data.subjects === 'string' ? data.subjects.split(',').map((s: string) => s.trim()) : [],
+            image: data.image || '/placeholder.svg', contactName: data.contactName || data.name,
+            contactPhone: data.contactPhone || '', contactEmail: data.contactEmail || data.email || '',
+            description: data.description || '', ratings: Array.isArray(data.ratings) ? data.ratings : [],
+          };
+          next = prev.some(t => String(t.id) === String(data.id)) ? prev.map(t => String(t.id) === String(data.id) ? { ...t, ...norm } : t) : [...prev, norm];
+        } else if (action === 'update' && data) {
+          next = prev.map(t => String(t.id) === String(data.id) ? { ...t, ...data } : t);
+        } else { return prev; }
+        setFilteredTutors(next);
+        writeContentCache('tutors', next);
+        return next;
+      });
+    };
+    socket.on('content-updated', onUpdate);
+    return () => { socket.off('content-updated', onUpdate); };
+  }, []);
 
   const fetchTutors = async () => {
     setError(null)

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { apiFetch } from "@/lib/api"
 import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { socket } from "@/lib/socket"
 import { motion } from "framer-motion"
 import { ChevronLeft, ChevronRight, Quote, Star } from "lucide-react"
 import { Button } from "./ui/button"
@@ -35,6 +36,27 @@ const Testimonials = () => {
 
   useEffect(() => {
     fetchTestimonials();
+  }, []);
+
+  // Real-time updates when admin edits testimonials
+  useEffect(() => {
+    const onUpdate = ({ type, action, data, id }: any) => {
+      if (type !== 'testimonials') return;
+      setTestimonials(prev => {
+        let next: Testimonial[];
+        if (action === 'delete') {
+          next = prev.filter(t => String(t.id) !== String(id));
+        } else if (action === 'create' && data) {
+          next = prev.some(t => String(t.id) === String(data.id)) ? prev.map(t => String(t.id) === String(data.id) ? { ...t, ...data } : t) : [...prev, data];
+        } else if (action === 'update' && data) {
+          next = prev.map(t => String(t.id) === String(data.id) ? { ...t, ...data } : t);
+        } else { return prev; }
+        writeContentCache('testimonials', next);
+        return next;
+      });
+    };
+    socket.on('content-updated', onUpdate);
+    return () => { socket.off('content-updated', onUpdate); };
   }, []);
 
   const fetchTestimonials = async () => {

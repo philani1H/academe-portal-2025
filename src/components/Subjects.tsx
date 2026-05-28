@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
 import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { socket } from "@/lib/socket"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
 import { Button } from "./ui/button"
@@ -161,6 +162,28 @@ const Subjects = () => {
   useEffect(() => {
     fetchSubjects()
   }, [])
+
+  // Real-time updates pushed by server when admin edits content
+  useEffect(() => {
+    const onUpdate = ({ type, action, data, id }: any) => {
+      if (type !== 'subjects') return;
+      setSubjects(prev => {
+        let next: Subject[];
+        if (action === 'delete') {
+          next = prev.filter(s => String(s.id) !== String(id));
+        } else if (action === 'create' && data) {
+          const norm = { ...data, popularTopics: Array.isArray(data.popularTopics) ? data.popularTopics : [], difficulty: Array.isArray(data.difficulty) ? data.difficulty : [] };
+          next = prev.some(s => String(s.id) === String(data.id)) ? prev.map(s => String(s.id) === String(data.id) ? { ...s, ...norm } : s) : [...prev, norm];
+        } else if (action === 'update' && data) {
+          next = prev.map(s => String(s.id) === String(data.id) ? { ...s, ...data } : s);
+        } else { return prev; }
+        writeContentCache('subjects', next);
+        return next;
+      });
+    };
+    socket.on('content-updated', onUpdate);
+    return () => { socket.off('content-updated', onUpdate); };
+  }, []);
 
   const fetchSubjects = async () => {
     try {
