@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
 import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { getPublicContent, subscribePublicContent } from "@/lib/publicContent"
 import { socket } from "@/lib/socket"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
@@ -154,9 +155,17 @@ const Subjects = () => {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
   // Show cached or built-in defaults immediately — no spinner on first paint
-  const [subjects, setSubjects] = useState<Subject[]>(() => readContentCache<Subject[]>('subjects') ?? defaultSubjectData)
+  const [subjects, setSubjects] = useState<Subject[]>(() =>
+    (getPublicContent('subjects') as Subject[]) ?? readContentCache<Subject[]>('subjects') ?? defaultSubjectData
+  )
   const [visibleSubjects, setVisibleSubjects] = useState(8)
   const [loading, setLoading] = useState(false)
+
+  // Subscribe to server-push store (fires when 'public-content' event arrives)
+  useEffect(() => subscribePublicContent('subjects', () => {
+    const d = getPublicContent('subjects');
+    if (d && d.length > 0) setSubjects(d as Subject[]);
+  }), []);
 
   // Fetch subjects from API in background
   useEffect(() => {

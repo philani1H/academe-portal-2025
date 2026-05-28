@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { apiFetch } from "@/lib/api"
 import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { getPublicContent, subscribePublicContent } from "@/lib/publicContent"
 import { socket } from "@/lib/socket"
 import { motion } from "framer-motion"
 import { ChevronLeft, ChevronRight, Quote, Star } from "lucide-react"
@@ -26,13 +27,20 @@ interface Testimonial {
 const defaultTestimonials: Testimonial[] = []
 
 const Testimonials = () => {
-  // Show cached data immediately — no spinner on returning visits
-  const [testimonials, setTestimonials] = useState<Testimonial[]>(() => readContentCache<Testimonial[]>('testimonials') ?? defaultTestimonials);
+  const [testimonials, setTestimonials] = useState<Testimonial[]>(() =>
+    (getPublicContent('testimonials') as Testimonial[]) ?? readContentCache<Testimonial[]>('testimonials') ?? defaultTestimonials
+  );
   const [activeIndex, setActiveIndex] = useState(0)
   const [visibleCount, setVisibleCount] = useState(3)
   const [autoplay, setAutoplay] = useState(true)
   const autoplayRef = useRef<NodeJS.Timeout | null>(null)
   const [loading, setLoading] = useState(false);
+
+  // Subscribe to server-push store
+  useEffect(() => subscribePublicContent('testimonials', () => {
+    const d = getPublicContent('testimonials');
+    if (d && d.length > 0) setTestimonials(d as Testimonial[]);
+  }), []);
 
   useEffect(() => {
     fetchTestimonials();

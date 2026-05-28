@@ -38,6 +38,7 @@ import { useAuth, AuthProvider } from "./contexts/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { readContentCache, writeContentCache } from "@/lib/contentCache";
 import { socket, connectSocket } from "@/lib/socket";
+import { initPublicContentSync } from "@/lib/publicContent";
 import UniversityApplication from "./components/UniversityApplication";
 import ExamRewrite from "./components/ExamRewrite";
 import DashboardNavigation from "./components/DashboardNavigation";
@@ -64,8 +65,10 @@ const AppInner = () => {
   const isAdminRoute = location.pathname.startsWith("/admin");
   const isLoginRoute = ["/student-login", "/tutor-login", "/admin-login"].includes(location.pathname);
 
-  // Connect socket for all visitors (anonymous OK) so public pages receive real-time updates
+  // Connect socket for all visitors (anonymous OK) so public pages receive real-time updates.
+  // initPublicContentSync wires the 'public-content' event before the first connection fires.
   useEffect(() => {
+    initPublicContentSync();
     connectSocket();
   }, []);
 

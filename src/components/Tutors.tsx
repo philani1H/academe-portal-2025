@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Star, Search, X, Filter, User, Phone, Mail, BookOpen, ThumbsUp, AlertCircle } from "lucide-react"
 import { apiFetch } from "@/lib/api"
 import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { getPublicContent, subscribePublicContent } from "@/lib/publicContent"
 import { socket } from "@/lib/socket"
 
 // Interface for tutor data
@@ -60,8 +61,12 @@ const calculateAverageRating = (ratings: Tutor['ratings']): string => {
 
 export default function TutorsPage() {
   const [searchTerm, setSearchTerm] = useState("")
-  const [tutors, setTutors] = useState<Tutor[]>(() => readContentCache<Tutor[]>('tutors') ?? [])
-  const [filteredTutors, setFilteredTutors] = useState<Tutor[]>(() => readContentCache<Tutor[]>('tutors') ?? [])
+  const [tutors, setTutors] = useState<Tutor[]>(() =>
+    (getPublicContent('tutors') as Tutor[]) ?? readContentCache<Tutor[]>('tutors') ?? []
+  )
+  const [filteredTutors, setFilteredTutors] = useState<Tutor[]>(() =>
+    (getPublicContent('tutors') as Tutor[]) ?? readContentCache<Tutor[]>('tutors') ?? []
+  )
   const [selectedSubject, setSelectedSubject] = useState("")
   const [sortOption, setSortOption] = useState("name")
   const [imagesLoaded, setImagesLoaded] = useState<{[key: string]: boolean}>({})
@@ -81,6 +86,12 @@ export default function TutorsPage() {
   // Refs for animations
   const headerRef = useRef(null)
   const searchRef = useRef(null)
+
+  // Subscribe to server-push store
+  useEffect(() => subscribePublicContent('tutors', () => {
+    const d = getPublicContent('tutors');
+    if (d && d.length > 0) { setTutors(d as Tutor[]); setFilteredTutors(d as Tutor[]); }
+  }), []);
 
   // Fetch tutors from API in background
   useEffect(() => {

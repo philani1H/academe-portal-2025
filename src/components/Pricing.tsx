@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
 import { readContentCache, writeContentCache } from "@/lib/contentCache"
+import { getPublicContent, subscribePublicContent } from "@/lib/publicContent"
 import { socket } from "@/lib/socket"
 import { motion } from "framer-motion"
 import { Check, X, Star, Shield, Calendar, ChevronRight, Award } from "lucide-react"
@@ -22,14 +23,14 @@ interface PricingPlan {
 }
 
 export default function Pricing() {
-  // Initialise from cache so plans appear instantly on return visits
+  // Priority: server-push store > localStorage cache > empty
   const pricingCache = readContentCache<{ plans: PricingPlan[]; annualDiscount: number; promotionalDiscount: number }>('pricing');
-  const [plans, setPlans] = useState<PricingPlan[]>(pricingCache?.plans ?? []);
+  const _storedPlans = (getPublicContent('pricing') as PricingPlan[]) ?? pricingCache?.plans ?? [];
+  const [plans, setPlans] = useState<PricingPlan[]>(_storedPlans);
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [activeTab, setActiveTab] = useState("monthly")
   const [activeHash, setActiveHash] = useState("")
-  // Only show loading skeleton when there is no cached data
-  const [loading, setLoading] = useState(!pricingCache);
+  const [loading, setLoading] = useState(_storedPlans.length === 0);
   const [annualDiscount, setAnnualDiscount] = useState<number>(pricingCache?.annualDiscount ?? 15);
   const [promotionalDiscount, setPromotionalDiscount] = useState<number>(pricingCache?.promotionalDiscount ?? 0);
 
@@ -62,6 +63,12 @@ export default function Pricing() {
       return [];
     }
   };
+
+  // Subscribe to server-push store for instant first-visit data
+  useEffect(() => subscribePublicContent('pricing', () => {
+    const d = getPublicContent('pricing');
+    if (d && d.length > 0) { setPlans(d as PricingPlan[]); setLoading(false); }
+  }), []);
 
   // Run both fetches in parallel on mount; cache results for instant next load
   useEffect(() => {
