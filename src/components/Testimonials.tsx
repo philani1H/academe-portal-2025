@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { apiFetch } from "@/lib/api"
+import { readContentCache, writeContentCache } from "@/lib/contentCache"
 import { motion } from "framer-motion"
 import { ChevronLeft, ChevronRight, Quote, Star } from "lucide-react"
 import { Button } from "./ui/button"
@@ -24,12 +25,13 @@ interface Testimonial {
 const defaultTestimonials: Testimonial[] = []
 
 const Testimonials = () => {
-  const [testimonials, setTestimonials] = useState<Testimonial[]>(defaultTestimonials);
+  // Show cached data immediately — no spinner on returning visits
+  const [testimonials, setTestimonials] = useState<Testimonial[]>(() => readContentCache<Testimonial[]>('testimonials') ?? defaultTestimonials);
   const [activeIndex, setActiveIndex] = useState(0)
   const [visibleCount, setVisibleCount] = useState(3)
   const [autoplay, setAutoplay] = useState(true)
   const autoplayRef = useRef<NodeJS.Timeout | null>(null)
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchTestimonials();
@@ -37,14 +39,14 @@ const Testimonials = () => {
 
   const fetchTestimonials = async () => {
     try {
-      const data = await apiFetch<any[]>('/api/admin/content/testimonials');
+      const data = await apiFetch<any[]>('/api/admin/content/testimonials', { noCache: true });
       const list = Array.isArray(data) ? data.filter(Boolean) : []
-      setTestimonials(list);
+      if (list.length > 0) {
+        setTestimonials(list);
+        writeContentCache('testimonials', list);
+      }
     } catch (error) {
       console.error('Error fetching testimonials:', error);
-      setTestimonials([])
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -132,11 +134,7 @@ const Testimonials = () => {
         <div className="relative">
           {/* Testimonial Cards */}
           <div className="overflow-hidden">
-            {loading ? (
-              <div className="flex justify-center py-20">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-              </div>
-            ) : testimonials.length === 0 ? (
+            {testimonials.length === 0 ? (
               <div className="text-center py-20">
                 <p className="text-gray-500">No testimonials available at the moment.</p>
               </div>

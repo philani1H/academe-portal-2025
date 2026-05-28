@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Star, Search, X, Filter, User, Phone, Mail, BookOpen, ThumbsUp, AlertCircle } from "lucide-react"
 import { apiFetch } from "@/lib/api"
+import { readContentCache, writeContentCache } from "@/lib/contentCache"
 
 // Interface for tutor data
 interface Tutor {
@@ -58,8 +59,8 @@ const calculateAverageRating = (ratings: Tutor['ratings']): string => {
 
 export default function TutorsPage() {
   const [searchTerm, setSearchTerm] = useState("")
-  const [tutors, setTutors] = useState<Tutor[]>([])
-  const [filteredTutors, setFilteredTutors] = useState<Tutor[]>([])
+  const [tutors, setTutors] = useState<Tutor[]>(() => readContentCache<Tutor[]>('tutors') ?? [])
+  const [filteredTutors, setFilteredTutors] = useState<Tutor[]>(() => readContentCache<Tutor[]>('tutors') ?? [])
   const [selectedSubject, setSelectedSubject] = useState("")
   const [sortOption, setSortOption] = useState("name")
   const [imagesLoaded, setImagesLoaded] = useState<{[key: string]: boolean}>({})
@@ -71,7 +72,8 @@ export default function TutorsPage() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
-  const [loading, setLoading] = useState(true)
+  // Show cached tutors instantly; only show loading spinner when there is truly nothing to show
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
 
@@ -79,18 +81,17 @@ export default function TutorsPage() {
   const headerRef = useRef(null)
   const searchRef = useRef(null)
 
-  // Fetch tutors from API with proper error handling
+  // Fetch tutors from API in background
   useEffect(() => {
     fetchTutors()
   }, [])
 
   const fetchTutors = async () => {
-    setLoading(true)
     setError(null)
     setApiError(null)
-    
+
     try {
-      const result = await apiFetch<ApiResponse<Tutor[]>>('/api/admin/content/tutors')
+      const result = await apiFetch<ApiResponse<Tutor[]>>('/api/admin/content/tutors', { noCache: true })
 
       // Handle API response structure
       if (result.success === false) {
@@ -128,14 +129,16 @@ export default function TutorsPage() {
 
       setTutors(normalizedTutors)
       setFilteredTutors(normalizedTutors)
-      
+      writeContentCache('tutors', normalizedTutors)
+
     } catch (error) {
       console.error('Error fetching tutors:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-      setError(errorMessage)
       setApiError(errorMessage)
-      setTutors([])
-      setFilteredTutors([])
+      // Only set blocking error if we have nothing cached to show
+      if (tutors.length === 0) {
+        setError(errorMessage)
+      }
     } finally {
       setLoading(false)
     }
@@ -309,18 +312,7 @@ export default function TutorsPage() {
     )
   }
 
-  if (loading) {
-    return (
-      <section className="relative min-h-screen bg-gradient-to-b from-blue-950 via-blue-900 to-blue-800 text-white py-20 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4 text-xl">Loading tutors...</p>
-        </div>
-      </section>
-    )
-  }
-
-  if (error) {
+  if (error && tutors.length === 0) {
     return (
       <section className="relative min-h-screen bg-gradient-to-b from-blue-950 via-blue-900 to-blue-800 text-white py-20 flex items-center justify-center">
         <div className="text-center bg-white/10 backdrop-blur-md rounded-xl p-8 border border-white/20 max-w-md">

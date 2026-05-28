@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
+import { readContentCache, writeContentCache } from "@/lib/contentCache"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
 import { Button } from "./ui/button"
@@ -151,20 +152,19 @@ const categories = ["All", "STEM", "Languages", "Commerce", "Humanities", "Techn
 const Subjects = () => {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("All")
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  // Show cached or built-in defaults immediately — no spinner on first paint
+  const [subjects, setSubjects] = useState<Subject[]>(() => readContentCache<Subject[]>('subjects') ?? defaultSubjectData)
   const [visibleSubjects, setVisibleSubjects] = useState(8)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
-  // Fetch subjects from API
+  // Fetch subjects from API in background
   useEffect(() => {
     fetchSubjects()
   }, [])
 
   const fetchSubjects = async () => {
     try {
-      const data = await apiFetch<any[]>('/api/admin/content/subjects')
-      
-      // Normalize subject data to ensure array fields are arrays
+      const data = await apiFetch<any[]>('/api/admin/content/subjects', { noCache: true })
       const normalized = Array.isArray(data)
         ? data.map((s) => ({
             ...s,
@@ -172,13 +172,13 @@ const Subjects = () => {
             difficulty: Array.isArray(s?.difficulty) ? s.difficulty : [],
           }))
         : []
-      setSubjects(normalized)
+      if (normalized.length > 0) {
+        setSubjects(normalized)
+        writeContentCache('subjects', normalized)
+      }
     } catch (error) {
       console.error('Error fetching subjects:', error)
-      // Set fallback content
-      setSubjects(defaultSubjectData)
-    } finally {
-      setLoading(false)
+      // Keep showing whatever we already have (default or cached)
     }
   }
 
@@ -215,36 +215,6 @@ const Subjects = () => {
       opacity: 1,
       transition: { duration: 0.5 },
     },
-  }
-
-  if (loading) {
-    return (
-      <section className="py-20 bg-gradient-to-b from-blue-50 to-white">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center">
-            <div className="animate-pulse">
-              <div className="h-8 bg-blue-200 rounded w-64 mx-auto mb-4"></div>
-              <div className="h-4 bg-blue-100 rounded w-96 mx-auto"></div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-12">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <div key={index} className="animate-pulse">
-                  <div className="bg-gray-200 h-48 rounded-t-xl"></div>
-                  <div className="bg-white p-5 rounded-b-xl shadow-md">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                    <div className="h-3 bg-gray-100 rounded w-full mb-4"></div>
-                    <div className="flex gap-1 mb-4">
-                      <div className="h-6 bg-blue-100 rounded w-16"></div>
-                      <div className="h-6 bg-blue-100 rounded w-20"></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-    )
   }
 
   return (

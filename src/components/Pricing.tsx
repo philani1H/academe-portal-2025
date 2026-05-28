@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
+import { readContentCache, writeContentCache } from "@/lib/contentCache"
 import { motion } from "framer-motion"
 import { Check, X, Star, Shield, Calendar, ChevronRight, Award } from "lucide-react"
 
@@ -20,13 +21,16 @@ interface PricingPlan {
 }
 
 export default function Pricing() {
-  const [plans, setPlans] = useState<PricingPlan[]>([]);
+  // Initialise from cache so plans appear instantly on return visits
+  const pricingCache = readContentCache<{ plans: PricingPlan[]; annualDiscount: number; promotionalDiscount: number }>('pricing');
+  const [plans, setPlans] = useState<PricingPlan[]>(pricingCache?.plans ?? []);
   const [selectedPlan, setSelectedPlan] = useState(null)
   const [activeTab, setActiveTab] = useState("monthly")
   const [activeHash, setActiveHash] = useState("")
-  const [loading, setLoading] = useState(true);
-  const [annualDiscount, setAnnualDiscount] = useState<number>(15);
-  const [promotionalDiscount, setPromotionalDiscount] = useState<number>(0);
+  // Only show loading skeleton when there is no cached data
+  const [loading, setLoading] = useState(!pricingCache);
+  const [annualDiscount, setAnnualDiscount] = useState<number>(pricingCache?.annualDiscount ?? 15);
+  const [promotionalDiscount, setPromotionalDiscount] = useState<number>(pricingCache?.promotionalDiscount ?? 0);
 
   // Helper function to get icon component
   const getIconComponent = (iconName: string) => {
@@ -58,12 +62,20 @@ export default function Pricing() {
     }
   };
 
+  // Run both fetches in parallel on mount; cache results for instant next load
   useEffect(() => {
-    const fetchPricingPlans = async () => {
-      try {
-        const data = await apiFetch<any[]>('/api/admin/content/pricing')
+    const loadAll = async () => {
+      const [plansResult, settingsResult] = await Promise.allSettled([
+        apiFetch<any[]>('/api/admin/content/pricing', { noCache: true }),
+        apiFetch<any[]>('/api/admin/content/site-settings', { noCache: true }),
+      ]);
 
-        // Process the data to parse JSON strings and sort by order
+      let nextPlans = plans;
+      let nextAnnual = annualDiscount;
+      let nextPromo = promotionalDiscount;
+
+      if (plansResult.status === 'fulfilled') {
+        const data = plansResult.value;
         const processedPlans = Array.isArray(data)
           ? data
               .filter((plan: any) => plan.isActive)
@@ -73,34 +85,24 @@ export default function Pricing() {
                 features: parseJsonField(plan.features),
                 notIncluded: parseJsonField(plan.notIncluded),
               }))
-          : []
-
-        setPlans(processedPlans)
-      } catch (error) {
-        console.error('Error fetching pricing plans:', error)
-        setPlans([])
-      } finally {
-        setLoading(false)
+          : [];
+        if (processedPlans.length > 0) { setPlans(processedPlans); nextPlans = processedPlans; }
       }
-    }
 
-    fetchPricingPlans()
-  }, [])
+      if (settingsResult.status === 'fulfilled') {
+        const rows = Array.isArray(settingsResult.value) ? settingsResult.value : [];
+        const discountRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_annual_discount_percent');
+        const promoRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_promotional_discount_percent');
+        const annual = discountRow ? Number.parseFloat(String(discountRow.value)) : NaN;
+        const promo = promoRow ? Number.parseFloat(String(promoRow.value)) : NaN;
+        if (Number.isFinite(annual) && annual >= 0 && annual <= 100) { setAnnualDiscount(annual); nextAnnual = annual; }
+        if (Number.isFinite(promo) && promo >= 0 && promo <= 100) { setPromotionalDiscount(promo); nextPromo = promo; }
+      }
 
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const settings = await apiFetch<any[]>('/api/admin/content/site-settings')
-        const rows = Array.isArray(settings) ? settings : []
-        const discountRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_annual_discount_percent')
-        const promoRow = rows.find((r: any) => String(r.key).toLowerCase() === 'pricing_promotional_discount_percent')
-        const annual = discountRow ? Number.parseFloat(String(discountRow.value)) : NaN
-        const promo = promoRow ? Number.parseFloat(String(promoRow.value)) : NaN
-        if (Number.isFinite(annual) && annual >= 0 && annual <= 100) setAnnualDiscount(annual)
-        if (Number.isFinite(promo) && promo >= 0 && promo <= 100) setPromotionalDiscount(promo)
-      } catch {}
-    }
-    fetchSettings()
+      writeContentCache('pricing', { plans: nextPlans, annualDiscount: nextAnnual, promotionalDiscount: nextPromo });
+      setLoading(false);
+    };
+    loadAll();
   }, [])
 
   // Handle hash changes for scrolling to specific plan
@@ -147,9 +149,12 @@ export default function Pricing() {
     return (
       <section id="pricing" className="py-24 bg-gradient-to-b from-white to-blue-50">
         <div className="container mx-auto px-4">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-900 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading pricing plans...</p>
+          <div className="h-8 bg-blue-100 rounded w-48 mx-auto mb-4 animate-pulse" />
+          <div className="h-4 bg-blue-50 rounded w-72 mx-auto mb-12 animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-96 bg-white rounded-2xl shadow-md animate-pulse border border-blue-50" />
+            ))}
           </div>
         </div>
       </section>
