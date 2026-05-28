@@ -170,14 +170,24 @@ interface UserType {
 
 
 // Main component
+function readStudentCache(id?: string | number) {
+  try {
+    const raw = id ? localStorage.getItem(`cache_student_${id}`) : null;
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 export default function StudentPortal() {
   const { user: authUser, logout } = useAuth();
-  // State
-  const [user, setUser] = useState<UserType | null>(null)
-  const [courses, setCourses] = useState<Course[]>([])
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [assignments, setAssignments] = useState<Assignment[]>([])
-  const [loading, setLoading] = useState(true)
+
+  // Initialise state from localStorage cache so returning users see content instantly
+  const cachedInit = readStudentCache(authUser?.id);
+  const [user, setUser] = useState<UserType | null>(cachedInit?.user ?? null)
+  const [courses, setCourses] = useState<Course[]>(cachedInit?.courses ?? [])
+  const [notifications, setNotifications] = useState<Notification[]>(cachedInit?.notifications ?? [])
+  const [assignments, setAssignments] = useState<Assignment[]>(cachedInit?.assignments ?? [])
+  // Only show loading spinner when there is truly no cached data
+  const [loading, setLoading] = useState(!cachedInit)
   const [unreadCount, setUnreadCount] = useState(0)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
@@ -239,19 +249,32 @@ export default function StudentPortal() {
   const pendingAssignments = assignments.filter((assignment) => assignment.status === "pending")
 
   // API fetching functions
-  const fetchStudentData = async () => {
+  const fetchStudentData = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     try {
-      setLoading(true)
       const studentId = authUser?.id
-      const data = await apiFetch<any>(`/student/dashboard${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ''}`)
+      const data = await apiFetch<any>(`/student/dashboard${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ''}`, { noCache: true })
 
       if (data?.student) setUser(data.student)
       if (data?.courses) setCourses(data.courses)
       if (data?.notifications) setNotifications(data.notifications)
       if (data?.assignments) setAssignments(data.assignments)
+
+      // Persist for instant load on next visit
+      if (studentId && (data?.student || data?.courses)) {
+        try {
+          localStorage.setItem(`cache_student_${studentId}`, JSON.stringify({
+            user: data.student,
+            courses: data.courses || [],
+            notifications: data.notifications || [],
+            assignments: data.assignments || [],
+          }));
+        } catch {}
+      }
     } catch (e) {
       console.error('Failed to fetch student data:', e)
-      toast.error("Failed to load dashboard data. Please try again.")
+      // Only toast if we have nothing to show
+      if (!user && !courses.length) toast.error("Failed to load dashboard data. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -337,9 +360,18 @@ export default function StudentPortal() {
       }));
     };
 
-    const handleAnnouncement = () => {
+    const handleAnnouncement = (data: any) => {
       toast.message('New Announcement', { description: "A new announcement has been posted." });
-      fetchStudentData();
+      // Targeted patch: append announcement to the right course instead of full reload
+      if (data?.courseId && data?.announcement) {
+        setCourses(prev => prev.map(c =>
+          String(c.id) === String(data.courseId)
+            ? { ...c, announcements: [data.announcement, ...(c.announcements || [])] }
+            : c
+        ));
+      } else {
+        fetchStudentData();
+      }
     };
 
     const handleMaterial = (data: any) => {
@@ -347,23 +379,41 @@ export default function StudentPortal() {
       const isEnrolled = currentCourses.some(c => String(c.id) === String(data.courseId));
       if (isEnrolled) {
         toast.message('New Material', { description: "New material added to your course." });
+        // Targeted patch: append material to course
+        if (data?.material) {
+          setCourses(prev => prev.map(c =>
+            String(c.id) === String(data.courseId)
+              ? { ...c, materials: [...(c.materials || []), data.material] }
+              : c
+          ));
+        } else {
+          fetchStudentData();
+        }
+      }
+    };
+
+    const handleCourseUpdate = (data: any) => {
+      if (data?.course) {
+        setCourses(prev => prev.map(c =>
+          String(c.id) === String(data.course.id) ? { ...c, ...data.course } : c
+        ));
+      } else {
         fetchStudentData();
       }
     };
 
-    const handleCourseUpdate = () => {
-      fetchStudentData();
-    };
-
-    const handleEnrollmentUpdate = (data: any) => {
-      // If the student is the one enrolled, or if we just want to refresh to see new classmates (if visible)
-      // For now, just refresh data
+    const handleEnrollmentUpdate = () => {
       fetchStudentData();
     };
 
     const handleNotification = (data: any) => {
       toast.message('New Notification', { description: data.title || "You have a new notification" });
-      fetchStudentData();
+      // Targeted patch: prepend notification
+      if (data?.notification) {
+        setNotifications(prev => [data.notification, ...prev]);
+      } else {
+        fetchStudentData();
+      }
     };
 
     socket.on('session-live', handleSessionLive);
@@ -571,30 +621,31 @@ export default function StudentPortal() {
     return matchesSearch && matchesCourse
   })
 
-  // Render
+  // Render skeleton on first-ever load (no cached data)
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading your dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Failed to load profile</h2>
-          <p className="text-gray-600 mb-6">We couldn't load your student profile data.</p>
-          <div className="flex gap-4 justify-center">
-            <Button onClick={() => window.location.reload()} variant="outline">Retry</Button>
-            <Button onClick={() => window.location.href = '/student-login'}>Login</Button>
+      <div className="min-h-screen bg-gray-50 flex">
+        {/* Sidebar skeleton */}
+        <aside className="bg-white border-r border-gray-200 w-64 fixed inset-y-0 z-50 p-4 space-y-3">
+          <div className="h-8 bg-gray-200 rounded animate-pulse w-3/4 mb-6" />
+          {[...Array(7)].map((_, i) => (
+            <div key={i} className="h-9 bg-gray-100 rounded animate-pulse" />
+          ))}
+        </aside>
+        {/* Main content skeleton */}
+        <main className="flex-1 ml-64 p-6 space-y-6">
+          <div className="h-8 bg-gray-200 rounded animate-pulse w-1/3" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-28 bg-white rounded-xl shadow-sm animate-pulse border border-gray-100" />
+            ))}
           </div>
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-40 bg-white rounded-xl shadow-sm animate-pulse border border-gray-100" />
+            ))}
+          </div>
+        </main>
       </div>
     )
   }
