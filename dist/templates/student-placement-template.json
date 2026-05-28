@@ -4,6 +4,7 @@
       "name": "John Doe",
       "email": "john.doe@example.com",
       "courses": ["Mathematics 101", "Physics 101"],
+      "tutors": ["Mr. Smith", "Dr. Jones"],
       "department": "Science",
       "grade": "Grade 10"
     },
@@ -11,6 +12,7 @@
       "name": "Jane Smith",
       "email": "jane.smith@example.com",
       "courses": ["English Literature", "History"],
+      "tutors": ["Ms. Davis"],
       "department": "Social Sciences",
       "grade": "Grade 11"
     },
@@ -18,6 +20,7 @@
       "name": "Mike Johnson",
       "email": "mike.j@example.com",
       "courses": ["Chemistry", "Biology"],
+      "tutors": [null, "Dr. Brown"],
       "department": "Natural Sciences",
       "grade": "Grade 12"
     }

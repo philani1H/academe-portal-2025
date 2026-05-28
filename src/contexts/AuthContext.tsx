@@ -112,8 +112,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const userData = response.user;
-      
-      // Update state immediately
       setUser(userData);
       setIsAuthenticated(true);
       
@@ -134,12 +132,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Don't throw - the login itself succeeded, cookie issues might be CORS-related
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
       // Clear any partial state on error
       setUser(null);
       setIsAuthenticated(false);
       localStorage.removeItem('user');
+      // Extract the real server error message if available
+      const msg = String(error?.message || '');
+      const jsonMatch = msg.match(/\{.*\}/s);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.error || parsed.message) {
+            throw new Error(parsed.error || parsed.message);
+          }
+        } catch (parseErr: any) {
+          if (parseErr.message !== msg) throw parseErr;
+        }
+      }
       throw error;
     }
   };

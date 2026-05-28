@@ -2751,6 +2751,10 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     
     // 1. Check Prisma User table (bcrypt) - Primary for all users
     let user = await prisma.user.findUnique({ where: { email: userEmail } })
+    // Fallback: case-insensitive search in case email was stored with different casing
+    if (!user) {
+      user = await prisma.user.findFirst({ where: { email: { equals: userEmail, mode: 'insensitive' } } })
+    }
     let isAuthenticated = false
 
     if (user && user.password_hash) {
@@ -2811,10 +2815,20 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: "Invalid credentials" })
     }
 
+    // Normalize role to handle case variations and common aliases
+    const rawRole = (user.role || '').toLowerCase().trim()
+    const normalizedRole = rawRole === 'lecturer' ? 'tutor' : rawRole
+    
     // Ensure user has a valid role
-    if (!user.role || !["student", "tutor", "admin"].includes(user.role)) {
+    if (!normalizedRole || !["student", "tutor", "admin"].includes(normalizedRole)) {
       console.error(`User ${user.email} has invalid role: ${user.role}`)
-      return res.status(403).json({ success: false, error: "Invalid user role" })
+      return res.status(403).json({ success: false, error: "Account role is not configured. Please contact support." })
+    }
+
+    // Update role in DB if it was normalized or had wrong casing
+    if (normalizedRole !== user.role) {
+      await prisma.user.update({ where: { id: user.id }, data: { role: normalizedRole } }).catch(() => {})
+      user = { ...user, role: normalizedRole }
     }
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" })

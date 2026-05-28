@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { apiFetch } from "@/lib/api"
 import { motion, AnimatePresence } from "framer-motion"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import ReactPlayer from 'react-player'
-import { CheckCircle, AlertCircle, Info, MessageSquare, Plus, X, Edit, Trash2, Star, Sparkles } from "lucide-react"
+
+import { CheckCircle, AlertCircle, Info, MessageSquare, Plus, X, Edit, Trash2, Sparkles } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import GoogleAdBanner from "@/components/GoogleAdBanner"
 
 interface Feature {
   id?: string
@@ -36,151 +37,11 @@ interface Feature {
 
 const initialAnnouncements: any[] = []
 
-const ProfessionalBanner = ({ className = "", placement = "" }) => {
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [isLoaded, setIsLoaded] = useState(false)
-  
-  useEffect(() => {
-    if (!iframeRef.current) return
-    
-    const iframe = iframeRef.current
-    const doc = iframe.contentDocument || iframe.contentWindow?.document
-    if (!doc) return
-    
-    // Write the ad script into the iframe with proper containment
-    doc.open()
-    doc.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <style>
-            * { 
-              margin: 0; 
-              padding: 0; 
-              box-sizing: border-box; 
-            }
-            html, body { 
-              width: 100%;
-              height: 100%;
-              overflow: hidden;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background: transparent;
-            }
-            body > * {
-              max-width: 100% !important;
-              max-height: 100% !important;
-              overflow: hidden !important;
-            }
-            iframe, img, div {
-              max-width: 100% !important;
-              max-height: 90px !important;
-            }
-          </style>
-        </head>
-        <body>
-          <script 
-            type="text/javascript" 
-            src="https://thankfuldirection.com/bzX.VPsLdpGblY0mYsWccA/yermk9fuxZdUJlHk/PIT/Yo3/NiD/k/y/MrDHYHt/NKjlcD0/OgTnICwBN_wx"
-            async
-            referrerpolicy="no-referrer-when-downgrade"
-          ><\/script>
-        </body>
-      </html>
-    `)
-    doc.close()
-    
-    // Set loaded state after a delay
-    const timer = setTimeout(() => setIsLoaded(true), 1000)
-    return () => clearTimeout(timer)
-  }, [placement])
-  
-  return (
-    <div 
-      ref={containerRef}
-      className={`relative overflow-hidden rounded-2xl ${className}`}
-    >
-      {/* Animated gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 opacity-10" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-100 via-transparent to-transparent opacity-60" />
-      
-      {/* Decorative elements */}
-      <div className="absolute top-0 left-0 w-32 h-32 bg-blue-400/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
-      <div className="absolute bottom-0 right-0 w-40 h-40 bg-indigo-400/10 rounded-full blur-3xl translate-x-1/2 translate-y-1/2" />
-      
-      {/* Main container */}
-      <div className="relative bg-gradient-to-br from-white/80 to-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-2xl shadow-lg shadow-blue-100/50">
-        <div className="p-4 sm:p-5">
-          {/* Header section */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <div className="absolute inset-0 bg-blue-500 rounded-full blur-sm opacity-30 animate-pulse" />
-                <div className="relative flex items-center justify-center w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full shadow-md">
-                  <Sparkles className="w-4 h-4 text-white" />
-                </div>
-              </div>
-              <div>
-                <span className="text-sm font-semibold text-blue-900">Featured Partner</span>
-                <p className="text-xs text-blue-600/70">Sponsored Content</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-blue-600 bg-blue-100/80 px-3 py-1.5 rounded-full border border-blue-200/50 shadow-sm">
-                Ad
-              </span>
-            </div>
-          </div>
-          
-          {/* Ad container with fixed dimensions */}
-          <div className="relative w-full h-[100px] bg-white rounded-xl border border-blue-100 shadow-inner overflow-hidden">
-            {/* Loading skeleton */}
-            {!isLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
-                  <span className="text-sm text-blue-600 font-medium">Loading content...</span>
-                </div>
-              </div>
-            )}
-            
-            {/* Iframe container - fixed size with overflow hidden */}
-            <div className="absolute inset-0 overflow-hidden">
-              <iframe
-                ref={iframeRef}
-                title={`ad-${placement}`}
-                className="w-full h-full border-0"
-                style={{ 
-                  minWidth: '100%',
-                  maxWidth: '100%',
-                  height: '100px',
-                  maxHeight: '100px',
-                  overflow: 'hidden',
-                  display: 'block'
-                }}
-                scrolling="no"
-                sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-              />
-            </div>
-          </div>
-          
-          {/* Footer section */}
-          <div className="mt-3 flex items-center justify-center gap-2">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-blue-200 to-transparent" />
-            <p className="text-xs text-blue-500 font-medium px-3">
-              Supporting quality education
-            </p>
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-blue-200 to-transparent" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+interface FeaturesProps {
+  keywords?: string[]
 }
 
-const Features = () => {
+const Features = ({ keywords = [] }: FeaturesProps) => {
   
   const [features, setFeatures] = useState<Feature[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
@@ -343,10 +204,6 @@ const Features = () => {
     setFeatures(features.filter((feature) => feature.id !== id))
   }
 
-  const getFeatureIcon = (iconName: string) => {
-    return <CheckCircle className="text-blue-600 w-6 h-6 mt-1 flex-shrink-0" />
-  }
-
   const sortedAnnouncements = [...announcements].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1
     if (!a.pinned && b.pinned) return 1
@@ -380,14 +237,14 @@ const Features = () => {
           </p>
         </motion.div>
 
-        {/* Top Banner Placement */}
+        {/* Top Google AdSense Banner */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="mb-12"
+          className="mb-12 -mx-4 md:mx-0"
         >
-          <ProfessionalBanner placement="top" />
+          <GoogleAdBanner placement="top" authorized={true} keywords={keywords} fullWidthResponsive={true} />
         </motion.div>
 
         {/* Admin Controls Toggle */}
@@ -558,14 +415,14 @@ const Features = () => {
               )}
             </div>
 
-            {/* Mid-Content Banner Placement */}
+            {/* Mid-Content Google AdSense Banner */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.6 }}
-              className="mt-12 mb-8"
+              className="mt-12 mb-8 -mx-4 md:mx-0"
             >
-              <ProfessionalBanner placement="middle" />
+              <GoogleAdBanner placement="middle" authorized={true} keywords={keywords} />
             </motion.div>
           </TabsContent>
 
@@ -679,12 +536,10 @@ const Features = () => {
                         {announcement.mediaUrl && (
                           <div className="mb-3 mt-1 rounded-xl overflow-hidden max-w-2xl shadow-sm border border-gray-100">
                              {announcement.mediaType === 'video' ? (
-                                <ReactPlayer 
-                                  url={announcement.mediaUrl} 
+                                <video 
+                                  src={announcement.mediaUrl} 
                                   controls 
-                                  width="100%" 
-                                  height="auto" 
-                                  className="aspect-video"
+                                  className="w-full aspect-video"
                                 />
                              ) : (
                                 <img 
@@ -911,14 +766,14 @@ const Features = () => {
           </div>
         </motion.div>
 
-        {/* Bottom Banner Placement */}
+        {/* Bottom Google AdSense Banner */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.8 }}
-          className="mt-12"
+          className="mt-12 -mx-4 md:mx-0"
         >
-          <ProfessionalBanner placement="bottom" />
+          <GoogleAdBanner placement="bottom" authorized={true} keywords={keywords} />
         </motion.div>
       </div>
       

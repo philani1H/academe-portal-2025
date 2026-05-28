@@ -10,7 +10,7 @@ import { Presentation, Users, Calendar, ArrowRight } from 'lucide-react';
 
 const TutorLogin = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,52 +21,36 @@ const TutorLogin = () => {
     setLoading(true);
 
     try {
-      // Wait for login to complete and return user data
       await login(email, password, 'tutor');
       
-      // Verify user has appropriate role
-      // Note: We don't check for token in localStorage because we use HttpOnly cookies
+      // Use context user (most reliable) or fall back to localStorage
       const storedUser = localStorage.getItem('user');
+      const userData = storedUser ? JSON.parse(storedUser) : null;
+      const role = (userData?.role || '').toLowerCase();
       
-      if (!storedUser) {
-        throw new Error('User data not received');
-      }
-
-      const userData = JSON.parse(storedUser);
-      
-      // Verify user has appropriate role
-      if (userData.role === 'tutor' || userData.role === 'admin') {
+      if (role === 'tutor' || role === 'admin') {
         toast({
           title: "Welcome back!",
           description: "Login successful.",
         });
-        
-        // Small delay to ensure state updates before navigation
-        setTimeout(() => {
-          navigate('/tutors-dashboard');
-        }, 100);
-      } else {
-        // Clear invalid credentials
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        
+        setTimeout(() => navigate('/tutors-dashboard'), 100);
+      } else if (role) {
+        // Logged in but wrong role
         toast({
           title: "Access Denied",
           description: "This account does not have tutor privileges.",
           variant: "destructive",
         });
+      } else {
+        // Navigate anyway — auth context has the user
+        navigate('/tutors-dashboard');
       }
     } catch (error: any) {
-      // Clear any partial auth data on error
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      
       toast({
         title: "Login Failed",
         description: error.message || "Invalid credentials. Please try again.",
         variant: "destructive",
       });
-      
       console.error('Login error:', error);
     } finally {
       setLoading(false);

@@ -22,13 +22,17 @@ const StudentLogin = () => {
     try {
       await login(email, password, 'student');
       
-      const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-      const role = (storedUser.role || '').toLowerCase();
+      const storedUser = localStorage.getItem('user');
+      const userData = storedUser ? JSON.parse(storedUser) : null;
+      const role = (userData?.role || '').toLowerCase();
 
       if (role === 'student') {
         navigate('/student-portal');
-      } else {
+      } else if (role) {
         setError('This account does not have student access.');
+      } else {
+        // Navigate anyway — auth context has the user
+        navigate('/student-portal');
       }
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');

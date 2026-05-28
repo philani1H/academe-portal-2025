@@ -214,6 +214,8 @@ export default function LiveClass() {
         );
     }
 
+
+    
     // Handle leave - navigate based on entry point
     const handleLeave = () => {
         console.log('[LiveClass] Leaving session, entry point:', entryPoint);

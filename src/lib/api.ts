@@ -170,22 +170,24 @@ export async function apiFetch<T = any>(
     } catch (error: any) {
       if (error.name === 'AbortError') {
         // Suppress abort errors (clean cancellation)
-        // console.log(`Fetch aborted: ${path}`);
         return (method === 'GET' ? [] : null) as T;
       }
 
       console.error(`API fetch error for ${path}:`, error);
-      
-      // Return cached data as fallback even if expired
-      if (method === 'GET') {
-        const staleCache = cache.get<T>(cacheKey);
-        if (staleCache !== null) {
-          console.warn(`Using stale cache for ${path}`);
-          return staleCache;
-        }
+
+      // For non-GET requests (POST, PUT, DELETE, etc.), re-throw so callers get the real error
+      if (method !== 'GET') {
+        throw error;
       }
       
-      return (method === 'GET' ? [] : null) as T;
+      // Return cached data as fallback even if expired (GET only)
+      const staleCache = cache.get<T>(cacheKey);
+      if (staleCache !== null) {
+        console.warn(`Using stale cache for ${path}`);
+        return staleCache;
+      }
+      
+      return [] as T;
     } finally {
       clearTimeout(timer);
       if (method === 'GET') {

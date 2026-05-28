@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Shield, Settings, Activity, Lock, ArrowRight } from 'lucide-react';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -24,12 +26,13 @@ const AdminLogin = () => {
     setError(null);
     
     try {
-      const res = await apiFetch<{ success: boolean; token?: string; user?: { username: string; role: string } }>('/api/admin/auth/login', {
+      // Try the dedicated admin endpoint first
+      const res = await apiFetch<{ success: boolean; token?: string; user?: any }>('/api/admin/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username: id, email: id, password }),
       });
       
-      if (!res || (res as any)?.success === false) {
+      if (!res || res.success === false) {
         setError('Invalid credentials');
         return;
       }
@@ -38,15 +41,28 @@ const AdminLogin = () => {
         try { localStorage.setItem('auth_token', res.token); } catch {}
       }
       
-      const user = { id: id, email: id.includes('@') ? id : `${id}@local`, name: id, role: 'admin' } as any;
-      try { localStorage.setItem('user', JSON.stringify(user)); } catch {}
+      // Store admin user in localStorage so AuthContext picks it up
+      const adminUser = res.user || { id: id, email: id.includes('@') ? id : `${id}@local`, name: id, role: 'admin' };
+      try { localStorage.setItem('user', JSON.stringify({ ...adminUser, role: 'admin' })); } catch {}
       navigate('/admin');
     } catch (err: any) {
-      const msg = String(err?.message || '');
-      if (msg.includes('Invalid credentials') || msg.includes('(401)')) {
-        setError('Invalid credentials');
-      } else {
-        setError('System unavailable. Please check server status.');
+      // If admin endpoint fails, try the regular login endpoint (for admins stored in User table)
+      try {
+        await login(id, password, 'admin');
+        const storedUser = localStorage.getItem('user');
+        const userData = storedUser ? JSON.parse(storedUser) : null;
+        if (userData?.role === 'admin') {
+          navigate('/admin');
+          return;
+        }
+        setError('This account does not have admin privileges.');
+      } catch (fallbackErr: any) {
+        const msg = String(err?.message || fallbackErr?.message || '');
+        if (msg.includes('Invalid credentials') || msg.includes('(401)')) {
+          setError('Invalid credentials');
+        } else {
+          setError('System unavailable. Please check server status.');
+        }
       }
     } finally {
       setLoading(false);
