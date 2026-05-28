@@ -988,10 +988,25 @@ app.post("/api/tests/save", authenticateJWT as RequestHandler, async (req: Authe
 })
 
 // Socket.IO Setup
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'https://www.excellenceakademie.co.za',
+  'https://www.excellenceakademie.co.za',
+  'https://excellenceakademie.co.za',
+  'http://localhost:5173',
+  'http://localhost:8080',
+  'http://localhost:3000',
+];
+
 const io = new Server(httpServer, {
   maxHttpBufferSize: 1e8, // 100 MB
   cors: {
-    origin: isProd ? undefined : "*",
+    origin: (origin, callback) => {
+      if (!origin || !isProd) return callback(null, true);
+      if (allowedOrigins.some(o => origin === o || origin.endsWith('.vercel.app'))) {
+        return callback(null, true);
+      }
+      callback(null, true); // Allow all for now — tighten after confirming domain
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -999,19 +1014,24 @@ const io = new Server(httpServer, {
 
 app.set("io", io)
 
-// Socket Authentication Middleware
+// Socket Authentication Middleware — checks auth.token (cross-origin) then cookie
 io.use((socket, next) => {
+  const authToken = (socket.handshake.auth as any)?.token as string | undefined;
+
   const cookieHeader = socket.handshake.headers.cookie;
+  let cookieToken: string | undefined;
   if (cookieHeader) {
     const cookies = parseCookies({ headers: { cookie: cookieHeader } } as any);
-    const token = cookies.auth_token || cookies.admin_token;
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        (socket as any).user = decoded;
-      } catch (e) {
-        // Invalid token, treat as anonymous/guest
-      }
+    cookieToken = cookies.auth_token || cookies.admin_token;
+  }
+
+  const token = authToken || cookieToken;
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      (socket as any).user = decoded;
+    } catch (e) {
+      // Invalid token, treat as anonymous/guest
     }
   }
   next();
@@ -2833,21 +2853,22 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
 
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: "7d" })
     const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
+    const sameSite = process.env.NODE_ENV === "production" ? "None" : "Lax"
     res.setHeader(
       "Set-Cookie",
-      `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Lax;${secure}`,
+      `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=${sameSite};${secure}`,
     )
 
     // Emit login event to user's room (for other devices)
     const io = req.app.get("io");
     if (io) {
-      io.to(`user:${user.id}`).emit("auth-state-change", { 
-        type: "LOGIN", 
-        user: { id: user.id, email: user.email, role: user.role, name: user.name } 
+      io.to(`user:${user.id}`).emit("auth-state-change", {
+        type: "LOGIN",
+        user: { id: user.id, email: user.email, role: user.role, name: user.name }
       });
     }
 
-    return res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, name: user.name } })
+    return res.json({ success: true, user: { id: user.id, email: user.email, role: user.role, name: user.name }, token })
   } catch (error) {
     console.error("Login error:", error)
     return res.status(500).json({ success: false, error: "Login failed" })
@@ -2874,7 +2895,8 @@ app.post("/api/auth/logout", (req: Request, res: Response) => {
   }
 
   const secure = process.env.NODE_ENV === "production" ? " Secure;" : ""
-  res.setHeader("Set-Cookie", `auth_token=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax;${secure}`)
+  const sameSite = process.env.NODE_ENV === "production" ? "None" : "Lax"
+  res.setHeader("Set-Cookie", `auth_token=; HttpOnly; Path=/; Max-Age=0; SameSite=${sameSite};${secure}`)
   return res.json({ success: true })
 })
 

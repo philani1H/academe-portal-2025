@@ -15,68 +15,72 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // Initialise from localStorage immediately — no blank screen while waiting for server
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const raw = localStorage.getItem('user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('user');
+    } catch {
+      return false;
+    }
+  });
+  // Only show loading if there is NO cached user — avoids blank splash on returning visitors
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem('user');
+    } catch {
+      return true;
+    }
+  });
 
   useEffect(() => {
-    // Check authentication status on mount
     let cancelled = false;
-    
+
+    // If we already have a cached user, connect socket immediately
+    if (user) {
+      connectSocket();
+    }
+
     const checkAuth = async () => {
       try {
-        // First, try to verify with backend (cookie-based auth)
         const response = await apiFetch<any>('/api/auth/me');
         const userData = response?.user || response;
-        
-        if (userData && !cancelled) {
+
+        if (userData && userData.id && !cancelled) {
           setUser(userData);
           setIsAuthenticated(true);
           localStorage.setItem('user', JSON.stringify(userData));
           connectSocket();
-          return;
         }
-      } catch (error) {
-        console.log('Auth check failed, falling back to storage', error);
-      }
-      
-      // Fallback to localStorage if API call fails
-      if (!cancelled) {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          try {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-            setIsAuthenticated(true);
-            connectSocket();
-          } catch (e) {
-            // Invalid stored data, clear it
-            localStorage.removeItem('user');
-          }
+      } catch {
+        // If server check fails but we have cached data, keep showing it
+        // Only clear state if there was no cached user to begin with
+        if (!cancelled && !localStorage.getItem('user')) {
+          setUser(null);
+          setIsAuthenticated(false);
         }
-      }
-      
-      if (!cancelled) {
-        setLoading(false);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
 
     checkAuth();
-    
-    return () => { 
-      cancelled = true;
-    };
+
+    return () => { cancelled = true; };
   }, []);
 
-  // Listen for real-time auth changes from the server
+  // Listen for real-time auth changes pushed by the server
   useEffect(() => {
     const handleAuthChange = (data: { type: string; user?: User }) => {
-      console.log('[AuthContext] Received auth-state-change:', data);
-      
       if (data.type === 'LOGOUT') {
         if (isAuthenticated) {
-          console.log('[AuthContext] Processing remote logout');
-          // Perform local cleanup only - do not call API to avoid loops
           disconnectSocket();
           setUser(null);
           setIsAuthenticated(false);
@@ -86,7 +90,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           clearApiCache();
         }
       } else if (data.type === 'LOGIN' && data.user) {
-        console.log('[AuthContext] Processing remote login update');
         setUser(data.user);
         setIsAuthenticated(true);
         localStorage.setItem('user', JSON.stringify(data.user));
@@ -94,15 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     socket.on('auth-state-change', handleAuthChange);
-
-    return () => {
-      socket.off('auth-state-change', handleAuthChange);
-    };
+    return () => { socket.off('auth-state-change', handleAuthChange); };
   }, [isAuthenticated]);
 
   const login = async (email: string, password: string, role?: string) => {
     try {
-      const response = await apiFetch<{ success: boolean; user: User; error?: string }>('/api/auth/login', {
+      const response = await apiFetch<{ success: boolean; user: User; token?: string; error?: string }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password, role }),
       });
@@ -114,31 +114,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = response.user;
       setUser(userData);
       setIsAuthenticated(true);
-      
-      // Store in localStorage as backup
       localStorage.setItem('user', JSON.stringify(userData));
-      
-      // Connect socket on successful login
-      connectSocket();
-      
-      // Clear any cached API data
-      clearApiCache();
-      
-      // Verify the cookie was set by making a test request
-      try {
-        await apiFetch('/api/auth/me');
-      } catch (verifyError) {
-        console.warn('Cookie verification failed, but login succeeded:', verifyError);
-        // Don't throw - the login itself succeeded, cookie issues might be CORS-related
+
+      // Store JWT for cross-origin API & socket auth (cookie alone fails cross-origin in production)
+      if (response.token) {
+        localStorage.setItem('auth_token', response.token);
       }
-      
+
+      connectSocket();
+      clearApiCache();
+
     } catch (error: any) {
-      console.error('Login error:', error);
-      // Clear any partial state on error
       setUser(null);
       setIsAuthenticated(false);
       localStorage.removeItem('user');
-      // Extract the real server error message if available
       const msg = String(error?.message || '');
       const jsonMatch = msg.match(/\{.*\}/s);
       if (jsonMatch) {
@@ -157,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signup = async (email: string, password: string, name: string, role: 'student' | 'tutor' | 'admin') => {
     try {
-      const response = await apiFetch<{ success: boolean; user: User; error?: string }>('/api/auth/signup', {
+      const response = await apiFetch<{ success: boolean; user: User; token?: string; error?: string }>('/api/auth/signup', {
         method: 'POST',
         body: JSON.stringify({ email, password, name, role }),
       });
@@ -170,11 +159,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('user', JSON.stringify(userData));
+      if (response.token) {
+        localStorage.setItem('auth_token', response.token);
+      }
       connectSocket();
       clearApiCache();
-      
+
     } catch (error) {
-      console.error('Signup error:', error);
       setUser(null);
       setIsAuthenticated(false);
       localStorage.removeItem('user');
@@ -183,13 +174,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    try { 
-      await apiFetch('/api/auth/logout', { method: 'POST' }); 
-    } catch (error) {
-      console.error('Logout API call failed:', error);
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // Always clear local state even if API fails
     }
-    
-    // Always clear local state regardless of API success
+
     disconnectSocket();
     setUser(null);
     setIsAuthenticated(false);
